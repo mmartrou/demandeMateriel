@@ -60,6 +60,7 @@
                                 <th>ID</th>
                                 <th>Enseignant</th>
                                 <th>Date</th>
+                                <th>Horaire</th>
                                 <th>Niveau</th>
                                 <th>Matériel sélectionné</th>
                                 <th>Ordinateurs</th>
@@ -129,10 +130,9 @@ function loadRequests() {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${request.id}</td>
-                    <td>
-                        <div class="fw-bold">${request.teacher_name}</div>
-                    </td>
+                    <td><div class="fw-bold">${request.teacher_name}</div></td>
                     <td>${formatDate(request.request_date)}</td>
+                    <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
                     <td><span class="badge bg-info">${request.class_name}</span></td>
                     <td><small class="text-muted">${request.selected_materials || '<em>Aucun</em>'}</small></td>
                     <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Générateur de Planning{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Générateur de Planning</h2>
+    <form id="planningForm" class="mb-3">
+        <label for="planningDate" class="form-label">Sélectionnez une date :</label>
+        <input type="date" id="planningDate" name="planningDate" class="form-control" required>
+    </form>
+    <div id="planningResults">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Enseignant</th>
+                    <th>Classe</th>
+                    <th>Matériel</th>
+                    <th>Quantité</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody id="planningTableBody">
+                <!-- Les demandes du jour seront insérées ici -->
+            </tbody>
+        </table>
+        <div id="noPlanningResults" class="alert alert-info d-none">Aucune demande pour ce jour.</div>
+    </div>
+</div>
+<script>
+document.getElementById('planningDate').addEventListener('change', function() {
+    const date = this.value;
+    if (!date) return;
+    fetch(`/api/requests?start_date=${date}&end_date=${date}`)
+        .then(response => response.json())
+        .then(requests => {
+            const tableBody = document.getElementById('planningTableBody');
+            const noResults = document.getElementById('noPlanningResults');
+            tableBody.innerHTML = '';
+            if (requests.length === 0) {
+                noResults.classList.remove('d-none');
+                return;
+            }
+            noResults.classList.add('d-none');
+            requests.forEach(request => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${request.teacher_name}</td>
+                    <td>${request.class_name}</td>
+                    <td>${request.material_description}</td>
+                    <td>${request.quantity}</td>
+                    <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            tableBody.innerHTML = '';
+            noResults.classList.remove('d-none');
+        });
+});
+</script>
+{% endblock %}

@@ -24,6 +24,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id INTEGER NOT NULL,
             request_date DATE NOT NULL,
+            horaire TEXT,
             class_name TEXT NOT NULL,
             material_description TEXT NOT NULL,
             quantity INTEGER DEFAULT 1,
@@ -34,6 +35,11 @@ def init_database():
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
     ''')
+    # Ajout du champ horaire si absent
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN horaire TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     # Add new columns to existing table if they don't exist
     try:
@@ -75,16 +81,16 @@ def get_all_teachers():
     return teachers
 
 def add_material_request(teacher_id, request_date, class_name, material_description, 
-                        quantity=1, selected_materials='', computers_needed=0, notes=''):
+                        horaire=None, quantity=1, selected_materials='', computers_needed=0, notes=''):
     """Add a new material request"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO material_requests 
-        (teacher_id, request_date, class_name, material_description, quantity, 
+        (teacher_id, request_date, horaire, class_name, material_description, quantity, 
          selected_materials, computers_needed, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (teacher_id, request_date, class_name, material_description, quantity, 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes))
     conn.commit()
     request_id = cursor.lastrowid
