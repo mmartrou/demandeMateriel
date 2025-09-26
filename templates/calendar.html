@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Calendrier - Demande de Matériel{% endblock %}
+
+{% block extra_css %}
+<style>
+.calendar {
+    width: 100%;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background-color: #dee2e6;
+}
+
+.calendar-day-header {
+    background-color: #343a40;
+    color: white;
+    padding: 0.5rem;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.875rem;
+}
+
+.calendar-day {
+    background-color: white;
+    min-height: 100px;
+    padding: 0.5rem;
+    position: relative;
+    border: 1px solid #f8f9fa;
+}
+
+.calendar-day.other-month {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+
+.calendar-day-number {
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.calendar-event {
+    background-color: #007bff;
+    color: white;
+    padding: 0.25rem;
+    margin-bottom: 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.calendar-event:hover {
+    background-color: #0056b3;
+}
+
+.event-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.event-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background-color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    🗓️ Calendrier des Demandes de Matériel
+                </h4>
+                <div>
+                    <button class="btn btn-light btn-sm me-2" onclick="loadCalendar()">
+                        🔄 Actualiser
+                    </button>
+                    <a href="{{ url_for('export_csv') }}" class="btn btn-success btn-sm">
+                        📥 Export CSV
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="calendar">
+                            <div class="calendar-header">
+                                <button class="btn btn-outline-primary btn-sm" onclick="previousMonth()">‹ Précédent</button>
+                                <h5 id="currentMonth" class="mb-0"></h5>
+                                <button class="btn btn-outline-primary btn-sm" onclick="nextMonth()">Suivant ›</button>
+                            </div>
+                            <div class="calendar-grid" id="calendarGrid">
+                                <!-- Calendar will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>📋 Demandes à venir</h5>
+                        <div class="event-list" id="eventList">
+                            <!-- Events will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Event Details Modal -->
+<div class="modal" id="eventModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    📝 Détails de la demande
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="eventDetails">
+                <!-- Event details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentDate = new Date();
+let events = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadCalendar();
+});
+
+function loadCalendar() {
+    // Load events from API
+    fetch('/api/calendar-events')
+        .then(response => response.json())
+        .then(data => {
+            events = data;
+            renderCalendar();
+            renderEventList();
+        })
+        .catch(error => {
+            console.error('Error loading events:', error);
+            showErrorToast('Erreur lors du chargement des événements');
+        });
+}
+
+function renderCalendar() {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // Update month header
+    const monthNames = [
+        'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+        'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    document.getElementById('currentMonth').textContent = `${monthNames[month]} ${year}`;
+    
+    // Generate calendar grid
+    const grid = document.getElementById('calendarGrid');
+    grid.innerHTML = '';
+    
+    // Day headers
+    const dayHeaders = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    dayHeaders.forEach(day => {
+        const header = document.createElement('div');
+        header.className = 'calendar-day-header';
+        header.textContent = day;
+        grid.appendChild(header);
+    });
+    
+    // Get first day of month and days in month
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7; // Convert to Monday = 0
+    
+    // Add empty cells for previous month
+    for (let i = 0; i < startingDayOfWeek; i++) {
+        const emptyDay = document.createElement('div');
+        emptyDay.className = 'calendar-day other-month';
+        grid.appendChild(emptyDay);
+    }
+    
+    // Add days of current month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dayElement = document.createElement('div');
+        dayElement.className = 'calendar-day';
+        
+        const dayNumber = document.createElement('div');
+        dayNumber.className = 'calendar-day-number';
+        dayNumber.textContent = day;
+        dayElement.appendChild(dayNumber);
+        
+        // Add events for this day
+        const dayDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayEvents = events.filter(event => event.start === dayDate);
+        
+        dayEvents.forEach(event => {
+            const eventElement = document.createElement('div');
+            eventElement.className = 'calendar-event';
+            eventElement.textContent = event.title;
+            eventElement.onclick = () => showEventDetails(event);
+            dayElement.appendChild(eventElement);
+        });
+        
+        grid.appendChild(dayElement);
+    }
+}
+
+function renderEventList() {
+    const eventList = document.getElementById('eventList');
+    eventList.innerHTML = '';
+    
+    // Sort events by date
+    const sortedEvents = [...events].sort((a, b) => new Date(a.start) - new Date(b.start));
+    
+    if (sortedEvents.length === 0) {
+        eventList.innerHTML = '<p class="text-muted">Aucune demande trouvée.</p>';
+        return;
+    }
+    
+    sortedEvents.forEach(event => {
+        const eventItem = document.createElement('div');
+        eventItem.className = 'event-item';
+        eventItem.innerHTML = `
+            <div class="fw-bold">${event.title}</div>
+            <div class="text-muted">📅 ${formatDate(event.start)}</div>
+            <div class="mt-2">${event.description}</div>
+        `;
+        eventItem.onclick = () => showEventDetails(event);
+        eventItem.style.cursor = 'pointer';
+        eventList.appendChild(eventItem);
+    });
+}
+
+function previousMonth() {
+    currentDate.setMonth(currentDate.getMonth() - 1);
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    renderCalendar();
+}
+
+function showEventDetails(event) {
+    const modal = new bootstrap.Modal(document.getElementById('eventModal'));
+    const details = document.getElementById('eventDetails');
+    
+    details.innerHTML = `
+        <div class="row">
+            <div class="col-sm-4"><strong>Titre:</strong></div>
+            <div class="col-sm-8">${event.title}</div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-sm-4"><strong>Date:</strong></div>
+            <div class="col-sm-8">${formatDate(event.start)}</div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-sm-4"><strong>Description:</strong></div>
+            <div class="col-sm-8">${event.description}</div>
+        </div>
+    `;
+    
+    modal.show();
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR');
+}
+</script>
+{% endblock %}

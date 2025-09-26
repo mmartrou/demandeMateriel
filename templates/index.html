@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Nouvelle Demande - Demande de Matériel{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    ➕ Nouvelle Demande de Matériel
+                </h4>
+            </div>
+            <div class="card-body">
+                <form id="materialRequestForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="teacher_id" class="form-label">
+                                👨‍🏫 Enseignant *
+                            </label>
+                            <select class="form-select" id="teacher_id" name="teacher_id" required>
+                                <option value="">Sélectionner un enseignant</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="request_date" class="form-label">
+                                📅 Date de la demande *
+                            </label>
+                            <input type="date" class="form-control" id="request_date" name="request_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="class_name" class="form-label">
+                                🎓 Nom de la classe *
+                            </label>
+                            <input type="text" class="form-control" id="class_name" name="class_name" 
+                                   placeholder="Ex: 3ème A, Terminale S1, etc." required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="quantity" class="form-label">
+                                🔢 Quantité
+                            </label>
+                            <input type="number" class="form-control" id="quantity" name="quantity" 
+                                   min="1" value="1">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="material_description" class="form-label">
+                            🧰 Description du matériel *
+                        </label>
+                        <textarea class="form-control" id="material_description" name="material_description" 
+                                  rows="3" placeholder="Décrivez le matériel dont vous avez besoin..." required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">
+                            📝 Notes supplémentaires
+                        </label>
+                        <textarea class="form-control" id="notes" name="notes" 
+                                  rows="2" placeholder="Informations complémentaires (optionnel)"></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="reset" class="btn btn-outline-secondary me-md-2">
+                            🔄 Réinitialiser
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            📨 Envoyer la demande
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        ℹ️ Informations
+                    </h5>
+                    <ul class="list-unstyled mb-0">
+                        <li>✅ Les demandes peuvent être consultées dans le <a href="{{ url_for('calendar') }}">calendrier</a></li>
+                        <li>✅ Toutes les demandes peuvent être <a href="{{ url_for('view_requests') }}">visualisées</a> et exportées en CSV</li>
+                        <li>✅ Les champs marqués d'un * sont obligatoires</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Set today's date as default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('request_date').value = today;
+    
+    // Handle form submission
+    document.getElementById('materialRequestForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Send request to API
+        fetch('/api/requests', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccessToast('Demande créée avec succès !');
+                this.reset();
+                document.getElementById('request_date').value = today;
+            } else {
+                showErrorToast(data.error || 'Erreur lors de la création de la demande');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showErrorToast('Erreur de connexion');
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Toutes les Demandes - Demande de Matériel{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h4 class="mb-0">
+                            📋 Toutes les Demandes de Matériel
+                        </h4>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-light btn-sm me-2" onclick="loadRequests()">
+                            🔄 Actualiser
+                        </button>
+                        <button class="btn btn-success btn-sm" onclick="exportRequests()">
+                            📥 Export CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label for="filterTeacher" class="form-label">Filtrer par enseignant:</label>
+                        <select class="form-select" id="filterTeacher" onchange="loadRequests()">
+                            <option value="">Tous les enseignants</option>
+                            {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filterStartDate" class="form-label">Date de début:</label>
+                        <input type="date" class="form-control" id="filterStartDate" onchange="loadRequests()">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filterEndDate" class="form-label">Date de fin:</label>
+                        <input type="date" class="form-control" id="filterEndDate" onchange="loadRequests()">
+                    </div>
+                </div>
+                
+                <!-- Loading indicator -->
+                <div id="loadingIndicator" class="text-center d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Chargement...</span>
+                    </div>
+                </div>
+                
+                <!-- Table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="requestsTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Enseignant</th>
+                                <th>Date</th>
+                                <th>Classe</th>
+                                <th>Matériel</th>
+                                <th>Quantité</th>
+                                <th>Notes</th>
+                                <th>Créé le</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <!-- Requests will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- No results message -->
+                <div id="noResults" class="text-center text-muted d-none">
+                    <i class="fas fa-inbox fa-3x mb-3"></i>
+                    <p>Aucune demande trouvée avec les filtres sélectionnés.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadRequests();
+});
+
+function loadRequests() {
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const tableBody = document.getElementById('requestsTableBody');
+    const noResults = document.getElementById('noResults');
+    
+    // Show loading
+    loadingIndicator.classList.remove('d-none');
+    tableBody.innerHTML = '';
+    noResults.classList.add('d-none');
+    
+    // Get filter values
+    const teacherId = document.getElementById('filterTeacher').value;
+    const startDate = document.getElementById('filterStartDate').value;
+    const endDate = document.getElementById('filterEndDate').value;
+    
+    // Build query string
+    const params = new URLSearchParams();
+    if (teacherId) params.append('teacher_id', teacherId);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    
+    // Fetch requests
+    fetch(`/api/requests?${params.toString()}`)
+        .then(response => response.json())
+        .then(requests => {
+            loadingIndicator.classList.add('d-none');
+            
+            if (requests.length === 0) {
+                noResults.classList.remove('d-none');
+                return;
+            }
+            
+            // Populate table
+            requests.forEach(request => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${request.id}</td>
+                    <td>
+                        <div class="fw-bold">${request.teacher_name}</div>
+                        <small class="text-muted">${request.teacher_email}</small>
+                    </td>
+                    <td>${formatDate(request.request_date)}</td>
+                    <td><span class="badge bg-info">${request.class_name}</span></td>
+                    <td>${request.material_description}</td>
+                    <td><span class="badge bg-secondary">${request.quantity}</span></td>
+                    <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
+                    <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
+                `;
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            loadingIndicator.classList.add('d-none');
+            showErrorToast('Erreur lors du chargement des demandes');
+        });
+}
+
+function exportRequests() {
+    // Get filter values
+    const teacherId = document.getElementById('filterTeacher').value;
+    const startDate = document.getElementById('filterStartDate').value;
+    const endDate = document.getElementById('filterEndDate').value;
+    
+    // Build query string
+    const params = new URLSearchParams();
+    if (teacherId) params.append('teacher_id', teacherId);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    
+    // Open export URL
+    window.open(`/export/csv?${params.toString()}`, '_blank');
+    showSuccessToast('Export CSV en cours...');
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR');
+}
+
+function formatDateTime(dateTimeString) {
+    const date = new Date(dateTimeString);
+    return date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});
+}
+</script>
+{% endblock %}
