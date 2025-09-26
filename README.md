@@ -13,7 +13,26 @@ Site permettant une demande facilitée du matériel de laboratoire.
 - 📊 **Export CSV** : Exportation des données pour traitement externe avec Python
 - 📱 **Responsive** : Interface adaptée aux mobiles et tablettes
 
-## Installation
+## 🚀 Déploiement rapide (Recommandé)
+
+### Option 1 : GitHub Codespaces (Le plus simple)
+1. Sur GitHub, cliquer sur "Code" → "Codespaces" → "Create codespace"
+2. Attendre le chargement automatique
+3. L'application s'ouvre automatiquement dans votre navigateur
+4. **Avantage** : Aucune installation, accessible partout, partageable
+
+### Option 2 : Railway.app (Hébergement permanent gratuit)
+1. Aller sur [Railway.app](https://railway.app)
+2. Se connecter avec GitHub
+3. Sélectionner ce repository
+4. Déploiement automatique → URL publique générée
+
+### Option 3 : PythonAnywhere (Gratuit)
+1. Compte gratuit sur [PythonAnywhere](https://www.pythonanywhere.com)
+2. Uploader les fichiers
+3. Créer une Web App Flask
+
+## 💻 Installation locale
 
 1. Cloner le repository :
 ```bash
@@ -37,6 +56,8 @@ python app.py
 ```
 
 L'application sera accessible sur `http://localhost:5000`
+
+> 📖 **Guide détaillé** : Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour toutes les options
 
 ## Utilisation
 
