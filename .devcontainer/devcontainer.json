@@ -1,0 +1,23 @@
+{
+  "name": "Demande Matériel - Python Flask",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "pip install -r requirements.txt && python database.py",
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": {
+      "label": "Flask App",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.flake8"
+      ]
+    }
+  }
+}
