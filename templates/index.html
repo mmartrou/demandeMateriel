@@ -25,13 +25,29 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        
                         <div class="col-md-6 mb-3">
-                            <label for="request_date" class="form-label">
-                                📅 Date de la demande *
+                            <label for="planning_date" class="form-label">
+                                📅 Jour de la demande
                             </label>
-                            <input type="date" class="form-control" id="request_date" name="request_date" required>
+                            <input type="date" class="form-control" id="planning_date" name="planning_date">
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">🕒 Horaires pour ce jour</label>
+                        <div id="horaires-list" class="d-flex flex-wrap gap-2">
+                            {% set horaires = ["9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45", "13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15"] %}
+                            {% for h in horaires %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="horaire_{{ loop.index }}" name="horaire" value="{{ h }}">
+                                <label class="form-check-label" for="horaire_{{ loop.index }}">{{ h }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button type="button" class="btn btn-outline-primary mt-2" id="addDayBtn">+ Ajouter ce jour</button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">📅 Jours et horaires sélectionnés</label>
+                        <ul id="daysList" class="list-group mb-2"></ul>
                     </div>
                     
                     <div class="row">
@@ -191,29 +207,69 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Set today's date as default
+    // Set today's date as default for planning_date
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('request_date').value = today;
-    
-    // Handle form submission
+    document.getElementById('planning_date').value = today;
+
+    // Gestion des jours/horaires ajoutés
+    let daysHoraires = [];
+    const daysList = document.getElementById('daysList');
+    const addDayBtn = document.getElementById('addDayBtn');
+
+    addDayBtn.addEventListener('click', function() {
+        const date = document.getElementById('planning_date').value;
+        const horairesChecked = Array.from(document.querySelectorAll('input[name="horaire"]:checked')).map(cb => cb.value);
+        if (!date || horairesChecked.length === 0) {
+            showErrorToast('Veuillez choisir une date et au moins un horaire.');
+            return;
+        }
+        daysHoraires.push({ date, horaires: horairesChecked });
+        updateDaysList();
+        // Réinitialise les horaires cochés
+        document.querySelectorAll('input[name="horaire"]:checked').forEach(cb => cb.checked = false);
+        // Propose le jour suivant
+        let nextDate = new Date(date);
+        nextDate.setDate(nextDate.getDate() + 1);
+        document.getElementById('planning_date').value = nextDate.toISOString().split('T')[0];
+    });
+
+    function updateDaysList() {
+        daysList.innerHTML = '';
+        daysHoraires.forEach((dh, idx) => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.innerHTML = `<span><strong>${dh.date}</strong> : ${dh.horaires.join(', ')}</span> <button type="button" class="btn btn-sm btn-danger" data-idx="${idx}">Supprimer</button>`;
+            daysList.appendChild(li);
+        });
+        // Suppression d'un jour/horaire
+        daysList.querySelectorAll('button[data-idx]').forEach(btn => {
+            btn.onclick = function() {
+                daysHoraires.splice(parseInt(this.dataset.idx), 1);
+                updateDaysList();
+            };
+        });
+    }
+
+    // Soumission du formulaire
     document.getElementById('materialRequestForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        
+        if (daysHoraires.length === 0) {
+            showErrorToast('Veuillez ajouter au moins un jour avec des horaires.');
+            return;
+        }
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
-        
-        // Collect selected materials
+        // Collecte des matériels
         const selectedMaterials = [];
         const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
         materialCheckboxes.forEach(checkbox => {
             selectedMaterials.push(checkbox.value);
         });
-        
-        // Add selected materials and computers needed to data
         data.selected_materials = selectedMaterials.join(', ');
         data.computers_needed = document.getElementById('computers_needed').value;
-        
-        // Send request to API
+        // Ajoute la liste des jours/horaires
+        data.days_horaires = daysHoraires;
+        // Envoi au backend
         fetch('/api/requests', {
             method: 'POST',
             headers: {
@@ -226,7 +282,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 showSuccessToast('Demande créée avec succès !');
                 this.reset();
-                document.getElementById('request_date').value = today;
+                daysHoraires = [];
+                updateDaysList();
+                document.getElementById('planning_date').value = today;
             } else {
                 showErrorToast(data.error || 'Erreur lors de la création de la demande');
             }

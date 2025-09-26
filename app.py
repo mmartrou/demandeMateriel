@@ -6,8 +6,16 @@ from database import init_database, get_all_teachers, add_material_request, get_
 
 app = Flask(__name__)
 
-# Initialize database on startup
+# Initialisation de la base de données au démarrage
 init_database()
+
+
+# Route Générateur de Planning
+@app.route('/planning')
+def planning():
+    """Page Générateur de Planning pour voir les demandes d'un jour"""
+    return render_template('planning.html')
+
 
 @app.route('/')
 def index():
@@ -15,10 +23,12 @@ def index():
     teachers = get_all_teachers()
     return render_template('index.html', teachers=teachers)
 
+
 @app.route('/calendar')
 def calendar():
     """Calendar view of material requests"""
     return render_template('calendar.html')
+
 
 @app.route('/api/requests', methods=['GET'])
 def api_get_requests():
@@ -40,8 +50,8 @@ def api_get_requests():
             'class_name': req['class_name'],
             'material_description': req['material_description'],
             'quantity': req['quantity'],
-            'selected_materials': req.get('selected_materials', ''),
-            'computers_needed': req.get('computers_needed', 0),
+            'selected_materials': req['selected_materials'] if 'selected_materials' in req.keys() else '',
+            'computers_needed': req['computers_needed'] if 'computers_needed' in req.keys() else 0,
             'notes': req['notes'],
             'created_at': req['created_at']
         })
@@ -72,25 +82,34 @@ def api_add_request():
     try:
         data = request.get_json()
         
-        # Validate required fields
-        required_fields = ['teacher_id', 'request_date', 'class_name', 'material_description']
+        # Validation des champs principaux
+        required_fields = ['teacher_id', 'class_name', 'material_description']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'error': f'Le champ {field} est requis'}), 400
-        
-        # Add the request to database
-        request_id = add_material_request(
-            teacher_id=data['teacher_id'],
-            request_date=data['request_date'],
-            class_name=data['class_name'],
-            material_description=data['material_description'],
-            quantity=data.get('quantity', 1),
-            selected_materials=data.get('selected_materials', ''),
-            computers_needed=data.get('computers_needed', 0),
-            notes=data.get('notes', '')
-        )
-        
-        return jsonify({'success': True, 'request_id': request_id}), 201
+        if not data.get('days_horaires') or not isinstance(data['days_horaires'], list) or len(data['days_horaires']) == 0:
+            return jsonify({'error': 'Veuillez ajouter au moins un jour avec des horaires.'}), 400
+
+        # Ajout de chaque demande (jour/horaire)
+        request_ids = []
+        for dh in data['days_horaires']:
+            date = dh.get('date')
+            horaires = dh.get('horaires', [])
+            for horaire in horaires:
+                request_id = add_material_request(
+                    teacher_id=data['teacher_id'],
+                    request_date=date,
+                    horaire=horaire,
+                    class_name=data['class_name'],
+                    material_description=data['material_description'],
+                    quantity=data.get('quantity', 1),
+                    selected_materials=data.get('selected_materials', ''),
+                    computers_needed=data.get('computers_needed', 0),
+                    notes=data.get('notes', '')
+                )
+                request_ids.append(request_id)
+
+        return jsonify({'success': True, 'request_ids': request_ids}), 201
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -110,8 +129,8 @@ def export_csv():
     
     # Write header
     writer.writerow([
-        'ID', 'Enseignant', 'Date demande', 'Niveau', 
-        'Matériel sélectionné', 'Ordinateurs', 'Description matériel', 
+        'ID', 'Enseignant', 'Date demande', 'Horaire', 'Niveau',
+        'Matériel sélectionné', 'Ordinateurs', 'Description matériel',
         'Nombre de groupes', 'Notes', 'Date création'
     ])
     
@@ -121,12 +140,13 @@ def export_csv():
             req['id'],
             req['teacher_name'],
             req['request_date'],
+            req['horaire'] if 'horaire' in req.keys() else '',
             req['class_name'],
-            req.get('selected_materials', '') or '',
-            req.get('computers_needed', 0) or 0,
+            req['selected_materials'] if 'selected_materials' in req.keys() else '',
+            req['computers_needed'] if 'computers_needed' in req.keys() else 0,
             req['material_description'],
             req['quantity'],
-            req['notes'] or '',
+            req['notes'] if 'notes' in req.keys() else '',
             req['created_at']
         ])
     
