@@ -37,19 +37,109 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="class_name" class="form-label">
-                                🎓 Nom de la classe *
+                                🎓 Niveau *
                             </label>
-                            <input type="text" class="form-control" id="class_name" name="class_name" 
-                                   placeholder="Ex: 3ème A, Terminale S1, etc." required>
+                            <select class="form-select" id="class_name" name="class_name" required>
+                                <option value="">Sélectionner un niveau</option>
+                                <option value="6ème">6ème</option>
+                                <option value="5ème">5ème</option>
+                                <option value="4ème">4ème</option>
+                                <option value="3ème">3ème</option>
+                                <option value="SNT">SNT</option>
+                                <option value="2nd Classe">2nd Classe</option>
+                                <option value="2nd TP">2nd TP</option>
+                                <option value="AP PP">AP PP</option>
+                                <option value="AP 2nd">AP 2nd</option>
+                                <option value="1ère ES">1ère ES</option>
+                                <option value="Terminale ES">Terminale ES</option>
+                                <option value="1ère Spécialité">1ère Spécialité</option>
+                                <option value="Terminale Spécialité">Terminale Spécialité</option>
+                            </select>
                         </div>
                         
                         <div class="col-md-6 mb-3">
                             <label for="quantity" class="form-label">
-                                🔢 Quantité
+                                🔢 Nombre de groupes
                             </label>
                             <input type="number" class="form-control" id="quantity" name="quantity" 
                                    min="1" value="1">
                         </div>
+                    </div>
+                    
+                    <!-- Material checkboxes -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            🔧 Matériel requis
+                        </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="absent" name="materials" value="Absent">
+                                    <label class="form-check-label" for="absent">
+                                        Absent
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="eviers" name="materials" value="Éviers">
+                                    <label class="form-check-label" for="eviers">
+                                        Éviers
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="hotte" name="materials" value="Hotte">
+                                    <label class="form-check-label" for="hotte">
+                                        Hotte
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="bancs_optiques" name="materials" value="Bancs optiques">
+                                    <label class="form-check-label" for="bancs_optiques">
+                                        Bancs optiques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="oscilloscopes" name="materials" value="Oscilloscopes">
+                                    <label class="form-check-label" for="oscilloscopes">
+                                        Oscilloscopes
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="becs_electriques" name="materials" value="Becs électriques">
+                                    <label class="form-check-label" for="becs_electriques">
+                                        Becs électriques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="support_filtration" name="materials" value="Support de filtration">
+                                    <label class="form-check-label" for="support_filtration">
+                                        Support de filtration
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="imprimante" name="materials" value="Imprimante">
+                                    <label class="form-check-label" for="imprimante">
+                                        Imprimante
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="examen" name="materials" value="Examen">
+                                    <label class="form-check-label" for="examen">
+                                        Examen
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Number of computers -->
+                    <div class="mb-3">
+                        <label for="computers_needed" class="form-label">
+                            💻 Nombre d'ordinateurs nécessaires
+                        </label>
+                        <input type="number" class="form-control" id="computers_needed" name="computers_needed" 
+                               min="0" value="0" placeholder="0 si aucun ordinateur n'est nécessaire">
                     </div>
                     
                     <div class="mb-3">
@@ -111,6 +201,17 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
+        
+        // Collect selected materials
+        const selectedMaterials = [];
+        const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
+        materialCheckboxes.forEach(checkbox => {
+            selectedMaterials.push(checkbox.value);
+        });
+        
+        // Add selected materials and computers needed to data
+        data.selected_materials = selectedMaterials.join(', ');
+        data.computers_needed = document.getElementById('computers_needed').value;
         
         // Send request to API
         fetch('/api/requests', {

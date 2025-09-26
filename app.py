@@ -36,11 +36,12 @@ def api_get_requests():
             'id': req['id'],
             'teacher_id': req['teacher_id'],
             'teacher_name': req['teacher_name'],
-            'teacher_email': req['teacher_email'],
             'request_date': req['request_date'],
             'class_name': req['class_name'],
             'material_description': req['material_description'],
             'quantity': req['quantity'],
+            'selected_materials': req.get('selected_materials', ''),
+            'computers_needed': req.get('computers_needed', 0),
             'notes': req['notes'],
             'created_at': req['created_at']
         })
@@ -84,6 +85,8 @@ def api_add_request():
             class_name=data['class_name'],
             material_description=data['material_description'],
             quantity=data.get('quantity', 1),
+            selected_materials=data.get('selected_materials', ''),
+            computers_needed=data.get('computers_needed', 0),
             notes=data.get('notes', '')
         )
         
@@ -107,8 +110,9 @@ def export_csv():
     
     # Write header
     writer.writerow([
-        'ID', 'Enseignant', 'Email', 'Date demande', 'Classe', 
-        'Matériel', 'Quantité', 'Notes', 'Date création'
+        'ID', 'Enseignant', 'Date demande', 'Niveau', 
+        'Matériel sélectionné', 'Ordinateurs', 'Description matériel', 
+        'Nombre de groupes', 'Notes', 'Date création'
     ])
     
     # Write data
@@ -116,9 +120,10 @@ def export_csv():
         writer.writerow([
             req['id'],
             req['teacher_name'],
-            req['teacher_email'],
             req['request_date'],
             req['class_name'],
+            req.get('selected_materials', '') or '',
+            req.get('computers_needed', 0) or 0,
             req['material_description'],
             req['quantity'],
             req['notes'] or '',

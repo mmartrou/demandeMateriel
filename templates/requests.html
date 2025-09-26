@@ -60,9 +60,11 @@
                                 <th>ID</th>
                                 <th>Enseignant</th>
                                 <th>Date</th>
-                                <th>Classe</th>
-                                <th>Matériel</th>
-                                <th>Quantité</th>
+                                <th>Niveau</th>
+                                <th>Matériel sélectionné</th>
+                                <th>Ordinateurs</th>
+                                <th>Description</th>
+                                <th>Groupes</th>
                                 <th>Notes</th>
                                 <th>Créé le</th>
                             </tr>
@@ -129,10 +131,11 @@ function loadRequests() {
                     <td>${request.id}</td>
                     <td>
                         <div class="fw-bold">${request.teacher_name}</div>
-                        <small class="text-muted">${request.teacher_email}</small>
                     </td>
                     <td>${formatDate(request.request_date)}</td>
                     <td><span class="badge bg-info">${request.class_name}</span></td>
+                    <td><small class="text-muted">${request.selected_materials || '<em>Aucun</em>'}</small></td>
+                    <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>
                     <td>${request.material_description}</td>
                     <td><span class="badge bg-secondary">${request.quantity}</span></td>
                     <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>

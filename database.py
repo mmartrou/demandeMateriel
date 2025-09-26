@@ -14,7 +14,6 @@ def init_database():
         CREATE TABLE IF NOT EXISTS teachers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            email TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -28,23 +27,36 @@ def init_database():
             class_name TEXT NOT NULL,
             material_description TEXT NOT NULL,
             quantity INTEGER DEFAULT 1,
+            selected_materials TEXT,
+            computers_needed INTEGER DEFAULT 0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
     ''')
     
+    # Add new columns to existing table if they don't exist
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN selected_materials TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN computers_needed INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     # Insert sample teachers if table is empty
     cursor.execute('SELECT COUNT(*) FROM teachers')
     if cursor.fetchone()[0] == 0:
         sample_teachers = [
-            ('Dr. Marie Dubois', 'marie.dubois@ecole.fr'),
-            ('Prof. Jean Martin', 'jean.martin@ecole.fr'),
-            ('Dr. Sophie Laurent', 'sophie.laurent@ecole.fr'),
-            ('Prof. Pierre Moreau', 'pierre.moreau@ecole.fr'),
-            ('Dr. Isabelle Bernard', 'isabelle.bernard@ecole.fr')
+            ('Martrou',),
+            ('Bats',),
+            ('Vila',),
+            ('Paupy',),
+            ('Richard',)
         ]
-        cursor.executemany('INSERT INTO teachers (name, email) VALUES (?, ?)', sample_teachers)
+        cursor.executemany('INSERT INTO teachers (name) VALUES (?)', sample_teachers)
     
     conn.commit()
     conn.close()
@@ -62,14 +74,18 @@ def get_all_teachers():
     conn.close()
     return teachers
 
-def add_material_request(teacher_id, request_date, class_name, material_description, quantity=1, notes=''):
+def add_material_request(teacher_id, request_date, class_name, material_description, 
+                        quantity=1, selected_materials='', computers_needed=0, notes=''):
     """Add a new material request"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO material_requests (teacher_id, request_date, class_name, material_description, quantity, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (teacher_id, request_date, class_name, material_description, quantity, notes))
+        INSERT INTO material_requests 
+        (teacher_id, request_date, class_name, material_description, quantity, 
+         selected_materials, computers_needed, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (teacher_id, request_date, class_name, material_description, quantity, 
+          selected_materials, computers_needed, notes))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -79,7 +95,7 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     """Get material requests with optional filters"""
     conn = get_db_connection()
     query = '''
-        SELECT mr.*, t.name as teacher_name, t.email as teacher_email
+        SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE 1=1
