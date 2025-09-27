@@ -26,7 +26,7 @@
             <div class="card-body">
                 <!-- Filters -->
                 <div class="row mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="filterTeacher" class="form-label">Filtrer par enseignant:</label>
                         <select class="form-select" id="filterTeacher" onchange="loadRequests()">
                             <option value="">Tous les enseignants</option>
@@ -35,13 +35,22 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="filterStartDate" class="form-label">Date de début:</label>
                         <input type="date" class="form-control" id="filterStartDate" onchange="loadRequests()">
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="filterEndDate" class="form-label">Date de fin:</label>
                         <input type="date" class="form-control" id="filterEndDate" onchange="loadRequests()">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filterStatus" class="form-label">Statut:</label>
+                        <select class="form-select" id="filterStatus" onchange="loadRequests()">
+                            <option value="">Tous</option>
+                            <option value="prepared">Préparées</option>
+                            <option value="not-prepared">Non préparées</option>
+                            <option value="modified">Modifiées</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -67,6 +76,8 @@
                                 <th>Description</th>
                                 <th>Groupes</th>
                                 <th>Notes</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
                                 <th>Créé le</th>
                             </tr>
                         </thead>
@@ -81,6 +92,83 @@
                     <i class="fas fa-inbox fa-3x mb-3"></i>
                     <p>Aucune demande trouvée avec les filtres sélectionnés.</p>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Request Modal -->
+<div class="modal fade" id="editRequestModal" tabindex="-1" aria-labelledby="editRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editRequestModalLabel">✏️ Modifier la Demande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editRequestForm">
+                    <input type="hidden" id="editRequestId">
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editTeacher" class="form-label">👨‍🏫 Enseignant *</label>
+                            <select class="form-select" id="editTeacher" required>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editDate" class="form-label">📅 Date *</label>
+                            <input type="date" class="form-control" id="editDate" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editHoraire" class="form-label">⏰ Horaire</label>
+                            <select class="form-select" id="editHoraire">
+                                <option value="">Sélectionner un horaire</option>
+                                <option value="matin">🌅 Matin</option>
+                                <option value="après-midi">🌇 Après-midi</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editClassName" class="form-label">🎓 Niveau/Classe *</label>
+                            <input type="text" class="form-control" id="editClassName" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editMaterialDescription" class="form-label">🧰 Description du matériel *</label>
+                        <textarea class="form-control" id="editMaterialDescription" rows="3" required></textarea>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editQuantity" class="form-label">📦 Quantité</label>
+                            <input type="number" class="form-control" id="editQuantity" min="1" value="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editComputersNeeded" class="form-label">💻 Ordinateurs nécessaires</label>
+                            <input type="number" class="form-control" id="editComputersNeeded" min="0" value="0">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editSelectedMaterials" class="form-label">✅ Matériel sélectionné</label>
+                        <textarea class="form-control" id="editSelectedMaterials" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">📝 Notes supplémentaires</label>
+                        <textarea class="form-control" id="editNotes" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveRequestChanges()">💾 Sauvegarder</button>
             </div>
         </div>
     </div>
@@ -142,6 +230,7 @@ function loadRequests() {
     const teacherId = document.getElementById('filterTeacher').value;
     const startDate = document.getElementById('filterStartDate').value;
     const endDate = document.getElementById('filterEndDate').value;
+    const statusFilter = document.getElementById('filterStatus').value;
     
     // Sauvegarder l'enseignant sélectionné dans un cookie
     if (teacherId) {
@@ -166,9 +255,28 @@ function loadRequests() {
                 return;
             }
             
+            // Filter by status if needed
+            let filteredRequests = requests;
+            if (statusFilter) {
+                filteredRequests = requests.filter(request => {
+                    switch(statusFilter) {
+                        case 'prepared': return request.prepared === true;
+                        case 'not-prepared': return request.prepared === false || !request.prepared;
+                        case 'modified': return request.modified === true;
+                        default: return true;
+                    }
+                });
+            }
+            
             // Populate table
-            requests.forEach(request => {
+            filteredRequests.forEach(request => {
                 const row = document.createElement('tr');
+                row.style.cursor = 'pointer';
+                row.addEventListener('dblclick', () => editRequest(request.id));
+                
+                const statusBadge = getStatusBadge(request);
+                const preparedButton = getPreparedButton(request);
+                
                 row.innerHTML = `
                     <td>${request.id}</td>
                     <td><div class="fw-bold">${request.teacher_name}</div></td>
@@ -180,6 +288,8 @@ function loadRequests() {
                     <td>${request.material_description}</td>
                     <td><span class="badge bg-secondary">${request.quantity}</span></td>
                     <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
+                    <td>${statusBadge}</td>
+                    <td>${preparedButton}</td>
                     <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
                 `;
                 tableBody.appendChild(row);
@@ -225,6 +335,127 @@ function formatDateTime(dateTimeString) {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+
+function getStatusBadge(request) {
+    let badges = [];
+    if (request.prepared) {
+        badges.push('<span class="badge bg-success">✅ Préparée</span>');
+    } else {
+        badges.push('<span class="badge bg-light text-dark">⏳ Non préparée</span>');
+    }
+    if (request.modified) {
+        badges.push('<span class="badge bg-warning">⚠️ Modifiée</span>');
+    }
+    return badges.join(' ');
+}
+
+function getPreparedButton(request) {
+    const buttonClass = request.prepared ? 'btn-outline-success' : 'btn-outline-secondary';
+    const buttonText = request.prepared ? '✅ Préparée' : '⏳ Marquer préparée';
+    return `<button class="btn btn-sm ${buttonClass}" onclick="togglePrepared(${request.id}); event.stopPropagation();">${buttonText}</button>`;
+}
+
+function editRequest(requestId) {
+    // Fetch request details
+    fetch(`/api/requests/${requestId}`)
+        .then(response => response.json())
+        .then(request => {
+            // Populate form
+            document.getElementById('editRequestId').value = request.id;
+            document.getElementById('editTeacher').value = request.teacher_id;
+            document.getElementById('editDate').value = request.request_date;
+            document.getElementById('editHoraire').value = request.horaire || '';
+            document.getElementById('editClassName').value = request.class_name;
+            document.getElementById('editMaterialDescription').value = request.material_description;
+            document.getElementById('editQuantity').value = request.quantity;
+            document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
+            document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
+            document.getElementById('editNotes').value = request.notes || '';
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showErrorToast('Erreur lors du chargement de la demande');
+        });
+}
+
+function saveRequestChanges() {
+    const requestId = document.getElementById('editRequestId').value;
+    const formData = {
+        teacher_id: parseInt(document.getElementById('editTeacher').value),
+        request_date: document.getElementById('editDate').value,
+        horaire: document.getElementById('editHoraire').value,
+        class_name: document.getElementById('editClassName').value,
+        material_description: document.getElementById('editMaterialDescription').value,
+        quantity: parseInt(document.getElementById('editQuantity').value) || 1,
+        computers_needed: parseInt(document.getElementById('editComputersNeeded').value) || 0,
+        selected_materials: document.getElementById('editSelectedMaterials').value,
+        notes: document.getElementById('editNotes').value
+    };
+    
+    fetch(`/api/requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        // Hide modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('editRequestModal'));
+        modal.hide();
+        
+        // Reload requests
+        loadRequests();
+        showSuccessToast('Demande modifiée avec succès');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showErrorToast('Erreur lors de la modification: ' + error.message);
+    });
+}
+
+function togglePrepared(requestId) {
+    fetch(`/api/requests/${requestId}/toggle-prepared`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        loadRequests();
+        showSuccessToast('Statut mis à jour avec succès');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showErrorToast('Erreur lors de la mise à jour du statut');
+    });
+}
+
+// Toast functions (using base.html toast if available)
+function showSuccessToast(message) {
+    if (typeof window.showToast === 'function') {
+        window.showToast('success', 'Succès', message);
+    } else {
+        alert(message);
+    }
+}
+
+function showErrorToast(message) {
+    if (typeof window.showToast === 'function') {
+        window.showToast('error', 'Erreur', message);
+    } else {
+        alert(message);
+    }
 }
 </script>
 {% endblock %}
