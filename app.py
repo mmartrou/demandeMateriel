@@ -47,6 +47,7 @@ def api_get_requests():
             'teacher_id': req['teacher_id'],
             'teacher_name': req['teacher_name'],
             'request_date': req['request_date'],
+            'horaire': req['horaire'],
             'class_name': req['class_name'],
             'material_description': req['material_description'],
             'quantity': req['quantity'],
