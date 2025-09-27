@@ -173,15 +173,27 @@
                         </div>
                     </div>
                     
-                    <!-- Case Absent dans le modal -->
+                    <!-- Cases Absent et Pas besoin de matériel dans le modal -->
                     <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="editAbsent" name="editAbsent">
-                            <label class="form-check-label fw-bold" for="editAbsent">
-                                ❌ Absent (cocher si enseignant absent ce jour-là)
-                            </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editAbsent" name="editAbsent">
+                                    <label class="form-check-label fw-bold" for="editAbsent">
+                                        ❌ Absent (cocher si enseignant absent ce jour-là)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editNoMaterial" name="editNoMaterial">
+                                    <label class="form-check-label fw-bold" for="editNoMaterial">
+                                        📚 Pas besoin de matériel (cours théorique)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <small class="text-muted">Si absent, seule la sélection du niveau sera nécessaire.</small>
+                        <small class="text-muted">Si absent ou pas besoin de matériel, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
                     <div class="mb-3" id="editMaterialSection">
@@ -406,8 +418,9 @@ function editRequest(requestId) {
     fetch(`/api/requests/${requestId}`)
         .then(response => response.json())
         .then(request => {
-            // Check if this is an absence request
+            // Check if this is a special request type
             const isAbsent = request.selected_materials === 'Absent' && request.material_description === 'Enseignant absent';
+            const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
             
             // Populate form
             document.getElementById('editRequestId').value = request.id;
@@ -416,9 +429,10 @@ function editRequest(requestId) {
             document.getElementById('editHoraire').value = request.horaire || '';
             document.getElementById('editClassName').value = request.class_name;
             document.getElementById('editAbsent').checked = isAbsent;
+            document.getElementById('editNoMaterial').checked = isNoMaterial;
             
-            if (isAbsent) {
-                // If absent, clear material fields and show appropriate values
+            if (isAbsent || isNoMaterial) {
+                // If absent or no material needed, clear material fields and show appropriate values
                 document.getElementById('editMaterialDescription').value = '';
                 document.getElementById('editSelectedMaterials').value = '';
             } else {
@@ -431,8 +445,8 @@ function editRequest(requestId) {
             document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
             document.getElementById('editNotes').value = request.notes || '';
             
-            // Toggle sections based on absence
-            toggleEditAbsentMode();
+            // Toggle sections based on special modes
+            toggleEditSpecialModes();
             
             // Show modal
             const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
@@ -447,6 +461,7 @@ function editRequest(requestId) {
 function saveRequestChanges() {
     const requestId = document.getElementById('editRequestId').value;
     const isAbsent = document.getElementById('editAbsent').checked;
+    const isNoMaterial = document.getElementById('editNoMaterial').checked;
     
     const formData = {
         teacher_id: parseInt(document.getElementById('editTeacher').value),
@@ -461,6 +476,9 @@ function saveRequestChanges() {
     if (isAbsent) {
         formData.selected_materials = 'Absent';
         formData.material_description = 'Enseignant absent';
+    } else if (isNoMaterial) {
+        formData.selected_materials = 'Pas besoin de matériel';
+        formData.material_description = 'Cours théorique sans matériel';
     } else {
         formData.selected_materials = document.getElementById('editSelectedMaterials').value;
         formData.material_description = document.getElementById('editMaterialDescription').value;
@@ -511,13 +529,25 @@ function togglePrepared(requestId) {
     });
 }
 
-function toggleEditAbsentMode() {
+function toggleEditSpecialModes() {
     const isAbsent = document.getElementById('editAbsent').checked;
+    const isNoMaterial = document.getElementById('editNoMaterial').checked;
     const materialSection = document.getElementById('editMaterialSection');
     const quantitySection = document.getElementById('editQuantitySection');
     const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
     
-    if (isAbsent) {
+    // S'assurer qu'une seule option est cochée à la fois
+    if (isAbsent && isNoMaterial) {
+        if (document.activeElement === document.getElementById('editAbsent')) {
+            document.getElementById('editNoMaterial').checked = false;
+        } else {
+            document.getElementById('editAbsent').checked = false;
+        }
+    }
+    
+    const shouldHideSections = document.getElementById('editAbsent').checked || document.getElementById('editNoMaterial').checked;
+    
+    if (shouldHideSections) {
         // Hide material-related sections
         materialSection.style.display = 'none';
         quantitySection.style.display = 'none';
@@ -536,11 +566,15 @@ function toggleEditAbsentMode() {
     }
 }
 
-// Add event listener when modal is first shown
+// Add event listeners when modal is first shown
 document.addEventListener('DOMContentLoaded', function() {
     const editAbsentCheckbox = document.getElementById('editAbsent');
+    const editNoMaterialCheckbox = document.getElementById('editNoMaterial');
     if (editAbsentCheckbox) {
-        editAbsentCheckbox.addEventListener('change', toggleEditAbsentMode);
+        editAbsentCheckbox.addEventListener('change', toggleEditSpecialModes);
+    }
+    if (editNoMaterialCheckbox) {
+        editNoMaterialCheckbox.addEventListener('change', toggleEditSpecialModes);
     }
 });
 
