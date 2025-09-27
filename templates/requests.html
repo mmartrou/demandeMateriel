@@ -154,7 +154,22 @@
                         </div>
                         <div class="col-md-6">
                             <label for="editClassName" class="form-label">🎓 Niveau/Classe *</label>
-                            <input type="text" class="form-control" id="editClassName" required>
+                            <select class="form-select" id="editClassName" required>
+                                <option value="">Sélectionner un niveau</option>
+                                <option value="6ème">6ème</option>
+                                <option value="5ème">5ème</option>
+                                <option value="4ème">4ème</option>
+                                <option value="3ème">3ème</option>
+                                <option value="SNT">SNT</option>
+                                <option value="2nd Classe">2nd Classe</option>
+                                <option value="2nd TP">2nd TP</option>
+                                <option value="AP PP">AP PP</option>
+                                <option value="AP 2nd">AP 2nd</option>
+                                <option value="1ère ES">1ère ES</option>
+                                <option value="Terminale ES">Terminale ES</option>
+                                <option value="1ère Spécialité">1ère Spécialité</option>
+                                <option value="Terminale Spécialité">Terminale Spécialité</option>
+                            </select>
                         </div>
                     </div>
                     
@@ -465,7 +480,7 @@ function saveRequestChanges() {
         }
         // Hide modal
         const modalElement = document.getElementById('editRequestModal');
-        const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+        const modal = new bootstrap.Modal(modalElement);
         modal.hide();
         
         // Reload requests
