@@ -116,6 +116,7 @@
                                 <option value="4ème">4ème</option>
                                 <option value="3ème">3ème</option>
                                 <option value="SNT">SNT</option>
+                                <option value="SI">SI</option>
                                 <option value="2nd Classe">2nd Classe</option>
                                 <option value="2nd TP">2nd TP</option>
                                 <option value="AP PP">AP PP</option>
@@ -361,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
     noMaterialCheckbox.addEventListener('change', toggleSpecialModes);
     
     // Initialiser l'état au chargement
-    toggleAbsentMode();
+    toggleSpecialModes();
 
     // Gestion des jours/horaires ajoutés
     let daysHoraires = [];

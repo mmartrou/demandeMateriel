@@ -4,9 +4,25 @@
 <div class="container mt-4">
     <h2>Générateur de Planning</h2>
     <form id="planningForm" class="mb-3">
-        <label for="planningDate" class="form-label">Sélectionnez une date :</label>
-        <input type="date" id="planningDate" name="planningDate" class="form-control" required>
+        <div class="row">
+            <div class="col-md-6">
+                <label for="planningDate" class="form-label">Sélectionnez une date :</label>
+                <input type="date" id="planningDate" name="planningDate" class="form-control" required>
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+                <button type="button" id="generatePlanningBtn" class="btn btn-primary" disabled onclick="generatePlanning()">
+                    <i class="fas fa-file-excel"></i> Générer Planning Excel
+                </button>
+                <div id="planningSpinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status">
+                    <span class="visually-hidden">Génération en cours...</span>
+                </div>
+            </div>
+        </div>
     </form>
+    
+    <!-- Messages d'état -->
+    <div id="planningMessage" class="alert d-none" role="alert"></div>
+    
     <div id="planningResults">
         <table class="table table-bordered">
             <thead>
@@ -15,6 +31,7 @@
                     <th>Classe</th>
                     <th>Matériel</th>
                     <th>Quantité</th>
+                    <th>Type de salle</th>
                     <th>Notes</th>
                 </tr>
             </thead>
@@ -28,6 +45,11 @@
 <script>
 document.getElementById('planningDate').addEventListener('change', function() {
     const date = this.value;
+    const generateBtn = document.getElementById('generatePlanningBtn');
+    
+    // Activer/désactiver le bouton de génération
+    generateBtn.disabled = !date;
+    
     if (!date) return;
     fetch(`/api/requests?start_date=${date}&end_date=${date}`)
         .then(response => response.json())
@@ -42,11 +64,19 @@ document.getElementById('planningDate').addEventListener('change', function() {
             noResults.classList.add('d-none');
             requests.forEach(request => {
                 const row = document.createElement('tr');
+                const roomType = request.room_type || 'Mixte';
                 row.innerHTML = `
                     <td>${request.teacher_name}</td>
                     <td>${request.class_name}</td>
                     <td>${request.material_description}</td>
                     <td>${request.quantity}</td>
+                    <td>
+                        <select class="form-select form-select-sm" onchange="updateRoomType(${request.id}, this.value)">
+                            <option value="Mixte" ${roomType === 'Mixte' ? 'selected' : ''}>🔬 Mixte</option>
+                            <option value="Physique" ${roomType === 'Physique' ? 'selected' : ''}>⚛️ Physique</option>
+                            <option value="Chimie" ${roomType === 'Chimie' ? 'selected' : ''}>🧪 Chimie</option>
+                        </select>
+                    </td>
                     <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
                 `;
                 tableBody.appendChild(row);
@@ -57,5 +87,118 @@ document.getElementById('planningDate').addEventListener('change', function() {
             noResults.classList.remove('d-none');
         });
 });
+
+function updateRoomType(requestId, roomType) {
+    fetch(`/api/requests/${requestId}/room-type`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({room_type: roomType})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Erreur: ' + data.error);
+            // Recharger la page pour restaurer l'ancienne valeur
+            location.reload();
+        } else {
+            console.log('Type de salle mis à jour:', roomType);
+            // Optionnel: afficher un message de succès
+            if (typeof window.showToast === 'function') {
+                window.showToast('success', 'Succès', 'Type de salle mis à jour');
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erreur lors de la mise à jour du type de salle');
+        location.reload();
+    });
+}
+
+function generatePlanning() {
+    const date = document.getElementById('planningDate').value;
+    if (!date) {
+        showMessage('Veuillez sélectionner une date', 'warning');
+        return;
+    }
+    
+    const spinner = document.getElementById('planningSpinner');
+    const btn = document.getElementById('generatePlanningBtn');
+    const originalBtnText = btn.innerHTML;
+    
+    // Afficher le spinner et désactiver le bouton
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    fetch('/api/generate-planning', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({date: date})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage(`Planning généré avec succès: ${data.filename}`, 'success');
+        } else {
+            showMessage(data.error || 'Erreur lors de la génération', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('Erreur lors de la génération du planning', 'danger');
+    })
+    .finally(() => {
+        // Restaurer le bouton
+        spinner.classList.add('d-none');
+        btn.disabled = false;
+        btn.innerHTML = originalBtnText;
+    });
+}
+
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('planningMessage');
+    messageDiv.className = `alert alert-${type}`;
+    messageDiv.textContent = message;
+    messageDiv.classList.remove('d-none');
+    
+    // Masquer le message après 5 secondes
+    setTimeout(() => {
+        messageDiv.classList.add('d-none');
+    }, 5000);
+}
+
+// Définir la date par défaut au prochain jour ouvrable
+function setDefaultDate() {
+    const today = new Date();
+    let nextWorkDay = new Date(today);
+    
+    // Ajouter 1 jour par défaut
+    nextWorkDay.setDate(today.getDate() + 1);
+    
+    // Si on est vendredi (5), samedi (6) ou dimanche (0), aller au lundi suivant
+    const dayOfWeek = today.getDay();
+    if (dayOfWeek === 5) { // Vendredi -> Lundi (+ 3 jours)
+        nextWorkDay.setDate(today.getDate() + 3);
+    } else if (dayOfWeek === 6) { // Samedi -> Lundi (+ 2 jours)
+        nextWorkDay.setDate(today.getDate() + 2);
+    } else if (dayOfWeek === 0) { // Dimanche -> Lundi (+ 1 jour)
+        nextWorkDay.setDate(today.getDate() + 1);
+    }
+    
+    // Formater la date au format YYYY-MM-DD
+    const dateString = nextWorkDay.toISOString().split('T')[0];
+    document.getElementById('planningDate').value = dateString;
+    
+    // Déclencher l'événement change pour charger les demandes
+    document.getElementById('planningDate').dispatchEvent(new Event('change'));
+}
+
+// Initialiser la date au chargement de la page
+document.addEventListener('DOMContentLoaded', setDefaultDate);
 </script>
 {% endblock %}

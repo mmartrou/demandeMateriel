@@ -161,6 +161,7 @@
                                 <option value="4ème">4ème</option>
                                 <option value="3ème">3ème</option>
                                 <option value="SNT">SNT</option>
+                                <option value="SI">SI</option>
                                 <option value="2nd Classe">2nd Classe</option>
                                 <option value="2nd TP">2nd TP</option>
                                 <option value="AP PP">AP PP</option>
@@ -196,6 +197,67 @@
                         <small class="text-muted">Si absent ou pas besoin de matériel, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
+                    <!-- Material checkboxes dans la modal d'édition -->
+                    <div class="mb-3" id="editMaterialCheckboxSection">
+                        <label class="form-label">
+                            🔧 Matériel requis
+                        </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editEviers" name="editMaterials" value="Éviers">
+                                    <label class="form-check-label" for="editEviers">
+                                        Éviers
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editHotte" name="editMaterials" value="Hotte">
+                                    <label class="form-check-label" for="editHotte">
+                                        Hotte
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBancsOptiques" name="editMaterials" value="Bancs optiques">
+                                    <label class="form-check-label" for="editBancsOptiques">
+                                        Bancs optiques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editOscilloscopes" name="editMaterials" value="Oscilloscopes">
+                                    <label class="form-check-label" for="editOscilloscopes">
+                                        Oscilloscopes
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBecsElectriques" name="editMaterials" value="Becs électriques">
+                                    <label class="form-check-label" for="editBecsElectriques">
+                                        Becs électriques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editSupportFiltration" name="editMaterials" value="Support de filtration">
+                                    <label class="form-check-label" for="editSupportFiltration">
+                                        Support de filtration
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editImprimante" name="editMaterials" value="Imprimante">
+                                    <label class="form-check-label" for="editImprimante">
+                                        Imprimante
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editExamen" name="editMaterials" value="Examen">
+                                    <label class="form-check-label" for="editExamen">
+                                        Examen
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="mb-3" id="editMaterialSection">
                         <label for="editMaterialDescription" class="form-label">🧰 Description du matériel *</label>
                         <textarea class="form-control" id="editMaterialDescription" rows="3" required></textarea>
@@ -224,6 +286,9 @@
                 </form>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-danger me-auto" onclick="deleteRequest()" title="Supprimer définitivement cette demande">
+                    🗑️ Supprimer
+                </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <button type="button" class="btn btn-primary" onclick="saveRequestChanges()">💾 Sauvegarder</button>
             </div>
@@ -445,6 +510,9 @@ function editRequest(requestId) {
             document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
             document.getElementById('editNotes').value = request.notes || '';
             
+            // Load selected materials checkboxes
+            loadEditMaterialCheckboxes(request.selected_materials || '');
+            
             // Toggle sections based on special modes
             toggleEditSpecialModes();
             
@@ -480,7 +548,14 @@ function saveRequestChanges() {
         formData.selected_materials = 'Pas besoin de matériel';
         formData.material_description = 'Cours théorique sans matériel';
     } else {
-        formData.selected_materials = document.getElementById('editSelectedMaterials').value;
+        // Collect selected materials from checkboxes
+        const selectedMaterials = [];
+        const materialCheckboxes = document.querySelectorAll('input[name="editMaterials"]:checked');
+        materialCheckboxes.forEach(checkbox => {
+            selectedMaterials.push(checkbox.value);
+        });
+        
+        formData.selected_materials = selectedMaterials.length > 0 ? selectedMaterials.join(', ') : document.getElementById('editSelectedMaterials').value;
         formData.material_description = document.getElementById('editMaterialDescription').value;
     }
     
@@ -511,6 +586,66 @@ function saveRequestChanges() {
     });
 }
 
+function loadEditMaterialCheckboxes(selectedMaterials) {
+    // Clear all checkboxes first
+    const checkboxes = document.querySelectorAll('input[name="editMaterials"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Check the appropriate boxes based on selected materials
+    if (selectedMaterials && selectedMaterials.trim()) {
+        const materials = selectedMaterials.split(',').map(m => m.trim());
+        materials.forEach(material => {
+            const checkbox = document.querySelector(`input[name="editMaterials"][value="${material}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+            }
+        });
+    }
+}
+
+function deleteRequest() {
+    const requestId = document.getElementById('editRequestId').value;
+    const teacherName = document.getElementById('editTeacher').selectedOptions[0].text;
+    const className = document.getElementById('editClassName').value;
+    const date = document.getElementById('editDate').value;
+    
+    // Confirmation de suppression
+    const confirmMessage = `⚠️ Êtes-vous sûr de vouloir supprimer cette demande ?\n\n` +
+                          `Enseignant: ${teacherName}\n` +
+                          `Classe: ${className}\n` +
+                          `Date: ${date}\n\n` +
+                          `Cette action est irréversible !`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    fetch(`/api/requests/${requestId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Fermer le modal
+        const modalElement = document.getElementById('editRequestModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.hide();
+        
+        // Recharger la liste des demandes
+        loadRequests();
+        showSuccessToast('Demande supprimée avec succès');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showErrorToast('Erreur lors de la suppression: ' + error.message);
+    });
+}
+
 function togglePrepared(requestId) {
     fetch(`/api/requests/${requestId}/toggle-prepared`, {
         method: 'POST'
@@ -535,6 +670,7 @@ function toggleEditSpecialModes() {
     const materialSection = document.getElementById('editMaterialSection');
     const quantitySection = document.getElementById('editQuantitySection');
     const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
+    const materialCheckboxSection = document.getElementById('editMaterialCheckboxSection');
     
     // S'assurer qu'une seule option est cochée à la fois
     if (isAbsent && isNoMaterial) {
@@ -552,6 +688,7 @@ function toggleEditSpecialModes() {
         materialSection.style.display = 'none';
         quantitySection.style.display = 'none';
         selectedMaterialsSection.style.display = 'none';
+        materialCheckboxSection.style.display = 'none';
         
         // Remove required attribute
         document.getElementById('editMaterialDescription').removeAttribute('required');
@@ -560,6 +697,7 @@ function toggleEditSpecialModes() {
         materialSection.style.display = 'block';
         quantitySection.style.display = 'block';
         selectedMaterialsSection.style.display = 'block';
+        materialCheckboxSection.style.display = 'block';
         
         // Add required attribute back
         document.getElementById('editMaterialDescription').setAttribute('required', 'required');
