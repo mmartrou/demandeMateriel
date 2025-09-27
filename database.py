@@ -63,15 +63,73 @@ def init_database():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add room type column with default value "Mixte"
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN room_type TEXT DEFAULT "Mixte"')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Create rooms table for planning
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL,
+            ordinateurs INTEGER DEFAULT 0,
+            chaises INTEGER DEFAULT 0,
+            eviers INTEGER DEFAULT 0,
+            hotte INTEGER DEFAULT 0,
+            bancs_optiques INTEGER DEFAULT 0,
+            oscilloscopes INTEGER DEFAULT 0,
+            becs_electriques INTEGER DEFAULT 0,
+            support_filtration INTEGER DEFAULT 0,
+            imprimante INTEGER DEFAULT 0,
+            examen INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Insert sample rooms if table is empty
+    cursor.execute('SELECT COUNT(*) FROM rooms')
+    if cursor.fetchone()[0] == 0:
+        sample_rooms = [
+            ('C23', 'physique', 10, 53, 0, 0, 0, 0, 0, 0, 0, 1),
+            ('C25', 'physique', 20, 40, 0, 0, 1, 0, 0, 0, 0, 0),
+            ('C27', 'physique', 20, 40, 0, 0, 0, 1, 0, 0, 1, 0),
+            ('C22', 'mixte', 10, 29, 5, 1, 0, 0, 0, 0, 0, 0),
+            ('C24', 'mixte', 20, 30, 10, 0, 0, 0, 0, 0, 0, 0),
+            ('C32', 'chimie', 10, 32, 10, 1, 0, 0, 1, 1, 0, 0),
+            ('C33', 'chimie', 10, 25, 10, 1, 0, 0, 1, 1, 1, 0),
+            ('C31', 'chimie', 10, 30, 10, 1, 0, 0, 1, 1, 0, 0),
+        ]
+        cursor.executemany('''
+            INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
+                             bancs_optiques, oscilloscopes, becs_electriques, 
+                             support_filtration, imprimante, examen) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', sample_rooms)
+    
     # Insert sample teachers if table is empty
     cursor.execute('SELECT COUNT(*) FROM teachers')
     if cursor.fetchone()[0] == 0:
         sample_teachers = [
-            ('Martrou',),
             ('Bats',),
-            ('Vila',),
+            ('Bonfand',),
+            ('Calazel',),
+            ('Carpentier',),
+            ('Courrèges',),
+            ('Diaz Del Pino',),
+            ('Hidalgo',),
+            ('Landspurg',),
+            ('Lefranc',),
+            ('Martrou',),
+            ('Masnou',),
+            ('Moreau',),
             ('Paupy',),
-            ('Richard',)
+            ('Potier',),
+            ('Richard',),
+            ('Vernudachi',),
+            ('Vila Gisbert',),
         ]
         cursor.executemany('INSERT INTO teachers (name) VALUES (?)', sample_teachers)
     
@@ -201,6 +259,47 @@ def toggle_prepared_status(request_id):
     conn.commit()
     conn.close()
     return True
+
+def delete_material_request(request_id):
+    """Delete a material request"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM material_requests WHERE id = ?', (request_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+def update_room_type(request_id, room_type):
+    """Update the room type of a material request"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE material_requests SET room_type = ? WHERE id = ?', (room_type, request_id))
+    conn.commit()
+    updated = cursor.rowcount > 0
+    conn.close()
+    return updated
+
+def get_all_rooms():
+    """Get all rooms from the database"""
+    conn = get_db_connection()
+    rooms = conn.execute('SELECT * FROM rooms ORDER BY name').fetchall()
+    conn.close()
+    return rooms
+
+def get_planning_data(date_str):
+    """Get all material requests for planning generation on a specific date"""
+    conn = get_db_connection()
+    requests = conn.execute('''
+        SELECT mr.*, t.name as teacher_name
+        FROM material_requests mr
+        JOIN teachers t ON mr.teacher_id = t.id
+        WHERE mr.request_date = ?
+        AND mr.selected_materials != 'Enseignant absent'
+        ORDER BY mr.horaire, mr.created_at
+    ''', (date_str,)).fetchall()
+    conn.close()
+    return requests
 
 if __name__ == '__main__':
     init_database()
