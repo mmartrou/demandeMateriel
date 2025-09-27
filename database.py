@@ -89,7 +89,7 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
          selected_materials, computers_needed, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes))
     conn.commit()
