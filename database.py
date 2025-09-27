@@ -52,6 +52,17 @@ def init_database():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add status columns for prepared and modified states
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN prepared BOOLEAN DEFAULT FALSE')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN modified BOOLEAN DEFAULT FALSE')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     # Insert sample teachers if table is empty
     cursor.execute('SELECT COUNT(*) FROM teachers')
     if cursor.fetchone()[0] == 0:
@@ -138,6 +149,58 @@ def get_requests_for_calendar():
     ''').fetchall()
     conn.close()
     return requests
+
+def get_material_request_by_id(request_id):
+    """Get a specific material request by ID"""
+    conn = get_db_connection()
+    request = conn.execute('''
+        SELECT mr.*, t.name as teacher_name
+        FROM material_requests mr
+        JOIN teachers t ON mr.teacher_id = t.id
+        WHERE mr.id = ?
+    ''', (request_id,)).fetchone()
+    conn.close()
+    return request
+
+def update_material_request(request_id, teacher_id, request_date, class_name, material_description, 
+                           horaire=None, quantity=1, selected_materials='', computers_needed=0, notes=''):
+    """Update an existing material request and mark it as modified"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE material_requests 
+        SET teacher_id=?, request_date=?, horaire=?, class_name=?, material_description=?, 
+            quantity=?, selected_materials=?, computers_needed=?, notes=?, 
+            prepared=FALSE, modified=TRUE
+        WHERE id=?
+    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
+          selected_materials, computers_needed, notes, request_id))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+def toggle_prepared_status(request_id):
+    """Toggle the prepared status of a request"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get current status
+    current = conn.execute('SELECT prepared FROM material_requests WHERE id = ?', (request_id,)).fetchone()
+    if not current:
+        conn.close()
+        return False
+    
+    new_prepared = not current['prepared']
+    # When marking as prepared, remove modified flag
+    # When unmarking prepared, keep modified flag as is
+    if new_prepared:
+        cursor.execute('UPDATE material_requests SET prepared=TRUE, modified=FALSE WHERE id=?', (request_id,))
+    else:
+        cursor.execute('UPDATE material_requests SET prepared=FALSE WHERE id=?', (request_id,))
+    
+    conn.commit()
+    conn.close()
+    return True
 
 if __name__ == '__main__':
     init_database()

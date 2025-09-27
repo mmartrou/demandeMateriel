@@ -2,7 +2,9 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, m
 import csv
 import io
 from datetime import datetime, timedelta
-from database import init_database, get_all_teachers, add_material_request, get_material_requests, get_requests_for_calendar
+from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
+                      get_requests_for_calendar, get_material_request_by_id, update_material_request, 
+                      toggle_prepared_status)
 
 app = Flask(__name__)
 
@@ -54,6 +56,8 @@ def api_get_requests():
             'selected_materials': req['selected_materials'] if 'selected_materials' in req.keys() else '',
             'computers_needed': req['computers_needed'] if 'computers_needed' in req.keys() else 0,
             'notes': req['notes'],
+            'prepared': req['prepared'] if 'prepared' in req.keys() else False,
+            'modified': req['modified'] if 'modified' in req.keys() else False,
             'created_at': req['created_at']
         })
     
@@ -164,6 +168,78 @@ def view_requests():
     """View all material requests in a table"""
     teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
+
+@app.route('/api/requests/<int:request_id>', methods=['GET'])
+def api_get_request_by_id(request_id):
+    """API endpoint to get a specific material request by ID"""
+    request_data = get_material_request_by_id(request_id)
+    if not request_data:
+        return jsonify({'error': 'Demande non trouvée'}), 404
+    
+    # Convert to dictionary for JSON serialization
+    request_dict = {
+        'id': request_data['id'],
+        'teacher_id': request_data['teacher_id'],
+        'teacher_name': request_data['teacher_name'],
+        'request_date': request_data['request_date'],
+        'horaire': request_data['horaire'],
+        'class_name': request_data['class_name'],
+        'material_description': request_data['material_description'],
+        'quantity': request_data['quantity'],
+        'selected_materials': request_data['selected_materials'] if 'selected_materials' in request_data.keys() else '',
+        'computers_needed': request_data['computers_needed'] if 'computers_needed' in request_data.keys() else 0,
+        'notes': request_data['notes'],
+        'prepared': request_data['prepared'] if 'prepared' in request_data.keys() else False,
+        'modified': request_data['modified'] if 'modified' in request_data.keys() else False,
+        'created_at': request_data['created_at']
+    }
+    
+    return jsonify(request_dict)
+
+@app.route('/api/requests/<int:request_id>', methods=['PUT'])
+def api_update_request(request_id):
+    """API endpoint to update a material request"""
+    try:
+        data = request.get_json()
+        
+        # Validation des champs principaux
+        required_fields = ['teacher_id', 'class_name', 'material_description']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'Le champ {field} est requis'}), 400
+        
+        success = update_material_request(
+            request_id,
+            data['teacher_id'],
+            data['request_date'],
+            data['class_name'],
+            data['material_description'],
+            data.get('horaire'),
+            data.get('quantity', 1),
+            data.get('selected_materials', ''),
+            data.get('computers_needed', 0),
+            data.get('notes', '')
+        )
+        
+        if success:
+            return jsonify({'message': 'Demande mise à jour avec succès'})
+        else:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/requests/<int:request_id>/toggle-prepared', methods=['POST'])
+def api_toggle_prepared(request_id):
+    """API endpoint to toggle prepared status of a request"""
+    try:
+        success = toggle_prepared_status(request_id)
+        if success:
+            return jsonify({'message': 'Statut mis à jour avec succès'})
+        else:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     import os
