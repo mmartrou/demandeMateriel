@@ -81,15 +81,27 @@
                         <ul id="daysList" class="list-group mb-2"></ul>
                     </div>
 
-                    <!-- Case Absent déplacée ici -->
+                    <!-- Cases Absent et Pas besoin de matériel -->
                     <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="absent" name="absent" value="true">
-                            <label class="form-check-label fw-bold" for="absent">
-                                ❌ Absent (cocher si vous êtes absent ce jour-là)
-                            </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="absent" name="absent" value="true">
+                                    <label class="form-check-label fw-bold" for="absent">
+                                        ❌ Absent (cocher si vous êtes absent ce jour-là)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="no_material" name="no_material" value="true">
+                                    <label class="form-check-label fw-bold" for="no_material">
+                                        📚 Pas besoin de matériel (cours théorique)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <small class="text-muted">Si vous êtes absent, seule la sélection du niveau sera nécessaire.</small>
+                        <small class="text-muted">Si absent ou pas besoin de matériel, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
                     <div class="row" id="main-content">
@@ -281,8 +293,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Gestion de la case "Absent"
+    // Gestion des cases "Absent" et "Pas besoin de matériel"
     const absentCheckbox = document.getElementById('absent');
+    const noMaterialCheckbox = document.getElementById('no_material');
     const sectionsToHide = [
         'material-section',
         'computers-section', 
@@ -291,15 +304,28 @@ document.addEventListener('DOMContentLoaded', function() {
         'quantity-section'
     ];
 
-    function toggleAbsentMode() {
+    function toggleSpecialModes() {
         const isAbsent = absentCheckbox.checked;
+        const isNoMaterial = noMaterialCheckbox.checked;
+        
+        // S'assurer qu'une seule option est cochée à la fois
+        if (isAbsent && isNoMaterial) {
+            // Si les deux sont cochées, décocher l'autre selon qui a été cliqué en dernier
+            if (document.activeElement === absentCheckbox) {
+                noMaterialCheckbox.checked = false;
+            } else {
+                absentCheckbox.checked = false;
+            }
+        }
+        
+        const shouldHideSections = absentCheckbox.checked || noMaterialCheckbox.checked;
         
         sectionsToHide.forEach(sectionId => {
             const section = document.getElementById(sectionId);
             if (section) {
-                if (isAbsent) {
+                if (shouldHideSections) {
                     section.style.display = 'none';
-                    // Désactiver les champs requis quand absent
+                    // Désactiver les champs requis 
                     const requiredFields = section.querySelectorAll('[required]');
                     requiredFields.forEach(field => {
                         field.removeAttribute('required');
@@ -318,19 +344,21 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Afficher/masquer le message d'information
-        const infoMessage = document.getElementById('absent-info');
-        if (isAbsent && !infoMessage) {
+        const infoMessage = document.getElementById('special-mode-info');
+        if (shouldHideSections && !infoMessage) {
             const alertDiv = document.createElement('div');
-            alertDiv.id = 'absent-info';
+            alertDiv.id = 'special-mode-info';
             alertDiv.className = 'alert alert-info mt-2';
-            alertDiv.innerHTML = '<i class="fas fa-info-circle"></i> Mode absence activé : seuls l\'enseignant et le niveau sont requis.';
+            const modeText = absentCheckbox.checked ? 'absence' : 'cours sans matériel';
+            alertDiv.innerHTML = `<i class="fas fa-info-circle"></i> Mode ${modeText} activé : seuls l'enseignant et le niveau sont requis.`;
             absentCheckbox.closest('.mb-3').appendChild(alertDiv);
-        } else if (!isAbsent && infoMessage) {
+        } else if (!shouldHideSections && infoMessage) {
             infoMessage.remove();
         }
     }
 
-    absentCheckbox.addEventListener('change', toggleAbsentMode);
+    absentCheckbox.addEventListener('change', toggleSpecialModes);
+    noMaterialCheckbox.addEventListener('change', toggleSpecialModes);
     
     // Initialiser l'état au chargement
     toggleAbsentMode();
@@ -409,14 +437,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
         
-        // Vérification du mode absent
+        // Vérification des modes spéciaux
         const isAbsent = document.getElementById('absent').checked;
+        const isNoMaterial = document.getElementById('no_material').checked;
         
         if (isAbsent) {
             // En mode absent, on met des valeurs par défaut
             data.selected_materials = 'Absent';
             data.computers_needed = '0';
             data.material_description = 'Enseignant absent';
+            data.notes = '';
+            data.quantity = '1';
+        } else if (isNoMaterial) {
+            // En mode pas besoin de matériel
+            data.selected_materials = 'Pas besoin de matériel';
+            data.computers_needed = '0';
+            data.material_description = 'Cours théorique sans matériel';
             data.notes = '';
             data.quantity = '1';
         } else {
