@@ -129,8 +129,27 @@
                             <label for="editHoraire" class="form-label">⏰ Horaire</label>
                             <select class="form-select" id="editHoraire">
                                 <option value="">Sélectionner un horaire</option>
-                                <option value="matin">🌅 Matin</option>
-                                <option value="après-midi">🌇 Après-midi</option>
+                                <optgroup label="🌅 Matin">
+                                    <option value="9h00">9h00</option>
+                                    <option value="9h30">9h30</option>
+                                    <option value="10h00">10h00</option>
+                                    <option value="10h45">10h45</option>
+                                    <option value="11h15">11h15</option>
+                                    <option value="11h45">11h45</option>
+                                    <option value="12h15">12h15</option>
+                                    <option value="12h45">12h45</option>
+                                </optgroup>
+                                <optgroup label="🌇 Après-midi">
+                                    <option value="13h15">13h15</option>
+                                    <option value="13h45">13h45</option>
+                                    <option value="14h15">14h15</option>
+                                    <option value="14h45">14h45</option>
+                                    <option value="15h15">15h15</option>
+                                    <option value="15h45">15h45</option>
+                                    <option value="16h15">16h15</option>
+                                    <option value="16h45">16h45</option>
+                                    <option value="17h15">17h15</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -139,12 +158,23 @@
                         </div>
                     </div>
                     
+                    <!-- Case Absent dans le modal -->
                     <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editAbsent" name="editAbsent">
+                            <label class="form-check-label fw-bold" for="editAbsent">
+                                ❌ Absent (cocher si enseignant absent ce jour-là)
+                            </label>
+                        </div>
+                        <small class="text-muted">Si absent, seule la sélection du niveau sera nécessaire.</small>
+                    </div>
+                    
+                    <div class="mb-3" id="editMaterialSection">
                         <label for="editMaterialDescription" class="form-label">🧰 Description du matériel *</label>
                         <textarea class="form-control" id="editMaterialDescription" rows="3" required></textarea>
                     </div>
                     
-                    <div class="row mb-3">
+                    <div class="row mb-3" id="editQuantitySection">
                         <div class="col-md-6">
                             <label for="editQuantity" class="form-label">📦 Quantité</label>
                             <input type="number" class="form-control" id="editQuantity" min="1" value="1">
@@ -155,7 +185,7 @@
                         </div>
                     </div>
                     
-                    <div class="mb-3">
+                    <div class="mb-3" id="editSelectedMaterialsSection">
                         <label for="editSelectedMaterials" class="form-label">✅ Matériel sélectionné</label>
                         <textarea class="form-control" id="editSelectedMaterials" rows="2"></textarea>
                     </div>
@@ -361,17 +391,33 @@ function editRequest(requestId) {
     fetch(`/api/requests/${requestId}`)
         .then(response => response.json())
         .then(request => {
+            // Check if this is an absence request
+            const isAbsent = request.selected_materials === 'Absent' && request.material_description === 'Enseignant absent';
+            
             // Populate form
             document.getElementById('editRequestId').value = request.id;
             document.getElementById('editTeacher').value = request.teacher_id;
             document.getElementById('editDate').value = request.request_date;
             document.getElementById('editHoraire').value = request.horaire || '';
             document.getElementById('editClassName').value = request.class_name;
-            document.getElementById('editMaterialDescription').value = request.material_description;
+            document.getElementById('editAbsent').checked = isAbsent;
+            
+            if (isAbsent) {
+                // If absent, clear material fields and show appropriate values
+                document.getElementById('editMaterialDescription').value = '';
+                document.getElementById('editSelectedMaterials').value = '';
+            } else {
+                // Normal request, show actual values
+                document.getElementById('editMaterialDescription').value = request.material_description;
+                document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
+            }
+            
             document.getElementById('editQuantity').value = request.quantity;
             document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
-            document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
             document.getElementById('editNotes').value = request.notes || '';
+            
+            // Toggle sections based on absence
+            toggleEditAbsentMode();
             
             // Show modal
             const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
@@ -385,17 +431,25 @@ function editRequest(requestId) {
 
 function saveRequestChanges() {
     const requestId = document.getElementById('editRequestId').value;
+    const isAbsent = document.getElementById('editAbsent').checked;
+    
     const formData = {
         teacher_id: parseInt(document.getElementById('editTeacher').value),
         request_date: document.getElementById('editDate').value,
         horaire: document.getElementById('editHoraire').value,
         class_name: document.getElementById('editClassName').value,
-        material_description: document.getElementById('editMaterialDescription').value,
         quantity: parseInt(document.getElementById('editQuantity').value) || 1,
         computers_needed: parseInt(document.getElementById('editComputersNeeded').value) || 0,
-        selected_materials: document.getElementById('editSelectedMaterials').value,
         notes: document.getElementById('editNotes').value
     };
+    
+    if (isAbsent) {
+        formData.selected_materials = 'Absent';
+        formData.material_description = 'Enseignant absent';
+    } else {
+        formData.selected_materials = document.getElementById('editSelectedMaterials').value;
+        formData.material_description = document.getElementById('editMaterialDescription').value;
+    }
     
     fetch(`/api/requests/${requestId}`, {
         method: 'PUT',
@@ -410,7 +464,8 @@ function saveRequestChanges() {
             throw new Error(data.error);
         }
         // Hide modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('editRequestModal'));
+        const modalElement = document.getElementById('editRequestModal');
+        const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
         modal.hide();
         
         // Reload requests
@@ -440,6 +495,39 @@ function togglePrepared(requestId) {
         showErrorToast('Erreur lors de la mise à jour du statut');
     });
 }
+
+function toggleEditAbsentMode() {
+    const isAbsent = document.getElementById('editAbsent').checked;
+    const materialSection = document.getElementById('editMaterialSection');
+    const quantitySection = document.getElementById('editQuantitySection');
+    const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
+    
+    if (isAbsent) {
+        // Hide material-related sections
+        materialSection.style.display = 'none';
+        quantitySection.style.display = 'none';
+        selectedMaterialsSection.style.display = 'none';
+        
+        // Remove required attribute
+        document.getElementById('editMaterialDescription').removeAttribute('required');
+    } else {
+        // Show material-related sections
+        materialSection.style.display = 'block';
+        quantitySection.style.display = 'block';
+        selectedMaterialsSection.style.display = 'block';
+        
+        // Add required attribute back
+        document.getElementById('editMaterialDescription').setAttribute('required', 'required');
+    }
+}
+
+// Add event listener when modal is first shown
+document.addEventListener('DOMContentLoaded', function() {
+    const editAbsentCheckbox = document.getElementById('editAbsent');
+    if (editAbsentCheckbox) {
+        editAbsentCheckbox.addEventListener('change', toggleEditAbsentMode);
+    }
+});
 
 // Toast functions (using base.html toast if available)
 function showSuccessToast(message) {
