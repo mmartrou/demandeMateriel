@@ -89,7 +89,42 @@
 
 {% block extra_js %}
 <script>
+// Gestion des cookies
+function setCookie(name, value, days = 30) {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+}
+
+function initializeFilters() {
+    // Définir la date d'aujourd'hui par défaut
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('filterStartDate').value = today;
+    
+    // Restaurer l'enseignant depuis le cookie
+    const savedTeacher = getCookie('selectedTeacher');
+    if (savedTeacher) {
+        const teacherSelect = document.getElementById('filterTeacher');
+        teacherSelect.value = savedTeacher;
+        console.log(`🍪 Enseignant restauré depuis le cookie: ${savedTeacher}`);
+    }
+    
+    console.log(`📅 Date par défaut définie: ${today}`);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    initializeFilters();
     loadRequests();
 });
 
@@ -107,6 +142,12 @@ function loadRequests() {
     const teacherId = document.getElementById('filterTeacher').value;
     const startDate = document.getElementById('filterStartDate').value;
     const endDate = document.getElementById('filterEndDate').value;
+    
+    // Sauvegarder l'enseignant sélectionné dans un cookie
+    if (teacherId) {
+        setCookie('selectedTeacher', teacherId);
+        console.log(`🍪 Enseignant sauvegardé dans le cookie: ${teacherId}`);
+    }
     
     // Build query string
     const params = new URLSearchParams();
