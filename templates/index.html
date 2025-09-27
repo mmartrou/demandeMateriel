@@ -34,14 +34,39 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">🕒 Horaires pour ce jour</label>
-                        <div id="horaires-list" class="d-flex flex-wrap gap-2">
-                            {% set horaires = ["9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45", "13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15"] %}
-                            {% for h in horaires %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="horaire_{{ loop.index }}" name="horaire" value="{{ h }}">
-                                <label class="form-check-label" for="horaire_{{ loop.index }}">{{ h }}</label>
-                            </div>
-                            {% endfor %}
+                        <div id="horaires-table" class="table-responsive">
+                            <table class="table table-bordered table-sm">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="text-center">Matin</th>
+                                        <th scope="col" class="text-center">Après-midi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% set horaires_matin = ["9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45"] %}
+                                    {% set horaires_aprem = ["13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15"] %}
+                                    {% for i in range([horaires_matin|length, horaires_aprem|length]|max) %}
+                                    <tr>
+                                        <td class="text-center">
+                                            {% if i < horaires_matin|length %}
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="checkbox" id="horaire_matin_{{ i+1 }}" name="horaire" value="{{ horaires_matin[i] }}">
+                                                <label class="form-check-label" for="horaire_matin_{{ i+1 }}">{{ horaires_matin[i] }}</label>
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if i < horaires_aprem|length %}
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="checkbox" id="horaire_aprem_{{ i+1 }}" name="horaire" value="{{ horaires_aprem[i] }}">
+                                                <label class="form-check-label" for="horaire_aprem_{{ i+1 }}">{{ horaires_aprem[i] }}</label>
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
                         <button type="button" class="btn btn-outline-primary mt-2" id="addDayBtn">+ Ajouter ce jour</button>
                     </div>
@@ -49,8 +74,19 @@
                         <label class="form-label">📅 Jours et horaires sélectionnés</label>
                         <ul id="daysList" class="list-group mb-2"></ul>
                     </div>
+
+                    <!-- Case Absent déplacée ici -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="absent" name="absent" value="true">
+                            <label class="form-check-label fw-bold" for="absent">
+                                ❌ Absent (cocher si vous êtes absent ce jour-là)
+                            </label>
+                        </div>
+                        <small class="text-muted">Si vous êtes absent, seule la sélection du niveau sera nécessaire.</small>
+                    </div>
                     
-                    <div class="row">
+                    <div class="row" id="main-content">
                         <div class="col-md-6 mb-3">
                             <label for="class_name" class="form-label">
                                 🎓 Niveau *
@@ -73,7 +109,7 @@
                             </select>
                         </div>
                         
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-6 mb-3" id="quantity-section">
                             <label for="quantity" class="form-label">
                                 🔢 Nombre de groupes
                             </label>
@@ -83,18 +119,12 @@
                     </div>
                     
                     <!-- Material checkboxes -->
-                    <div class="mb-3">
+                    <div class="mb-3" id="material-section">
                         <label class="form-label">
                             🔧 Matériel requis
                         </label>
                         <div class="row">
                             <div class="col-md-6">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="absent" name="materials" value="Absent">
-                                    <label class="form-check-label" for="absent">
-                                        Absent
-                                    </label>
-                                </div>
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="eviers" name="materials" value="Éviers">
                                     <label class="form-check-label" for="eviers">
@@ -150,7 +180,7 @@
                     </div>
                     
                     <!-- Number of computers -->
-                    <div class="mb-3">
+                    <div class="mb-3" id="computers-section">
                         <label for="computers_needed" class="form-label">
                             💻 Nombre d'ordinateurs nécessaires
                         </label>
@@ -158,7 +188,7 @@
                                min="0" value="0" placeholder="0 si aucun ordinateur n'est nécessaire">
                     </div>
                     
-                    <div class="mb-3">
+                    <div class="mb-3" id="description-section">
                         <label for="material_description" class="form-label">
                             🧰 Description du matériel *
                         </label>
@@ -166,7 +196,7 @@
                                   rows="3" placeholder="Décrivez le matériel dont vous avez besoin..." required></textarea>
                     </div>
                     
-                    <div class="mb-3">
+                    <div class="mb-3" id="notes-section">
                         <label for="notes" class="form-label">
                             📝 Notes supplémentaires
                         </label>
@@ -210,6 +240,60 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set today's date as default for planning_date
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('planning_date').value = today;
+
+    // Gestion de la case "Absent"
+    const absentCheckbox = document.getElementById('absent');
+    const sectionsToHide = [
+        'material-section',
+        'computers-section', 
+        'description-section',
+        'notes-section',
+        'quantity-section'
+    ];
+
+    function toggleAbsentMode() {
+        const isAbsent = absentCheckbox.checked;
+        
+        sectionsToHide.forEach(sectionId => {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                if (isAbsent) {
+                    section.style.display = 'none';
+                    // Désactiver les champs requis quand absent
+                    const requiredFields = section.querySelectorAll('[required]');
+                    requiredFields.forEach(field => {
+                        field.removeAttribute('required');
+                        field.dataset.wasRequired = 'true';
+                    });
+                } else {
+                    section.style.display = 'block';
+                    // Réactiver les champs requis
+                    const wasRequiredFields = section.querySelectorAll('[data-was-required="true"]');
+                    wasRequiredFields.forEach(field => {
+                        field.setAttribute('required', 'required');
+                        field.removeAttribute('data-was-required');
+                    });
+                }
+            }
+        });
+
+        // Afficher/masquer le message d'information
+        const infoMessage = document.getElementById('absent-info');
+        if (isAbsent && !infoMessage) {
+            const alertDiv = document.createElement('div');
+            alertDiv.id = 'absent-info';
+            alertDiv.className = 'alert alert-info mt-2';
+            alertDiv.innerHTML = '<i class="fas fa-info-circle"></i> Mode absence activé : seuls l\'enseignant et le niveau sont requis.';
+            absentCheckbox.closest('.mb-3').appendChild(alertDiv);
+        } else if (!isAbsent && infoMessage) {
+            infoMessage.remove();
+        }
+    }
+
+    absentCheckbox.addEventListener('change', toggleAbsentMode);
+    
+    // Initialiser l'état au chargement
+    toggleAbsentMode();
 
     // Gestion des jours/horaires ajoutés
     let daysHoraires = [];
@@ -259,14 +343,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
-        // Collecte des matériels
-        const selectedMaterials = [];
-        const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
-        materialCheckboxes.forEach(checkbox => {
-            selectedMaterials.push(checkbox.value);
-        });
-        data.selected_materials = selectedMaterials.join(', ');
-        data.computers_needed = document.getElementById('computers_needed').value;
+        
+        // Vérification du mode absent
+        const isAbsent = document.getElementById('absent').checked;
+        
+        if (isAbsent) {
+            // En mode absent, on met des valeurs par défaut
+            data.selected_materials = 'Absent';
+            data.computers_needed = '0';
+            data.material_description = 'Enseignant absent';
+            data.notes = '';
+            data.quantity = '1';
+        } else {
+            // Mode normal : collecte des matériels
+            const selectedMaterials = [];
+            const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
+            materialCheckboxes.forEach(checkbox => {
+                selectedMaterials.push(checkbox.value);
+            });
+            data.selected_materials = selectedMaterials.join(', ');
+            data.computers_needed = document.getElementById('computers_needed').value;
+        }
         // Ajoute la liste des jours/horaires
         data.days_horaires = daysHoraires;
         // Envoi au backend
