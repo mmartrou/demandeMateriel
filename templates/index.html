@@ -68,10 +68,16 @@
                                 </tbody>
                             </table>
                         </div>
-                        <button type="button" class="btn btn-outline-primary mt-2" id="addDayBtn">+ Ajouter ce jour</button>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                💡 <strong>Tip :</strong> La date et les horaires sélectionnés ci-dessus seront automatiquement utilisés. 
+                                Cliquez sur "Ajouter un autre jour" seulement si vous avez besoin de plusieurs jours différents.
+                            </small>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="addDayBtn">+ Ajouter un autre jour</button>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">📅 Jours et horaires sélectionnés</label>
+                    <div class="mb-3" id="additional-days-section" style="display: none;">
+                        <label class="form-label">📅 Jours supplémentaires</label>
                         <ul id="daysList" class="list-group mb-2"></ul>
                     </div>
 
@@ -352,29 +358,54 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function updateDaysList() {
+        const additionalDaysSection = document.getElementById('additional-days-section');
+        
         daysList.innerHTML = '';
-        daysHoraires.forEach((dh, idx) => {
-            const li = document.createElement('li');
-            li.className = 'list-group-item d-flex justify-content-between align-items-center';
-            li.innerHTML = `<span><strong>${dh.date}</strong> : ${dh.horaires.join(', ')}</span> <button type="button" class="btn btn-sm btn-danger" data-idx="${idx}">Supprimer</button>`;
-            daysList.appendChild(li);
-        });
-        // Suppression d'un jour/horaire
-        daysList.querySelectorAll('button[data-idx]').forEach(btn => {
-            btn.onclick = function() {
-                daysHoraires.splice(parseInt(this.dataset.idx), 1);
-                updateDaysList();
-            };
-        });
+        
+        if (daysHoraires.length > 0) {
+            // Afficher la section des jours supplémentaires
+            additionalDaysSection.style.display = 'block';
+            
+            daysHoraires.forEach((dh, idx) => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.innerHTML = `<span><strong>${dh.date}</strong> : ${dh.horaires.join(', ')}</span> <button type="button" class="btn btn-sm btn-danger" data-idx="${idx}">Supprimer</button>`;
+                daysList.appendChild(li);
+            });
+            
+            // Suppression d'un jour/horaire
+            daysList.querySelectorAll('button[data-idx]').forEach(btn => {
+                btn.onclick = function() {
+                    daysHoraires.splice(parseInt(this.dataset.idx), 1);
+                    updateDaysList();
+                };
+            });
+        } else {
+            // Masquer la section s'il n'y a pas de jours supplémentaires
+            additionalDaysSection.style.display = 'none';
+        }
     }
 
     // Soumission du formulaire
     document.getElementById('materialRequestForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        if (daysHoraires.length === 0) {
-            showErrorToast('Veuillez ajouter au moins un jour avec des horaires.');
-            return;
+        
+        // Si aucun jour n'a été ajouté manuellement, utiliser la date et horaires actuels
+        let finalDaysHoraires = [...daysHoraires];
+        
+        if (finalDaysHoraires.length === 0) {
+            const currentDate = document.getElementById('planning_date').value;
+            const currentHoraires = Array.from(document.querySelectorAll('input[name="horaire"]:checked')).map(cb => cb.value);
+            
+            if (!currentDate || currentHoraires.length === 0) {
+                showErrorToast('Veuillez choisir une date et au moins un horaire.');
+                return;
+            }
+            
+            finalDaysHoraires.push({ date: currentDate, horaires: currentHoraires });
+            console.log('🎯 Utilisation automatique de la date/horaires sélectionnés:', currentDate, currentHoraires);
         }
+        
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
         
@@ -398,8 +429,8 @@ document.addEventListener('DOMContentLoaded', function() {
             data.selected_materials = selectedMaterials.join(', ');
             data.computers_needed = document.getElementById('computers_needed').value;
         }
-        // Ajoute la liste des jours/horaires
-        data.days_horaires = daysHoraires;
+        // Ajoute la liste des jours/horaires (automatique ou manuelle)
+        data.days_horaires = finalDaysHoraires;
         // Envoi au backend
         fetch('/api/requests', {
             method: 'POST',
