@@ -484,6 +484,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 daysHoraires = [];
                 updateDaysList();
                 document.getElementById('planning_date').value = today;
+                // Réinitialiser l'état des sections après le reset du formulaire
+                toggleSpecialModes();
             } else {
                 showErrorToast(data.error || 'Erreur lors de la création de la demande');
             }

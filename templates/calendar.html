@@ -55,14 +55,14 @@
 }
 
 .calendar-event {
-    background-color: #007bff;
-    color: white;
+    color: white !important;
     padding: 0.5rem;
     border-radius: 0.25rem;
     font-size: 0.85rem;
     cursor: pointer;
     margin-bottom: 0.25rem;
     transition: background-color 0.2s;
+    /* La couleur de fond sera définie par le JavaScript avec !important */
 }
 
 .calendar-event:hover {
@@ -116,6 +116,51 @@
                     </div>
                 </div>
                 
+                <!-- Légende des couleurs -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card border-0 bg-light">
+                            <div class="card-header bg-transparent border-0 py-2">
+                                <h6 class="mb-0">🎨 Légende des couleurs</h6>
+                            </div>
+                            <div class="card-body py-2">
+                                <div class="row text-center">
+                                    <div class="col-md-2 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #007bff; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">🔵</span>
+                                            <span>Demande normale</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #28a745; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">✅</span>
+                                            <span>Préparée</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #ffc107; color: #212529; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">⚠️</span>
+                                            <span>Modifiée</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #dc3545; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">❌</span>
+                                            <span>Enseignant absent</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #20c997; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">📚</span>
+                                            <span>Pas besoin de matériel</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Vue semaine -->
                 <div class="row">
                     <div class="col-12">
@@ -137,17 +182,17 @@
 </div>
 
 <!-- Event Details Modal -->
-<div class="modal" id="eventModal" tabindex="-1">
+<div class="modal fade" id="eventModal" tabindex="-1" aria-labelledby="eventModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">
+                <h5 class="modal-title" id="eventModalLabel">
                     📝 Détails de la demande
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer la modal"></button>
             </div>
             <div class="modal-body">
-                <div id="eventDetails">
+                <div id="eventDetails" role="document">
                     <!-- Event details will be shown here -->
                 </div>
             </div>
@@ -218,6 +263,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (savedTeacher) {
                 teacherFilter.value = savedTeacher;
             }
+            
+            // Load calendar after teacher filter is restored
+            loadCalendar();
         });
     
     // Set up filter change handlers
@@ -231,8 +279,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setCookie('selectedTeacher', this.value);
         }
     });
-    
-    loadCalendar();
 });
 
 function loadCalendar() {
@@ -349,7 +395,14 @@ function renderWeekView() {
 function createEventElement(event) {
     const eventElement = document.createElement('div');
     eventElement.className = 'calendar-event';
-    eventElement.style.backgroundColor = event.backgroundColor || '#007bff';
+    const bgColor = event.backgroundColor || '#007bff';
+    console.log(`DEBUG FRONTEND - Event ID: ${event.id}, backgroundColor reçu: ${event.backgroundColor}, couleur finale: ${bgColor}`);
+    eventElement.style.setProperty('background-color', bgColor, 'important');
+    
+    // Attributs d'accessibilité
+    eventElement.setAttribute('role', 'button');
+    eventElement.setAttribute('tabindex', '0');
+    eventElement.setAttribute('aria-label', `Détails de la demande: ${event.title}. ${event.description}`);
     
     const className = event.title.split(' - ')[1] || '';
     eventElement.innerHTML = `
@@ -357,7 +410,15 @@ function createEventElement(event) {
         <div class="small">${event.description.replace('Matériel: ', '')}</div>
     `;
     
+    // Support clavier et souris
     eventElement.onclick = () => showEventDetails(event);
+    eventElement.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            showEventDetails(event);
+        }
+    };
+    
     return eventElement;
 }
 
@@ -372,7 +433,8 @@ function nextWeek() {
 }
 
 function showEventDetails(event) {
-    const modal = new bootstrap.Modal(document.getElementById('eventModal'));
+    const modalElement = document.getElementById('eventModal');
+    const modal = new bootstrap.Modal(modalElement);
     const details = document.getElementById('eventDetails');
     
     details.innerHTML = `
@@ -393,6 +455,23 @@ function showEventDetails(event) {
             <div class="col-sm-8">${event.description}</div>
         </div>
     `;
+    
+    // Écouter les événements d'ouverture/fermeture pour l'accessibilité
+    modalElement.addEventListener('shown.bs.modal', function () {
+        // Focus sur le premier élément focusable dans la modal
+        const firstFocusableElement = modalElement.querySelector('button[data-bs-dismiss], .btn-close');
+        if (firstFocusableElement) {
+            firstFocusableElement.focus();
+        }
+    });
+    
+    modalElement.addEventListener('hidden.bs.modal', function () {
+        // Remettre le focus sur l'élément qui a ouvert la modal si possible
+        const activeElement = document.querySelector('.calendar-event:focus');
+        if (activeElement) {
+            activeElement.focus();
+        }
+    });
     
     modal.show();
 }
