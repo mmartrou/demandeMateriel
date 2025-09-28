@@ -1,5 +1,88 @@
 {% extends "base.html" %}
 {% block title %}Générateur de Planning{% endblock %}
+
+{% block extra_css %}
+<style>
+.planning-day-view {
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.teacher-group {
+    margin-bottom: 1.5rem;
+}
+
+.teacher-name {
+    font-weight: bold;
+    color: #495057;
+    margin-bottom: 0.75rem;
+    padding-left: 1rem;
+    border-left: 4px solid #007bff;
+    font-size: 1.1rem;
+}
+
+.planning-request {
+    color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-bottom: 0.75rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.planning-request:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.request-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.request-time {
+    font-weight: bold;
+    font-size: 1rem;
+}
+
+.request-class {
+    font-weight: 600;
+    margin-left: auto;
+}
+
+.request-details {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.room-type-selector {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+.room-type-selector:focus {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+    color: white;
+}
+
+.room-type-selector option {
+    background: #333;
+    color: white;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <h2>Générateur de Planning</h2>
@@ -23,22 +106,64 @@
     <!-- Messages d'état -->
     <div id="planningMessage" class="alert d-none" role="alert"></div>
     
+    <!-- Légende des couleurs -->
+    <div class="row mb-4" id="planningLegend" style="display: none;">
+        <div class="col-12">
+            <div class="card border-0 bg-light">
+                <div class="card-header bg-transparent border-0 py-2">
+                    <h6 class="mb-0">🎨 Légende des couleurs</h6>
+                </div>
+                <div class="card-body py-2">
+                    <div class="row text-center">
+                        <div class="col-md-2 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #007bff; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">🔵</span>
+                                <span>Demande normale</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #28a745; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">✅</span>
+                                <span>Préparée</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #ffc107; color: #212529; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">⚠️</span>
+                                <span>Modifiée</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #dc3545; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">❌</span>
+                                <span>Enseignant absent</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #20c997; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">📚</span>
+                                <span>Pas besoin de matériel</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div id="planningResults">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Enseignant</th>
-                    <th>Classe</th>
-                    <th>Matériel</th>
-                    <th>Quantité</th>
-                    <th>Type de salle</th>
-                    <th>Notes</th>
-                </tr>
-            </thead>
-            <tbody id="planningTableBody">
-                <!-- Les demandes du jour seront insérées ici -->
-            </tbody>
-        </table>
+        <div id="planningDay" class="planning-day-view" style="display: none;">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0" id="planningDayTitle">📅 Planning du jour</h5>
+                </div>
+                <div class="card-body">
+                    <div id="planningByTeacher">
+                        <!-- Les demandes groupées par enseignant seront affichées ici -->
+                    </div>
+                </div>
+            </div>
+        </div>
         <div id="noPlanningResults" class="alert alert-info d-none">Aucune demande pour ce jour.</div>
     </div>
 </div>
@@ -50,43 +175,122 @@ document.getElementById('planningDate').addEventListener('change', function() {
     // Activer/désactiver le bouton de génération
     generateBtn.disabled = !date;
     
-    if (!date) return;
+    if (!date) {
+        document.getElementById('planningDay').style.display = 'none';
+        document.getElementById('planningLegend').style.display = 'none';
+        return;
+    }
+    
+    // Mettre à jour le titre avec la date
+    const dateObj = new Date(date);
+    const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    };
+    const formattedDate = dateObj.toLocaleDateString('fr-FR', options);
+    document.getElementById('planningDayTitle').textContent = `📅 Planning du ${formattedDate}`;
+    
     fetch(`/api/requests?start_date=${date}&end_date=${date}`)
         .then(response => response.json())
         .then(requests => {
-            const tableBody = document.getElementById('planningTableBody');
+            const planningContainer = document.getElementById('planningByTeacher');
             const noResults = document.getElementById('noPlanningResults');
-            tableBody.innerHTML = '';
+            const planningDay = document.getElementById('planningDay');
+            const planningLegend = document.getElementById('planningLegend');
+            
+            planningContainer.innerHTML = '';
+            
             if (requests.length === 0) {
                 noResults.classList.remove('d-none');
+                planningDay.style.display = 'none';
+                planningLegend.style.display = 'none';
                 return;
             }
+            
             noResults.classList.add('d-none');
+            planningDay.style.display = 'block';
+            planningLegend.style.display = 'block';
+            
+            // Grouper les demandes par enseignant
+            const requestsByTeacher = {};
             requests.forEach(request => {
-                const row = document.createElement('tr');
-                const roomType = request.room_type || 'Mixte';
-                row.innerHTML = `
-                    <td>${request.teacher_name}</td>
-                    <td>${request.class_name}</td>
-                    <td>${request.material_description}</td>
-                    <td>${request.quantity}</td>
-                    <td>
-                        <select class="form-select form-select-sm" onchange="updateRoomType(${request.id}, this.value)">
-                            <option value="Mixte" ${roomType === 'Mixte' ? 'selected' : ''}>🔬 Mixte</option>
-                            <option value="Physique" ${roomType === 'Physique' ? 'selected' : ''}>⚛️ Physique</option>
-                            <option value="Chimie" ${roomType === 'Chimie' ? 'selected' : ''}>🧪 Chimie</option>
-                        </select>
-                    </td>
-                    <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
-                `;
-                tableBody.appendChild(row);
+                if (!requestsByTeacher[request.teacher_name]) {
+                    requestsByTeacher[request.teacher_name] = [];
+                }
+                requestsByTeacher[request.teacher_name].push(request);
+            });
+            
+            // Créer l'affichage pour chaque enseignant
+            Object.keys(requestsByTeacher).sort().forEach(teacherName => {
+                const teacherGroup = document.createElement('div');
+                teacherGroup.className = 'teacher-group';
+                
+                const teacherHeader = document.createElement('div');
+                teacherHeader.className = 'teacher-name';
+                teacherHeader.textContent = teacherName;
+                teacherGroup.appendChild(teacherHeader);
+                
+                requestsByTeacher[teacherName].forEach(request => {
+                    const requestElement = createPlanningRequestElement(request);
+                    teacherGroup.appendChild(requestElement);
+                });
+                
+                planningContainer.appendChild(teacherGroup);
             });
         })
         .catch(error => {
-            tableBody.innerHTML = '';
-            noResults.classList.remove('d-none');
+            console.error('Error loading requests:', error);
+            document.getElementById('noPlanningResults').classList.remove('d-none');
+            document.getElementById('planningDay').style.display = 'none';
+            document.getElementById('planningLegend').style.display = 'none';
         });
 });
+
+function createPlanningRequestElement(request) {
+    const requestDiv = document.createElement('div');
+    requestDiv.className = 'planning-request';
+    
+    // Déterminer la couleur de fond selon le statut
+    let bgColor = '#007bff'; // Bleu par défaut (demande normale)
+    
+    if (request.selected_materials === 'Absent') {
+        bgColor = '#dc3545'; // Rouge pour absent
+    } else if (request.selected_materials === 'Pas besoin de matériel') {
+        bgColor = '#20c997'; // Vert clair pour pas besoin de matériel (NOUVELLE COULEUR)
+    } else if (request.prepared) {
+        bgColor = '#28a745'; // Vert foncé pour préparé
+    } else if (request.modified) {
+        bgColor = '#ffc107'; // Jaune pour modifié
+    }
+    
+    console.log(`Demande ${request.id}: ${request.selected_materials} → Couleur: ${bgColor}`);
+    
+    requestDiv.style.backgroundColor = bgColor;
+    
+    const roomType = request.room_type || 'Mixte';
+    
+    requestDiv.innerHTML = `
+        <div class="request-header">
+            <span class="request-time">🕒 ${request.horaire || 'Non spécifié'}</span>
+            <span class="request-class">${request.class_name}</span>
+        </div>
+        <div class="request-details">
+            <div><strong>Matériel:</strong> ${request.material_description}</div>
+            <div><strong>Quantité:</strong> ${request.quantity || 1}</div>
+            ${request.computers_needed ? `<div><strong>Ordinateurs:</strong> ${request.computers_needed}</div>` : ''}
+            ${request.notes ? `<div><strong>Notes:</strong> ${request.notes}</div>` : ''}
+        </div>
+        <select class="room-type-selector" onchange="updateRoomType(${request.id}, this.value)">
+            <option value="Mixte" ${roomType === 'Mixte' ? 'selected' : ''}>🔬 Salle Mixte</option>
+            <option value="Physique" ${roomType === 'Physique' ? 'selected' : ''}>⚛️ Salle Physique</option>
+            <option value="Chimie" ${roomType === 'Chimie' ? 'selected' : ''}>🧪 Salle Chimie</option>
+        </select>
+    `;
+    
+    return requestDiv;
+}
 
 function updateRoomType(requestId, roomType) {
     fetch(`/api/requests/${requestId}/room-type`, {

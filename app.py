@@ -80,9 +80,11 @@ def api_get_requests():
 @app.route('/api/calendar-events', methods=['GET'])
 def api_calendar_events():
     """API endpoint to get calendar events with optional filters"""
+    print("=== API CALENDAR-EVENTS APPELÉE ===")
     teacher_id = request.args.get('teacher_id')
     status_filter = request.args.get('status')
     type_filter = request.args.get('type')
+    print(f"Paramètres: teacher_id={teacher_id}, status_filter={status_filter}, type_filter={type_filter}")
     
     # Get all requests with optional teacher filter
     requests = get_material_requests(teacher_id=teacher_id)
@@ -122,14 +124,33 @@ def api_calendar_events():
         # Choose color based on status and type
         bg_color = '#007bff'  # Default blue
         
-        if req['selected_materials'] == 'Absent':
+        # Debug: afficher les informations de couleur (sqlite3.Row n'a pas .get(), utiliser l'accès direct)
+        selected_materials = req['selected_materials'] if req['selected_materials'] else 'None'
+        prepared = req['prepared'] if req['prepared'] else False
+        modified = req['modified'] if req['modified'] else False
+        
+        print(f"DEBUG - Demande {req['id']}: selected_materials='{selected_materials}', prepared={prepared}, modified={modified}")
+        
+        if selected_materials == 'Absent':
             bg_color = '#dc3545'  # Red for absent
-        elif req['selected_materials'] == 'Pas besoin de matériel':
-            bg_color = '#6f42c1'  # Purple for no material
-        elif req['prepared']:
+            print(f"DEBUG - Couleur ROUGE pour Absent")
+        elif selected_materials == 'Pas besoin de matériel':
+            bg_color = '#20c997'  # Light green for no material
+            print(f"DEBUG - Couleur VERTE pour Pas besoin de matériel")
+        elif prepared:
             bg_color = '#28a745'  # Green for prepared
-        elif req['modified']:
+            print(f"DEBUG - Couleur VERTE pour préparé")
+        elif modified:
             bg_color = '#ffc107'  # Yellow for modified
+            print(f"DEBUG - Couleur JAUNE pour modifié")
+        else:
+            print(f"DEBUG - Couleur BLEUE par défaut")
+        
+        print(f"DEBUG - Couleur finale AVANT envoi: {bg_color}")
+        
+        # Vérifier si bg_color a été modifié
+        if bg_color == '#6f42c1':
+            print(f"ERREUR - bg_color a été changé en violet ! Cela ne devrait pas arriver !")
         
         events.append({
             'id': req['id'],
