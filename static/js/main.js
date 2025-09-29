@@ -87,7 +87,8 @@ function clearValidation(formId) {
 
 // Format dates for display
 function formatDate(dateString) {
-    const date = new Date(dateString);
+    // Forcer le fuseau horaire local pour éviter les problèmes
+    const date = new Date(dateString + 'T00:00:00');
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();

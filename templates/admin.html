@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Administration{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4">🔧 Gestion Administrateur</h2>
+            <p class="text-muted">Interface de configuration et gestion du système</p>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="card-footer">
+            <a href="{{ url_for('view_rooms') }}" class="btn btn-primary">
+                <i class="fas fa-cog"></i> Configurer les Salles
+            </a>
+        </div>
+        <div class="card-footer">
+            <a href="{{ url_for('view_students') }}" class="btn btn-success">
+                <i class="fas fa-edit"></i> Gérer les Effectifs (2nd)
+            </a>
+        </div>
+        
+        <div class="card-footer">
+            <a href="{{ url_for('planning') }}" class="btn btn-warning">
+                <i class="fas fa-cogs"></i> Générateur de Planning
+            </a>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12 text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Retour à l'accueil
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
