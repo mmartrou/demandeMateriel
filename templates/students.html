@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des Effectifs{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2>Gestion des Effectifs d'Élèves</h2>
+                    <p class="text-muted">Configuration du nombre d'élèves par enseignant et niveau</p>
+                </div>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+                        <i class="fas fa-plus"></i> Ajouter un Effectif
+                    </button>
+                    <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour Admin
+                    </a>
+                </div>
+            </div>
+
+            <!-- Students Table -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="studentsTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Enseignant</th>
+                                    <th>Niveau</th>
+                                    <th>Nombre d'Élèves</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studentsTableBody">
+                                <!-- Will be filled by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal fade" id="addStudentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un effectif</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addStudentForm">
+                    <div class="mb-3">
+                        <label for="addTeacherName" class="form-label">Nom de l'enseignant</label>
+                        <input type="text" class="form-control" id="addTeacherName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addLevel" class="form-label">Niveau</label>
+                        <select class="form-control" id="addLevel" required>
+                            <option value="2nde">2nde</option>
+                            <option value="1ère">1ère</option>
+                            <option value="Terminale">Terminale</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addStudentCount" class="form-label">Nombre d'élèves</label>
+                        <input type="number" class="form-control" id="addStudentCount" min="1" max="50" value="20" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="addStudent()">Ajouter</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div class="modal fade" id="editStudentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Modifier l'effectif</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editStudentForm">
+                    <input type="hidden" id="editStudentId">
+                    <div class="mb-3">
+                        <label for="editTeacherName" class="form-label">Nom de l'enseignant</label>
+                        <input type="text" class="form-control" id="editTeacherName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editLevel" class="form-label">Niveau</label>
+                        <select class="form-control" id="editLevel" required>
+                            <option value="2nde">2nde</option>
+                            <option value="1ère">1ère</option>
+                            <option value="Terminale">Terminale</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editStudentCount" class="form-label">Nombre d'élèves</label>
+                        <input type="number" class="form-control" id="editStudentCount" min="1" max="50" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" onclick="deleteStudent()">Supprimer</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveStudent()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let students = [];
+
+// Load students on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadStudents();
+});
+
+async function loadStudents() {
+    try {
+        const response = await fetch('/api/students');
+        students = await response.json();
+        displayStudents();
+    } catch (error) {
+        console.error('Erreur lors du chargement des effectifs:', error);
+        alert('Erreur lors du chargement des effectifs');
+    }
+}
+
+function displayStudents() {
+    const tbody = document.getElementById('studentsTableBody');
+    tbody.innerHTML = '';
+    
+    students.forEach(student => {
+        const row = `
+            <tr>
+                <td><strong>${student.teacher_name}</strong></td>
+                <td><span class="badge bg-primary">${student.level}</span></td>
+                <td><span class="badge bg-info fs-6">${student.student_count} élèves</span></td>
+                <td>
+                    <button class="btn btn-sm btn-primary me-2" onclick="editStudent(${student.id})">
+                        <i class="fas fa-edit"></i> Modifier
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteStudent(${student.id})">
+                        <i class="fas fa-trash"></i> Supprimer
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+}
+
+function editStudent(studentId) {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    
+    document.getElementById('editStudentId').value = student.id;
+    document.getElementById('editTeacherName').value = student.teacher_name;
+    document.getElementById('editLevel').value = student.level;
+    document.getElementById('editStudentCount').value = student.student_count;
+    
+    new bootstrap.Modal(document.getElementById('editStudentModal')).show();
+}
+
+async function addStudent() {
+    try {
+        const studentData = {
+            teacher_name: document.getElementById('addTeacherName').value,
+            level: document.getElementById('addLevel').value,
+            student_count: parseInt(document.getElementById('addStudentCount').value)
+        };
+        
+        const response = await fetch('/api/students', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(studentData)
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addStudentModal')).hide();
+            document.getElementById('addStudentForm').reset();
+            loadStudents();
+            alert('Effectif ajouté avec succès');
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + error.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'ajout');
+    }
+}
+
+async function saveStudent() {
+    try {
+        const studentId = document.getElementById('editStudentId').value;
+        const studentData = {
+            teacher_name: document.getElementById('editTeacherName').value,
+            level: document.getElementById('editLevel').value,
+            student_count: parseInt(document.getElementById('editStudentCount').value)
+        };
+        
+        const response = await fetch(`/api/students/${studentId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(studentData)
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editStudentModal')).hide();
+            loadStudents();
+            alert('Effectif mis à jour avec succès');
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + error.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la sauvegarde');
+    }
+}
+
+function confirmDeleteStudent(studentId) {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    
+    if (confirm(`Êtes-vous sûr de vouloir supprimer l'effectif de ${student.teacher_name} (${student.level}) ?`)) {
+        deleteStudentById(studentId);
+    }
+}
+
+async function deleteStudent() {
+    const studentId = document.getElementById('editStudentId').value;
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet effectif ?')) {
+        await deleteStudentById(studentId);
+        bootstrap.Modal.getInstance(document.getElementById('editStudentModal')).hide();
+    }
+}
+
+async function deleteStudentById(studentId) {
+    try {
+        const response = await fetch(`/api/students/${studentId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            loadStudents();
+            alert('Effectif supprimé avec succès');
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + error.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+{% endblock %}

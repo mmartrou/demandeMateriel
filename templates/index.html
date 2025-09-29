@@ -113,7 +113,7 @@
                     </div>
                     
                     <div class="row" id="main-content">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="class_name" class="form-label">
                                 🎓 Niveau *
                             </label>
@@ -136,7 +136,15 @@
                             </select>
                         </div>
                         
-                        <div class="col-md-6 mb-3" id="quantity-section">
+                        <div class="col-md-4 mb-3" id="computers-section">
+                            <label for="computers_needed" class="form-label">
+                                💻 Nombre d'ordinateurs
+                            </label>
+                            <input type="number" class="form-control" id="computers_needed" name="computers_needed" 
+                                   min="0" value="0">
+                        </div>
+                        
+                        <div class="col-md-4 mb-3" id="quantity-section">
                             <label for="quantity" class="form-label">
                                 🔢 Nombre de groupes
                             </label>
@@ -148,7 +156,7 @@
                     <!-- Material checkboxes -->
                     <div class="mb-3" id="material-section">
                         <label class="form-label">
-                            🔧 Matériel requis
+                            🔧 Matériel peu mobile à avoir dans la salle
                         </label>
                         <div class="row">
                             <div class="col-md-6">
@@ -198,23 +206,22 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Material Text Area -->
+                        <div class="mt-3">
+                            <label for="selected_materials" class="form-label">📝 Matériel nécessaire (par groupe)</label>
+                            <textarea class="form-control" id="selected_materials" name="selected_materials" rows="4" 
+                                      placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
+                        </div>
                     </div>
                     
-                    <!-- Number of computers -->
-                    <div class="mb-3" id="computers-section">
-                        <label for="computers_needed" class="form-label">
-                            💻 Nombre d'ordinateurs nécessaires
+                    <!-- Teacher Material Section -->
+                    <div class="mb-3" id="material-prof-section">
+                        <label for="material_prof" class="form-label">
+                            👨‍🏫 Matériel Prof
                         </label>
-                        <input type="number" class="form-control" id="computers_needed" name="computers_needed" 
-                               min="0" value="0" placeholder="0 si aucun ordinateur n'est nécessaire">
-                    </div>
-                    
-                    <div class="mb-3" id="description-section">
-                        <label for="material_description" class="form-label">
-                            🧰 Description du matériel *
-                        </label>
-                        <textarea class="form-control" id="material_description" name="material_description" 
-                                  rows="3" placeholder="Décrivez le matériel dont vous avez besoin..." required></textarea>
+                        <textarea class="form-control" id="material_prof" name="material_prof" rows="3" 
+                                  placeholder="Matériel nécessaire sur la paillasse prof"></textarea>
                     </div>
                     
                     <div class="mb-3" id="notes-section">
@@ -452,6 +459,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
         
+        // Ajouter les nouveaux champs
+        data.group_count = document.getElementById('quantity').value;
+        data.material_prof = document.getElementById('material_prof').value;
+        
         // Vérification des modes spéciaux
         const isAbsent = document.getElementById('absent').checked;
         const isNoMaterial = document.getElementById('no_material').checked;
@@ -479,14 +490,16 @@ document.addEventListener('DOMContentLoaded', function() {
             data.notes = '';
             data.quantity = '1';
         } else {
-            // Mode normal : collecte des matériels
-            const selectedMaterials = [];
-            const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
-            materialCheckboxes.forEach(checkbox => {
-                selectedMaterials.push(checkbox.value);
-            });
-            data.selected_materials = selectedMaterials.join(', ');
+            // Mode normal : récupération du matériel depuis la zone de texte
+            data.selected_materials = document.getElementById('selected_materials').value;
             data.computers_needed = document.getElementById('computers_needed').value;
+            
+            // Génération automatique de la description basée sur le matériel saisi
+            if (data.selected_materials) {
+                data.material_description = `Matériel requis: ${data.selected_materials}`;
+            } else {
+                data.material_description = 'Cours sans matériel spécifique';
+            }
         }
         // Ajoute la liste des jours/horaires (automatique ou manuelle)
         data.days_horaires = finalDaysHoraires;
@@ -518,5 +531,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+
+
 </script>
 {% endblock %}
