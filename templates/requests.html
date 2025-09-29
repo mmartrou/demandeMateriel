@@ -6,7 +6,7 @@
 <div class="row">
     <div class="col-12">
         <div class="card shadow">
-            <div class="card-header bg-primary text-white">
+            <div class="card-header bg-primary text-wh                            <label for="editQuantity" class="form-label">🔢 Nombre de groupes</label>te">
                 <div class="row align-items-center">
                     <div class="col">
                         <h4 class="mb-0">
@@ -75,6 +75,7 @@
                                 <th>Ordinateurs</th>
                                 <th>Description</th>
                                 <th>Groupes</th>
+                                <th>Matériel Prof</th>
                                 <th>Notes</th>
                                 <th>Statut</th>
                                 <th>Actions</th>
@@ -174,10 +175,10 @@
                         </div>
                     </div>
                     
-                    <!-- Cases Absent et Pas besoin de matériel dans le modal -->
+                    <!-- Cases Absent, Pas besoin de matériel et Examen dans le modal -->
                     <div class="mb-3">
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="editAbsent" name="editAbsent">
                                     <label class="form-check-label fw-bold" for="editAbsent">
@@ -185,7 +186,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="editNoMaterial" name="editNoMaterial">
                                     <label class="form-check-label fw-bold" for="editNoMaterial">
@@ -193,83 +194,36 @@
                                     </label>
                                 </div>
                             </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editExamMode" name="editExamMode">
+                                    <label class="form-check-label fw-bold" for="editExamMode">
+                                        📝 Examen (surveillance d'examen)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <small class="text-muted">Si absent ou pas besoin de matériel, seule la sélection du niveau sera nécessaire.</small>
+                        <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
                     <!-- Material checkboxes dans la modal d'édition -->
-                    <div class="mb-3" id="editMaterialCheckboxSection">
-                        <label class="form-label">
-                            🔧 Matériel requis
+                    <div class="mb-3" id="editMaterialSection">
+                        <label for="editSelectedMaterials" class="form-label">
+                            📝 Matériel requis par groupe
                         </label>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editEviers" name="editMaterials" value="Éviers">
-                                    <label class="form-check-label" for="editEviers">
-                                        Éviers
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editHotte" name="editMaterials" value="Hotte">
-                                    <label class="form-check-label" for="editHotte">
-                                        Hotte
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editBancsOptiques" name="editMaterials" value="Bancs optiques">
-                                    <label class="form-check-label" for="editBancsOptiques">
-                                        Bancs optiques
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editOscilloscopes" name="editMaterials" value="Oscilloscopes">
-                                    <label class="form-check-label" for="editOscilloscopes">
-                                        Oscilloscopes
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editBecsElectriques" name="editMaterials" value="Becs électriques">
-                                    <label class="form-check-label" for="editBecsElectriques">
-                                        Becs électriques
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editSupportFiltration" name="editMaterials" value="Support de filtration">
-                                    <label class="form-check-label" for="editSupportFiltration">
-                                        Support de filtration
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editImprimante" name="editMaterials" value="Imprimante">
-                                    <label class="form-check-label" for="editImprimante">
-                                        Imprimante
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="editExamen" name="editMaterials" value="Examen">
-                                    <label class="form-check-label" for="editExamen">
-                                        Examen
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
+                        <textarea class="form-control" id="editSelectedMaterials" rows="4" 
+                                  placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
                     </div>
                     
-                    <div class="mb-3" id="editMaterialSection">
-                        <label for="editMaterialDescription" class="form-label">🧰 Description du matériel *</label>
-                        <textarea class="form-control" id="editMaterialDescription" rows="3" required></textarea>
-                    </div>
+
                     
                     <div class="row mb-3" id="editQuantitySection">
-                        <div class="col-md-6">
-                            <label for="editQuantity" class="form-label">📦 Quantité</label>
+                        <div class="col-md-4">
+                            <label for="editQuantity" class="form-label">� Nombre de groupes</label>
                             <input type="number" class="form-control" id="editQuantity" min="1" value="1">
                         </div>
-                        <div class="col-md-6">
-                            <label for="editComputersNeeded" class="form-label">💻 Ordinateurs nécessaires</label>
+                        <div class="col-md-4">
+                            <label for="editComputersNeeded" class="form-label">💻 Nombre d'ordinateurs</label>
                             <input type="number" class="form-control" id="editComputersNeeded" min="0" value="0">
                         </div>
                     </div>
@@ -277,6 +231,12 @@
                     <div class="mb-3" id="editSelectedMaterialsSection">
                         <label for="editSelectedMaterials" class="form-label">✅ Matériel sélectionné</label>
                         <textarea class="form-control" id="editSelectedMaterials" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="mb-3" id="editMaterialProfSection">
+                        <label for="editMaterialProf" class="form-label">👨‍🏫 Matériel Prof</label>
+                        <textarea class="form-control" id="editMaterialProf" rows="2" 
+                                  placeholder="Matériel nécessaire pour le professeur"></textarea>
                     </div>
                     
                     <div class="mb-3">
@@ -405,11 +365,12 @@ function loadRequests() {
                     <td>${formatDate(request.request_date)}</td>
                     <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
                     <td><span class="badge bg-info">${request.class_name}</span></td>
-                    <td><small class="text-muted">${request.selected_materials || '<em>Aucun</em>'}</small></td>
+                    <td><small class="text-muted" style="white-space: pre-wrap;">${request.selected_materials || '<em>Aucun</em>'}</small></td>
                     <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>
                     <td>${request.material_description}</td>
-                    <td><span class="badge bg-secondary">${request.quantity}</span></td>
-                    <td>${request.notes || '<em class="text-muted">Aucune</em>'}</td>
+                    <td><span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span></td>
+                    <td><small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small></td>
+                    <td style="white-space: pre-wrap;">${request.notes || '<em class="text-muted">Aucune</em>'}</td>
                     <td>${statusBadge}</td>
                     <td>${preparedButton}</td>
                     <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
@@ -486,6 +447,7 @@ function editRequest(requestId) {
             // Check if this is a special request type
             const isAbsent = request.selected_materials === 'Absent' && request.material_description === 'Enseignant absent';
             const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
+            const isExamMode = request.selected_materials === 'Examen' && request.material_description === 'Surveillance d\'examen';
             
             // Populate form
             document.getElementById('editRequestId').value = request.id;
@@ -495,23 +457,23 @@ function editRequest(requestId) {
             document.getElementById('editClassName').value = request.class_name;
             document.getElementById('editAbsent').checked = isAbsent;
             document.getElementById('editNoMaterial').checked = isNoMaterial;
+            document.getElementById('editExamMode').checked = isExamMode;
             
-            if (isAbsent || isNoMaterial) {
-                // If absent or no material needed, clear material fields and show appropriate values
-                document.getElementById('editMaterialDescription').value = '';
+            if (isAbsent || isNoMaterial || isExamMode) {
+                // If absent, no material needed, or exam, clear material fields
                 document.getElementById('editSelectedMaterials').value = '';
             } else {
                 // Normal request, show actual values
-                document.getElementById('editMaterialDescription').value = request.material_description;
                 document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
             }
             
-            document.getElementById('editQuantity').value = request.quantity;
+            document.getElementById('editQuantity').value = request.group_count || request.quantity || 1;
             document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
+            document.getElementById('editMaterialProf').value = request.material_prof || '';
             document.getElementById('editNotes').value = request.notes || '';
             
-            // Load selected materials checkboxes
-            loadEditMaterialCheckboxes(request.selected_materials || '');
+            // Load selected materials in textarea
+            document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
             
             // Toggle sections based on special modes
             toggleEditSpecialModes();
@@ -530,6 +492,7 @@ function saveRequestChanges() {
     const requestId = document.getElementById('editRequestId').value;
     const isAbsent = document.getElementById('editAbsent').checked;
     const isNoMaterial = document.getElementById('editNoMaterial').checked;
+    const isExamMode = document.getElementById('editExamMode').checked;
     
     const formData = {
         teacher_id: parseInt(document.getElementById('editTeacher').value),
@@ -537,7 +500,9 @@ function saveRequestChanges() {
         horaire: document.getElementById('editHoraire').value,
         class_name: document.getElementById('editClassName').value,
         quantity: parseInt(document.getElementById('editQuantity').value) || 1,
+        group_count: parseInt(document.getElementById('editQuantity').value) || 1,
         computers_needed: parseInt(document.getElementById('editComputersNeeded').value) || 0,
+        material_prof: document.getElementById('editMaterialProf').value,
         notes: document.getElementById('editNotes').value
     };
     
@@ -547,16 +512,19 @@ function saveRequestChanges() {
     } else if (isNoMaterial) {
         formData.selected_materials = 'Pas besoin de matériel';
         formData.material_description = 'Cours théorique sans matériel';
+    } else if (isExamMode) {
+        formData.selected_materials = 'Examen';
+        formData.material_description = 'Surveillance d\'examen';
     } else {
-        // Collect selected materials from checkboxes
-        const selectedMaterials = [];
-        const materialCheckboxes = document.querySelectorAll('input[name="editMaterials"]:checked');
-        materialCheckboxes.forEach(checkbox => {
-            selectedMaterials.push(checkbox.value);
-        });
+        // Récupération du matériel depuis la zone de texte
+        formData.selected_materials = document.getElementById('editSelectedMaterials').value;
         
-        formData.selected_materials = selectedMaterials.length > 0 ? selectedMaterials.join(', ') : document.getElementById('editSelectedMaterials').value;
-        formData.material_description = document.getElementById('editMaterialDescription').value;
+        // Génération automatique de la description basée sur le matériel saisi
+        if (formData.selected_materials) {
+            formData.material_description = `Matériel requis: ${formData.selected_materials}`;
+        } else {
+            formData.material_description = 'Cours sans matériel spécifique';
+        }
     }
     
     fetch(`/api/requests/${requestId}`, {
@@ -571,10 +539,28 @@ function saveRequestChanges() {
         if (data.error) {
             throw new Error(data.error);
         }
-        // Hide modal
+        // Hide modal - Use multiple methods to ensure it closes
         const modalElement = document.getElementById('editRequestModal');
-        const modal = new bootstrap.Modal(modalElement);
-        modal.hide();
+        
+        // Method 1: Try to get existing modal instance
+        let modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
+        } else {
+            // Method 2: Create new modal instance if none exists
+            modal = new bootstrap.Modal(modalElement);
+            modal.hide();
+        }
+        
+        // Method 3: Fallback - remove modal classes manually
+        setTimeout(() => {
+            modalElement.classList.remove('show');
+            document.body.classList.remove('modal-open');
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) {
+                backdrop.remove();
+            }
+        }, 100);
         
         // Reload requests
         loadRequests();
@@ -586,24 +572,7 @@ function saveRequestChanges() {
     });
 }
 
-function loadEditMaterialCheckboxes(selectedMaterials) {
-    // Clear all checkboxes first
-    const checkboxes = document.querySelectorAll('input[name="editMaterials"]');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    
-    // Check the appropriate boxes based on selected materials
-    if (selectedMaterials && selectedMaterials.trim()) {
-        const materials = selectedMaterials.split(',').map(m => m.trim());
-        materials.forEach(material => {
-            const checkbox = document.querySelector(`input[name="editMaterials"][value="${material}"]`);
-            if (checkbox) {
-                checkbox.checked = true;
-            }
-        });
-    }
-}
+
 
 function deleteRequest() {
     const requestId = document.getElementById('editRequestId').value;
@@ -667,40 +636,39 @@ function togglePrepared(requestId) {
 function toggleEditSpecialModes() {
     const isAbsent = document.getElementById('editAbsent').checked;
     const isNoMaterial = document.getElementById('editNoMaterial').checked;
-    const materialSection = document.getElementById('editMaterialSection');
+    const isExamMode = document.getElementById('editExamMode').checked;
     const quantitySection = document.getElementById('editQuantitySection');
-    const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
-    const materialCheckboxSection = document.getElementById('editMaterialCheckboxSection');
+    const materialSection = document.getElementById('editMaterialSection');
+    const materialProfSection = document.getElementById('editMaterialProfSection');
     
     // S'assurer qu'une seule option est cochée à la fois
-    if (isAbsent && isNoMaterial) {
-        if (document.activeElement === document.getElementById('editAbsent')) {
+    let checkedCount = (isAbsent ? 1 : 0) + (isNoMaterial ? 1 : 0) + (isExamMode ? 1 : 0);
+    if (checkedCount > 1) {
+        const activeElement = document.activeElement;
+        if (activeElement === document.getElementById('editAbsent')) {
             document.getElementById('editNoMaterial').checked = false;
-        } else {
+            document.getElementById('editExamMode').checked = false;
+        } else if (activeElement === document.getElementById('editNoMaterial')) {
             document.getElementById('editAbsent').checked = false;
+            document.getElementById('editExamMode').checked = false;
+        } else if (activeElement === document.getElementById('editExamMode')) {
+            document.getElementById('editAbsent').checked = false;
+            document.getElementById('editNoMaterial').checked = false;
         }
     }
     
-    const shouldHideSections = document.getElementById('editAbsent').checked || document.getElementById('editNoMaterial').checked;
+    const shouldHideSections = isAbsent || isNoMaterial || isExamMode;
     
     if (shouldHideSections) {
         // Hide material-related sections
-        materialSection.style.display = 'none';
-        quantitySection.style.display = 'none';
-        selectedMaterialsSection.style.display = 'none';
-        materialCheckboxSection.style.display = 'none';
-        
-        // Remove required attribute
-        document.getElementById('editMaterialDescription').removeAttribute('required');
+        if (quantitySection) quantitySection.style.display = 'none';
+        if (materialSection) materialSection.style.display = 'none';
+        if (materialProfSection) materialProfSection.style.display = 'none';
     } else {
         // Show material-related sections
-        materialSection.style.display = 'block';
-        quantitySection.style.display = 'block';
-        selectedMaterialsSection.style.display = 'block';
-        materialCheckboxSection.style.display = 'block';
-        
-        // Add required attribute back
-        document.getElementById('editMaterialDescription').setAttribute('required', 'required');
+        if (quantitySection) quantitySection.style.display = 'block';
+        if (materialSection) materialSection.style.display = 'block';
+        if (materialProfSection) materialProfSection.style.display = 'block';
     }
 }
 
@@ -708,11 +676,15 @@ function toggleEditSpecialModes() {
 document.addEventListener('DOMContentLoaded', function() {
     const editAbsentCheckbox = document.getElementById('editAbsent');
     const editNoMaterialCheckbox = document.getElementById('editNoMaterial');
+    const editExamModeCheckbox = document.getElementById('editExamMode');
     if (editAbsentCheckbox) {
         editAbsentCheckbox.addEventListener('change', toggleEditSpecialModes);
     }
     if (editNoMaterialCheckbox) {
         editNoMaterialCheckbox.addEventListener('change', toggleEditSpecialModes);
+    }
+    if (editExamModeCheckbox) {
+        editExamModeCheckbox.addEventListener('change', toggleEditSpecialModes);
     }
 });
 
