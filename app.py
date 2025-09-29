@@ -1,11 +1,14 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response, send_file
 import csv
 import io
+import os
 from datetime import datetime, timedelta
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
                       toggle_prepared_status, delete_material_request, update_room_type, 
-                      get_all_rooms, get_planning_data)
+                      get_all_rooms, get_planning_data, update_room, import_rooms_from_csv_content,
+                      get_all_student_numbers, update_student_number, add_student_number, 
+                      delete_student_number, get_student_count_for_teacher)
 
 app = Flask(__name__)
 
@@ -142,7 +145,9 @@ def api_calendar_events():
             'id': req['id'],
             'title': f"{req['teacher_name']} - {req['class_name']}",
             'start': req['request_date'],
-            'description': f"Matériel: {req['material_description']} (Quantité: {req['quantity'] if req['quantity'] else 1})",
+            'description': f"Matériel: {req['material_description']} (Groupes: {req['group_count'] if req['group_count'] else 1})" + 
+                          (f" - Ordinateurs: {req['computers_needed']}" if req['computers_needed'] and req['computers_needed'] > 0 else "") + 
+                          (f" - Matériel Prof: {req['material_prof']}" if req['material_prof'] else ""),
             'backgroundColor': bg_color,
             'borderColor': bg_color,
             'textColor': '#ffffff'
@@ -183,7 +188,9 @@ def api_add_request():
                     selected_materials=data.get('selected_materials', ''),
                     computers_needed=data.get('computers_needed', 0),
                     notes=data.get('notes', ''),
-                    exam=is_exam
+                    exam=is_exam,
+                    group_count=data.get('group_count', 1),
+                    material_prof=data.get('material_prof', '')
                 )
                 request_ids.append(request_id)
 
@@ -243,6 +250,21 @@ def view_requests():
     teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
 
+@app.route('/admin')
+def admin():
+    """Administration page"""
+    return render_template('admin.html')
+
+@app.route('/admin/rooms')
+def view_rooms():
+    """View and manage rooms configuration"""
+    return render_template('rooms.html')
+
+@app.route('/admin/students')
+def view_students():
+    """View and manage student numbers configuration"""
+    return render_template('students.html')
+
 @app.route('/api/requests/<int:request_id>', methods=['GET'])
 def api_get_request_by_id(request_id):
     """API endpoint to get a specific material request by ID"""
@@ -267,6 +289,8 @@ def api_get_request_by_id(request_id):
         'modified': request_data['modified'] if request_data['modified'] else False,
         'room_type': request_data['room_type'] if request_data['room_type'] else 'Mixte',
         'exam': request_data['exam'] if request_data['exam'] else False,
+        'group_count': request_data['group_count'] if request_data['group_count'] else 1,
+        'material_prof': request_data['material_prof'] if request_data['material_prof'] else '',
         'created_at': request_data['created_at']
     }
     
@@ -294,7 +318,9 @@ def api_update_request(request_id):
             data.get('quantity', 1),
             data.get('selected_materials', ''),
             data.get('computers_needed', 0),
-            data.get('notes', '')
+            data.get('notes', ''),
+            data.get('group_count', 1),
+            data.get('material_prof', '')
         )
         
         if success:
@@ -347,6 +373,149 @@ def api_update_room_type(request_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/rooms', methods=['GET'])
+def api_get_rooms():
+    """API endpoint to get all rooms"""
+    rooms = get_all_rooms()
+    rooms_list = []
+    for room in rooms:
+        rooms_list.append({
+            'id': room['id'],
+            'name': room['name'],
+            'type': room['type'],
+            'ordinateurs': room['ordinateurs'],
+            'chaises': room['chaises'],
+            'eviers': room['eviers'],
+            'hotte': room['hotte'],
+            'bancs_optiques': room['bancs_optiques'],
+            'oscilloscopes': room['oscilloscopes'],
+            'becs_electriques': room['becs_electriques'],
+            'support_filtration': room['support_filtration'],
+            'imprimante': room['imprimante'],
+            'examen': room['examen']
+        })
+    return jsonify(rooms_list)
+
+@app.route('/api/rooms/<int:room_id>', methods=['PUT'])
+def api_update_room(room_id):
+    """API endpoint to update a room"""
+    try:
+        data = request.get_json()
+        success = update_room(room_id, data)
+        if success:
+            return jsonify({'message': 'Salle mise à jour avec succès'})
+        else:
+            return jsonify({'error': 'Salle non trouvée'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/rooms/import-csv', methods=['POST'])
+def api_import_rooms_csv():
+    """API endpoint to import rooms from CSV file"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Aucun fichier fourni'}), 400
+        
+        file = request.files['file']
+        if file.filename == '' or not file.filename.endswith('.csv'):
+            return jsonify({'error': 'Fichier CSV requis'}), 400
+        
+        # Read CSV content
+        csv_content = file.read().decode('utf-8')
+        import_rooms_from_csv_content(csv_content)
+        
+        return jsonify({'message': 'Salles importées avec succès depuis le CSV'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/rooms/export-csv', methods=['GET'])
+def api_export_rooms_csv():
+    """API endpoint to export rooms to CSV"""
+    try:
+        rooms = get_all_rooms()
+        
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header (matching original salles.csv format)
+        writer.writerow(['# Liste des salles et leurs caractéristiques'])
+        writer.writerow(['# Format CSV: nom,type,ordinateurs,chaises,eviers,hotte,bancs_optiques,oscilloscopes,becs_electriques,support_filtration,imprimante,examen'])
+        
+        # Write data
+        for room in rooms:
+            writer.writerow([
+                room['name'], room['type'], room['ordinateurs'], room['chaises'],
+                room['eviers'], room['hotte'], room['bancs_optiques'], room['oscilloscopes'],
+                room['becs_electriques'], room['support_filtration'], room['imprimante'], room['examen']
+            ])
+        
+        # Create response
+        output.seek(0)
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename=salles_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        
+        return response
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students', methods=['GET'])
+def api_get_students():
+    """API endpoint to get all student numbers"""
+    students = get_all_student_numbers()
+    students_list = []
+    for student in students:
+        students_list.append({
+            'id': student['id'],
+            'teacher_name': student['teacher_name'],
+            'student_count': student['student_count'],
+            'level': student['level']
+        })
+    return jsonify(students_list)
+
+@app.route('/api/students/<int:student_id>', methods=['PUT'])
+def api_update_student(student_id):
+    """API endpoint to update student numbers"""
+    try:
+        data = request.get_json()
+        success = update_student_number(student_id, data)
+        if success:
+            return jsonify({'message': 'Effectif mis à jour avec succès'})
+        else:
+            return jsonify({'error': 'Effectif non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students', methods=['POST'])
+def api_add_student():
+    """API endpoint to add new student numbers"""
+    try:
+        data = request.get_json()
+        student_id = add_student_number(
+            data.get('teacher_name'),
+            data.get('student_count', 20),
+            data.get('level', '2nde')
+        )
+        if student_id:
+            return jsonify({'message': 'Effectif ajouté avec succès', 'id': student_id}), 201
+        else:
+            return jsonify({'error': 'Erreur lors de l\'ajout'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+def api_delete_student(student_id):
+    """API endpoint to delete student numbers"""
+    try:
+        success = delete_student_number(student_id)
+        if success:
+            return jsonify({'message': 'Effectif supprimé avec succès'})
+        else:
+            return jsonify({'error': 'Effectif non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/generate-planning', methods=['POST'])
 def api_generate_planning():
     """Generate Excel planning file for a specific date using OR-Tools optimization"""
@@ -372,12 +541,13 @@ def api_generate_planning():
         if not raw_rooms:
             return jsonify({'success': False, 'error': 'Aucune salle trouvée dans la base de données'}), 400
         
-        # Generate filename based on date with timestamp to avoid conflicts
+        # Generate filename based on date
         from datetime import datetime
+        import tempfile
+        import io
         date_obj = datetime.strptime(date_str, '%Y-%m-%d')
         day_name = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"][date_obj.weekday()]
-        timestamp = datetime.now().strftime('%H%M%S')
-        output_filename = f"planning{day_name.upper()}_{timestamp}.xlsx"
+        download_filename = f"planning{day_name.upper()}_{date_obj.strftime('%d-%m-%Y')}.xlsx"
         
         # Import OR-Tools for optimization
         print("Importation des modules...")
@@ -434,7 +604,19 @@ def api_generate_planning():
                 return 85
         
         def eleves_par_niveau(niveau, enseignant=None):
-            return 20  # Default for now
+            """
+            Retourne le nombre d'élèves selon le niveau et l'enseignant.
+            Pour les 2nde, cherche dans la base de données le nombre spécifique par enseignant.
+            Pour les autres niveaux, retourne 20 par défaut.
+            """
+            if niveau == "2nde" and enseignant:
+                try:
+                    return get_student_count_for_teacher(enseignant, niveau)
+                except Exception as e:
+                    print(f"Erreur lors du chargement des effectifs depuis la BDD: {e}")
+                    return 20  # Fallback par défaut
+            
+            return 20  # Valeur par défaut pour les autres niveaux
         
         def extract_material_needs(selected_materials):
             needs = {
@@ -957,16 +1139,17 @@ def api_generate_planning():
         for idx_h in range(len(horaires)):
             ws2.row_dimensions[3 + idx_h].height = 20
         
-        # Save file
-        wb.save(output_filename)
+        # Save to memory buffer instead of file
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
         
-        return jsonify({
-            'success': True, 
-            'message': f'Planning généré avec succès: {output_filename}',
-            'filename': output_filename,
-            'requests_count': len(raw_requests),
-            'rooms_count': len(raw_rooms)
-        })
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=download_filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
         
     except Exception as e:
         import traceback

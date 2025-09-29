@@ -90,7 +90,8 @@
         <div class="row">
             <div class="col-md-6">
                 <label for="planningDate" class="form-label">Sélectionnez une date :</label>
-                <input type="date" id="planningDate" name="planningDate" class="form-control" required>
+                <input type="date" id="planningDate" name="planningDate" class="form-control" required 
+                       pattern="\d{4}-\d{2}-\d{2}" placeholder="jj/mm/aaaa">
             </div>
             <div class="col-md-6 d-flex align-items-end">
                 <button type="button" id="generatePlanningBtn" class="btn btn-primary" disabled onclick="generatePlanning()">
@@ -182,7 +183,7 @@ document.getElementById('planningDate').addEventListener('change', function() {
     }
     
     // Mettre à jour le titre avec la date
-    const dateObj = new Date(date);
+    const dateObj = new Date(date + 'T00:00:00'); // Forcer le fuseau horaire local
     const options = { 
         weekday: 'long', 
         year: 'numeric', 
@@ -344,17 +345,44 @@ function generatePlanning() {
         },
         body: JSON.stringify({date: date})
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showMessage(`Planning généré avec succès: ${data.filename}`, 'success');
-        } else {
-            showMessage(data.error || 'Erreur lors de la génération', 'danger');
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => {
+                throw new Error(err.error || 'Erreur lors de la génération');
+            });
         }
+        
+        // Créer un nom de fichier basé sur la date
+        const dateObj = new Date(date + 'T00:00:00'); // Forcer le fuseau horaire local
+        const dayNames = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+        const dayName = dayNames[dateObj.getDay()];
+        
+        // Formater la date manuellement en format français (jj-mm-aaaa)
+        const day = dateObj.getDate().toString().padStart(2, '0');
+        const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+        const year = dateObj.getFullYear();
+        const frenchDate = `${day}-${month}-${year}`;
+        
+        const filename = `planning${dayName.toUpperCase()}_${frenchDate}.xlsx`;
+        
+        // Télécharger le fichier
+        return response.blob().then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showMessage(`Planning généré et téléchargé avec succès: ${filename}`, 'success');
+        });
     })
     .catch(error => {
         console.error('Error:', error);
-        showMessage('Erreur lors de la génération du planning', 'danger');
+        showMessage(error.message || 'Erreur lors de la génération du planning', 'danger');
     })
     .finally(() => {
         // Restaurer le bouton
