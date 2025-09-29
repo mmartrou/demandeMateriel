@@ -6,7 +6,7 @@
 <div class="row">
     <div class="col-12">
         <div class="card shadow">
-            <div class="card-header bg-primary text-wh                            <label for="editQuantity" class="form-label">🔢 Nombre de groupes</label>te">
+            <div class="card-header bg-primary text-white">
                 <div class="row align-items-center">
                     <div class="col">
                         <h4 class="mb-0">
@@ -71,10 +71,10 @@
                                 <th>Date</th>
                                 <th>Horaire</th>
                                 <th>Niveau</th>
+                                <th>Groupes</th>
                                 <th>Matériel sélectionné</th>
                                 <th>Ordinateurs</th>
                                 <th>Description</th>
-                                <th>Groupes</th>
                                 <th>Matériel Prof</th>
                                 <th>Notes</th>
                                 <th>Statut</th>
@@ -206,26 +206,25 @@
                         <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
-                    <!-- Material checkboxes dans la modal d'édition -->
-                    <div class="mb-3" id="editMaterialSection">
-                        <label for="editSelectedMaterials" class="form-label">
-                            📝 Matériel requis par groupe
-                        </label>
-                        <textarea class="form-control" id="editSelectedMaterials" rows="4" 
-                                  placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
-                    </div>
-                    
-
-                    
+                    <!-- Nombre de groupes et ordinateurs d'abord -->
                     <div class="row mb-3" id="editQuantitySection">
                         <div class="col-md-4">
-                            <label for="editQuantity" class="form-label">� Nombre de groupes</label>
+                            <label for="editQuantity" class="form-label">🔢 Nombre de groupes</label>
                             <input type="number" class="form-control" id="editQuantity" min="1" value="1">
                         </div>
                         <div class="col-md-4">
                             <label for="editComputersNeeded" class="form-label">💻 Nombre d'ordinateurs</label>
                             <input type="number" class="form-control" id="editComputersNeeded" min="0" value="0">
                         </div>
+                    </div>
+                    
+                    <!-- Material description ensuite -->
+                    <div class="mb-3" id="editMaterialSection">
+                        <label for="editMaterialDescription" class="form-label">
+                            📝 Matériel requis par groupe
+                        </label>
+                        <textarea class="form-control" id="editMaterialDescription" rows="4" 
+                                  placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
                     </div>
                     
                     <div class="mb-3" id="editSelectedMaterialsSection">
@@ -365,10 +364,10 @@ function loadRequests() {
                     <td>${formatDate(request.request_date)}</td>
                     <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
                     <td><span class="badge bg-info">${request.class_name}</span></td>
+                    <td><span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span></td>
                     <td><small class="text-muted" style="white-space: pre-wrap;">${request.selected_materials || '<em>Aucun</em>'}</small></td>
                     <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>
                     <td>${request.material_description}</td>
-                    <td><span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span></td>
                     <td><small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small></td>
                     <td style="white-space: pre-wrap;">${request.notes || '<em class="text-muted">Aucune</em>'}</td>
                     <td>${statusBadge}</td>
@@ -640,6 +639,8 @@ function toggleEditSpecialModes() {
     const quantitySection = document.getElementById('editQuantitySection');
     const materialSection = document.getElementById('editMaterialSection');
     const materialProfSection = document.getElementById('editMaterialProfSection');
+    const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
+    const materialCheckboxSection = document.getElementById('editMaterialCheckboxSection');
     
     // S'assurer qu'une seule option est cochée à la fois
     let checkedCount = (isAbsent ? 1 : 0) + (isNoMaterial ? 1 : 0) + (isExamMode ? 1 : 0);
@@ -664,11 +665,23 @@ function toggleEditSpecialModes() {
         if (quantitySection) quantitySection.style.display = 'none';
         if (materialSection) materialSection.style.display = 'none';
         if (materialProfSection) materialProfSection.style.display = 'none';
+        if (selectedMaterialsSection) selectedMaterialsSection.style.display = 'none';
+        if (materialCheckboxSection) materialCheckboxSection.style.display = 'none';
+        
+        // Remove required attribute
+        const editMaterialDescription = document.getElementById('editMaterialDescription');
+        if (editMaterialDescription) editMaterialDescription.removeAttribute('required');
     } else {
         // Show material-related sections
         if (quantitySection) quantitySection.style.display = 'block';
         if (materialSection) materialSection.style.display = 'block';
         if (materialProfSection) materialProfSection.style.display = 'block';
+        if (selectedMaterialsSection) selectedMaterialsSection.style.display = 'block';
+        if (materialCheckboxSection) materialCheckboxSection.style.display = 'block';
+        
+        // Add required attribute back
+        const editMaterialDescription = document.getElementById('editMaterialDescription');
+        if (editMaterialDescription) editMaterialDescription.setAttribute('required', 'required');
     }
 }
 
