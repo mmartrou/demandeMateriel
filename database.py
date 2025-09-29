@@ -69,6 +69,12 @@ def init_database():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add exam column to track exam mode
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN exam BOOLEAN DEFAULT FALSE')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     # Create rooms table for planning
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rooms (
@@ -93,14 +99,18 @@ def init_database():
     cursor.execute('SELECT COUNT(*) FROM rooms')
     if cursor.fetchone()[0] == 0:
         sample_rooms = [
+            # PHYSIQUE (ordre demandé: C23, C25, C27, C22, C24)
             ('C23', 'physique', 10, 53, 0, 0, 0, 0, 0, 0, 0, 1),
             ('C25', 'physique', 20, 40, 0, 0, 1, 0, 0, 0, 0, 0),
             ('C27', 'physique', 20, 40, 0, 0, 0, 1, 0, 0, 1, 0),
             ('C22', 'mixte', 10, 29, 5, 1, 0, 0, 0, 0, 0, 0),
             ('C24', 'mixte', 20, 30, 10, 0, 0, 0, 0, 0, 0, 0),
+            # CHIMIE (ordre demandé: C32, C33, C31)
             ('C32', 'chimie', 10, 32, 10, 1, 0, 0, 1, 1, 0, 0),
             ('C33', 'chimie', 10, 25, 10, 1, 0, 0, 1, 1, 1, 0),
             ('C31', 'chimie', 10, 30, 10, 1, 0, 0, 1, 1, 0, 0),
+            # C21 séparée (à la fin)
+            ('C21', 'mixte', 0, 40, 0, 0, 0, 0, 0, 0, 0, 1),
         ]
         cursor.executemany('''
             INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
@@ -150,17 +160,17 @@ def get_all_teachers():
     return teachers
 
 def add_material_request(teacher_id, request_date, class_name, material_description, 
-                        horaire=None, quantity=1, selected_materials='', computers_needed=0, notes=''):
+                        horaire=None, quantity=1, selected_materials='', computers_needed=0, notes='', exam=False):
     """Add a new material request"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-         selected_materials, computers_needed, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         selected_materials, computers_needed, notes, exam)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes))
+          selected_materials, computers_needed, notes, exam))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()

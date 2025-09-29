@@ -72,6 +72,7 @@ def api_get_requests():
             'prepared': req['prepared'] if req['prepared'] else False,
             'modified': req['modified'] if req['modified'] else False,
             'room_type': req['room_type'] if req['room_type'] else 'Mixte',
+            'exam': req['exam'] if req['exam'] else False,
             'created_at': req['created_at']
         })
     
@@ -80,11 +81,9 @@ def api_get_requests():
 @app.route('/api/calendar-events', methods=['GET'])
 def api_calendar_events():
     """API endpoint to get calendar events with optional filters"""
-    print("=== API CALENDAR-EVENTS APPELÉE ===")
     teacher_id = request.args.get('teacher_id')
     status_filter = request.args.get('status')
     type_filter = request.args.get('type')
-    print(f"Paramètres: teacher_id={teacher_id}, status_filter={status_filter}, type_filter={type_filter}")
     
     # Get all requests with optional teacher filter
     requests = get_material_requests(teacher_id=teacher_id)
@@ -93,8 +92,8 @@ def api_calendar_events():
     if status_filter:
         filtered_requests = []
         for req in requests:
-            prepared = req.get('prepared', False)
-            modified = req.get('modified', False)
+            prepared = req['prepared'] if req['prepared'] else False
+            modified = req['modified'] if req['modified'] else False
             
             if status_filter == 'prepared' and prepared:
                 filtered_requests.append(req)
@@ -108,8 +107,8 @@ def api_calendar_events():
     if type_filter:
         filtered_requests = []
         for req in requests:
-            selected_materials = req.get('selected_materials', '')
-            material_description = req.get('material_description', '')
+            selected_materials = req['selected_materials'] if req['selected_materials'] else ''
+            material_description = req['material_description'] if req['material_description'] else ''
             
             if type_filter == 'absent' and selected_materials == 'Absent':
                 filtered_requests.append(req)
@@ -124,33 +123,20 @@ def api_calendar_events():
         # Choose color based on status and type
         bg_color = '#007bff'  # Default blue
         
-        # Debug: afficher les informations de couleur (sqlite3.Row n'a pas .get(), utiliser l'accès direct)
         selected_materials = req['selected_materials'] if req['selected_materials'] else 'None'
         prepared = req['prepared'] if req['prepared'] else False
         modified = req['modified'] if req['modified'] else False
         
-        print(f"DEBUG - Demande {req['id']}: selected_materials='{selected_materials}', prepared={prepared}, modified={modified}")
-        
         if selected_materials == 'Absent':
             bg_color = '#dc3545'  # Red for absent
-            print(f"DEBUG - Couleur ROUGE pour Absent")
         elif selected_materials == 'Pas besoin de matériel':
             bg_color = '#20c997'  # Light green for no material
-            print(f"DEBUG - Couleur VERTE pour Pas besoin de matériel")
+        elif selected_materials == 'Examen':
+            bg_color = '#6f42c1'  # Purple for exam
         elif prepared:
             bg_color = '#28a745'  # Green for prepared
-            print(f"DEBUG - Couleur VERTE pour préparé")
         elif modified:
             bg_color = '#ffc107'  # Yellow for modified
-            print(f"DEBUG - Couleur JAUNE pour modifié")
-        else:
-            print(f"DEBUG - Couleur BLEUE par défaut")
-        
-        print(f"DEBUG - Couleur finale AVANT envoi: {bg_color}")
-        
-        # Vérifier si bg_color a été modifié
-        if bg_color == '#6f42c1':
-            print(f"ERREUR - bg_color a été changé en violet ! Cela ne devrait pas arriver !")
         
         events.append({
             'id': req['id'],
@@ -178,6 +164,9 @@ def api_add_request():
         if not data.get('days_horaires') or not isinstance(data['days_horaires'], list) or len(data['days_horaires']) == 0:
             return jsonify({'error': 'Veuillez ajouter au moins un jour avec des horaires.'}), 400
 
+        # Détecter le mode examen basé sur selected_materials
+        is_exam = data.get('selected_materials', '') == 'Examen'
+        
         # Ajout de chaque demande (jour/horaire)
         request_ids = []
         for dh in data['days_horaires']:
@@ -193,7 +182,8 @@ def api_add_request():
                     quantity=data.get('quantity', 1),
                     selected_materials=data.get('selected_materials', ''),
                     computers_needed=data.get('computers_needed', 0),
-                    notes=data.get('notes', '')
+                    notes=data.get('notes', ''),
+                    exam=is_exam
                 )
                 request_ids.append(request_id)
 
@@ -276,6 +266,7 @@ def api_get_request_by_id(request_id):
         'prepared': request_data['prepared'] if request_data['prepared'] else False,
         'modified': request_data['modified'] if request_data['modified'] else False,
         'room_type': request_data['room_type'] if request_data['room_type'] else 'Mixte',
+        'exam': request_data['exam'] if request_data['exam'] else False,
         'created_at': request_data['created_at']
     }
     
@@ -381,11 +372,12 @@ def api_generate_planning():
         if not raw_rooms:
             return jsonify({'success': False, 'error': 'Aucune salle trouvée dans la base de données'}), 400
         
-        # Generate filename based on date
+        # Generate filename based on date with timestamp to avoid conflicts
         from datetime import datetime
         date_obj = datetime.strptime(date_str, '%Y-%m-%d')
         day_name = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"][date_obj.weekday()]
-        output_filename = f"planning{day_name.upper()}.xlsx"
+        timestamp = datetime.now().strftime('%H%M%S')
+        output_filename = f"planning{day_name.upper()}_{timestamp}.xlsx"
         
         # Import OR-Tools for optimization
         print("Importation des modules...")
@@ -395,7 +387,7 @@ def api_generate_planning():
         from openpyxl.styles import Alignment, PatternFill, Border, Side
         print("openpyxl importé avec succès")
         
-        # Utility functions
+        # Utility function AVANT son utilisation
         def h_to_min(hstr):
             if not hstr:
                 return 540  # 9h00 by default
@@ -403,6 +395,34 @@ def api_generate_planning():
                 h, m = hstr.split('h')
                 return int(h) * 60 + int(m if m else 0)
             return 540
+
+        # Chargement des disponibilités de C21
+        disponibilite_C21 = {}
+        try:
+            import csv
+            disponibilite_path = os.path.join(os.path.dirname(__file__), "disponibilite_C21.csv")
+            print(f"Tentative de chargement du fichier C21: {disponibilite_path}")
+            with open(disponibilite_path, newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    jour_cle = row["jour"]
+                    creneau = {
+                        "debut": h_to_min(row["heure_debut"]),
+                        "fin": h_to_min(row["heure_fin"])
+                    }
+                    
+                    if jour_cle not in disponibilite_C21:
+                        disponibilite_C21[jour_cle] = []
+                    
+                    disponibilite_C21[jour_cle].append(creneau)
+            print(f"Disponibilités C21 chargées avec succès: {disponibilite_C21}")
+        except FileNotFoundError as e:
+            print(f"Fichier disponibilite_C21.csv non trouvé à {disponibilite_path}: {e}")
+            print("C21 sera considérée comme toujours disponible")
+            disponibilite_C21 = {}
+        except Exception as e:
+            print(f"Erreur lors du chargement des disponibilités C21: {e}")
+            disponibilite_C21 = {}
         
         def duree_par_niveau(niveau):
             # Utiliser les noms exacts de l'interface utilisateur
@@ -467,6 +487,13 @@ def api_generate_planning():
                 "examen": room['examen']
             }
         
+        # Réorganiser les salles selon l'ordre voulu: PHYSIQUE + CHIMIE + C21
+        physique_salles = ['C23', 'C25', 'C27', 'C22', 'C24']
+        chimie_salles = ['C32', 'C33', 'C31']
+        c21_salle = ['C21']
+        salle_list = physique_salles + chimie_salles + c21_salle
+        print(f"Ordre final des salles pour OR-Tools: {salle_list}")
+        
         # Convert requests to course format
         cours = []
         for i, req in enumerate(raw_requests):
@@ -482,6 +509,10 @@ def api_generate_planning():
             # Add computers from database
             if req['computers_needed'] and req['computers_needed'] > 0:
                 material_needs["ordinateurs"] = max(material_needs["ordinateurs"], req['computers_needed'])
+            
+            # Use exam field from database if available
+            if req['exam']:
+                material_needs["examen"] = 1
             
             cours.append({
                 "id": f"{req['teacher_name']}_{i}",
@@ -533,7 +564,49 @@ def api_generate_planning():
                 return False
             if besoin["examen"] > salle["examen"]:
                 return False
+            
             return True
+        
+        # Utility functions placées avant leur utilisation
+        def h_to_min_local(hstr):
+            if not hstr:
+                return 540  # 9h00 by default
+            if 'h' in hstr:
+                h, m = hstr.split('h')
+                return int(h) * 60 + int(m if m else 0)
+            return 540
+        
+        def est_C21_disponible(cours, date_obj):
+            """
+            Vérifie si la salle C21 est disponible pour un cours donné à une date donnée
+            """
+            if not disponibilite_C21:  # Si pas de contraintes chargées, toujours disponible
+                print(f"ATTENTION: Pas de contraintes C21 chargées - C21 sera toujours disponible")
+                return True
+                
+            # Déterminer le jour de la semaine (lundi = 0, dimanche = 6)
+            jour_semaine = date_obj.weekday()
+            jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+            jour_nom = jours[jour_semaine]
+            
+            if jour_nom not in disponibilite_C21:
+                print(f"C21 pas disponible le {jour_nom} (pas de créneaux définis)")
+                return False  # C21 n'est pas disponible ce jour-là
+            
+            # Convertir l'heure du cours en minutes
+            cours_debut = h_to_min_local(cours["horaire"])
+            cours_fin = cours_debut + cours["duree"]
+            
+            print(f"Vérification C21 {jour_nom}: cours {cours['horaire']} ({cours_debut}-{cours_fin}min) vs créneaux {disponibilite_C21[jour_nom]}")
+            
+            # Vérifier si le cours s'inscrit dans une plage de disponibilité
+            for creneau in disponibilite_C21[jour_nom]:
+                if cours_debut >= creneau["debut"] and cours_fin <= creneau["fin"]:
+                    print(f"  ✓ C21 DISPONIBLE pour {cours['horaire']} le {jour_nom}")
+                    return True
+            
+            print(f"  ✗ C21 NON DISPONIBLE pour {cours['horaire']} le {jour_nom}")
+            return False
         
         def interval_cours(c):
             start = h_to_min(c["horaire"])
@@ -546,8 +619,13 @@ def api_generate_planning():
         
         for i, c in enumerate(cours):
             poids_salle[i] = {}
-            for s in salles:
-                if compatible(s, c):
+            for s in salle_list:  # Utiliser salle_list au lieu de salles
+                # Vérification de compatibilité standard + vérification spéciale pour C21
+                is_compatible = compatible(s, c)
+                if is_compatible and s == "C21":
+                    is_compatible = est_C21_disponible(c, date_obj)
+                
+                if is_compatible:
                     x[(i,s)] = model.NewBoolVar(f"x_{i}_{s}")
                     
                     # Weight based on room specialization
@@ -562,7 +640,7 @@ def api_generate_planning():
         
         # Constraints: each course needs exactly one room
         for i in range(len(cours)):
-            compatible_rooms = [x[(i,s)] for s in salles if (i,s) in x]
+            compatible_rooms = [x[(i,s)] for s in salle_list if (i,s) in x]
             if compatible_rooms:
                 model.Add(sum(compatible_rooms) == 1)
         
@@ -574,12 +652,51 @@ def api_generate_planning():
                 
                 # Check if courses overlap
                 if not (end1 <= start2 or end2 <= start1):
-                    for s in salles:
+                    for s in salle_list:
                         if (i,s) in x and (j,s) in x:
                             model.Add(x[(i,s)] + x[(j,s)] <= 1)
         
-        # Objective: maximize room specialization
-        model.Maximize(sum(x[(i,s)] * poids_salle[i][s] for (i,s) in x))
+        # ===== OPTIMISATION SALLE UNIQUE PAR ENSEIGNANT (comme dans main.py) =====
+        enseignants = list(set(c["enseignant"] for c in cours))
+        objectif_pref = []
+        
+        # Variables pour salle préférée de chaque enseignant
+        SallePreferee = {}
+        for enseignant in enseignants:
+            SallePreferee[enseignant] = model.NewIntVar(0, len(salle_list)-1, f"SallePref_{enseignant}")
+        
+        # Bonus quand enseignant utilise sa salle préférée
+        for enseignant in enseignants:
+            cours_ens = [i for i,c in enumerate(cours) if c["enseignant"] == enseignant]
+            for i in cours_ens:
+                for s in salle_list:
+                    if (i,s) in x:
+                        same_pref = model.NewBoolVar(f"samepref_{i}_{s}")
+                        model.Add(SallePreferee[enseignant] == salle_list.index(s)).OnlyEnforceIf(same_pref)
+                        model.Add(SallePreferee[enseignant] != salle_list.index(s)).OnlyEnforceIf(same_pref.Not())
+                        objectif_pref.append(same_pref)
+        
+        # Pénalité pour changement de salle pour un même enseignant
+        penalite_changement = []
+        for enseignant in enseignants:
+            cours_ens = [i for i, c in enumerate(cours) if c["enseignant"] == enseignant]
+            for idx1 in range(len(cours_ens)):
+                for idx2 in range(idx1 + 1, len(cours_ens)):
+                    i, j = cours_ens[idx1], cours_ens[idx2]
+                    for s1 in salle_list:
+                        for s2 in salle_list:
+                            if s1 != s2 and (i, s1) in x and (j, s2) in x:
+                                penalite = model.NewBoolVar(f"penalite_{i}_{j}_{s1}_{s2}")
+                                model.AddBoolAnd([x[(i, s1)], x[(j, s2)]]).OnlyEnforceIf(penalite)
+                                model.AddBoolOr([x[(i, s1)].Not(), x[(j, s2)].Not()]).OnlyEnforceIf(penalite.Not())
+                                penalite_changement.append(penalite)
+        
+        # Objective: combiné comme dans main.py
+        model.Maximize(
+            sum(x[(i,s)] * poids_salle[i][s] for (i,s) in x)  # priorité salle spécialisée
+            + sum(objectif_pref)                               # maximiser mêmes salles par enseignant  
+            - 10*sum(penalite_changement)                     # pénaliser les changements de salle
+        )
         
         # Solve
         solver = cp_model.CpSolver()
@@ -606,38 +723,15 @@ def api_generate_planning():
         # Debug: voir les salles disponibles
         print(f"Salles disponibles: {salle_list}")
         
-        # Définition des groupes de salles (adaptées à la base de données)
-        physique_salles = []
-        chimie_salles = []
-        
-        # Grouper les salles selon leur type si possible
-        for salle in salle_list:
-            try:
-                for room in raw_rooms:
-                    if room['name'] == salle:
-                        # Essayer différentes façons d'accéder au type
-                        room_type = None
-                        try:
-                            room_type = room['type']
-                        except (KeyError, TypeError):
-                            try:
-                                room_type = room[1] if len(room) > 1 else None  # Supposer que type est la 2ème colonne
-                            except:
-                                room_type = None
-                        
-                        print(f"Salle {salle}: type = {room_type}")
-                        
-                        if room_type == 'physique':
-                            physique_salles.append(salle)
-                        elif room_type == 'chimie':
-                            chimie_salles.append(salle)
-                        break
-            except Exception as e:
-                print(f"Erreur lors du traitement de la salle {salle}: {e}")
+        # Les groupes de salles sont déjà définis plus haut
         
         print(f"Salles physique: {physique_salles}")
         print(f"Salles chimie: {chimie_salles}")
-
+        print(f"Ordre final des salles: {salle_list}")
+        
+        # Définir c21_salle pour le calcul des colonnes
+        c21_salle = ["C21"]
+        
         # En-tête : 1ère colonne = horaire, puis salles
         ws.cell(row=1, column=1, value=day_name.capitalize())
         ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
@@ -647,12 +741,14 @@ def api_generate_planning():
         bold = Font(bold=True, size=36)
         encadre = Border(left=Side(style='thick'), right=Side(style='thick'), top=Side(style='thick'), bottom=Side(style='thick'))
 
-        # Encadrés Physique et Chimie
+        # Encadrés Physique, Chimie et C21
         col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
         col_chimie = [2 + salle_list.index(s) for s in chimie_salles if s in salle_list]
+        col_c21 = [2 + salle_list.index(s) for s in c21_salle if s in salle_list]
         
         print(f"Colonnes physique: {col_physique}")
         print(f"Colonnes chimie: {col_chimie}")
+        print(f"Colonnes C21: {col_c21}")
         
         if col_physique and len(col_physique) > 0:
             col_physique.sort()  # S'assurer que les colonnes sont triées
@@ -674,6 +770,14 @@ def api_generate_planning():
                     cell_chim.alignment = Alignment(horizontal="center", vertical="center")
                     cell_chim.border = encadre
 
+        # C21 séparée
+        if col_c21 and len(col_c21) > 0:
+            for col in col_c21:
+                cell_c21 = ws.cell(row=1, column=col, value="C21")
+                cell_c21.font = Font(bold=True, size=36)
+                cell_c21.alignment = Alignment(horizontal="center", vertical="center")
+                cell_c21.border = encadre
+
         # Salles (ligne 2)
         for idx_s, s in enumerate(salle_list):
             col_letter = ws.cell(row=2, column=2+idx_s).column_letter
@@ -683,8 +787,9 @@ def api_generate_planning():
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = encadre
 
-        # Horaire (ligne 2)
-        ws.cell(row=2, column=1, value=date_str)
+        # Horaire (ligne 2) - Format jj/mm
+        date_display = date_obj.strftime('%d/%m')
+        ws.cell(row=2, column=1, value=date_display)
         ws.cell(row=2, column=1).font = Font(bold=True, size=16)
         ws.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws.cell(row=2, column=1).border = encadre
@@ -694,7 +799,7 @@ def api_generate_planning():
         
         # Fill assignments from OR-Tools solution
         for i, c in enumerate(cours):
-            for s in salles:
+            for s in salle_list:
                 if (i, s) in x and solver.Value(x[(i, s)]) == 1:
                     start_time, end_time = interval_cours(c)
                     idx_start = next((idx for idx, h in enumerate(horaires) if h >= start_time), 0)
@@ -804,7 +909,7 @@ def api_generate_planning():
         cell_matrix2 = [[{"content": "", "merge": False, "merge_len": 1, "matiere": ""} for _ in salle_list] for _ in horaires]
         
         for i, c in enumerate(cours):
-            for s in salles:
+            for s in salle_list:
                 if (i, s) in x and solver.Value(x[(i, s)]) == 1:
                     start_time, end_time = interval_cours(c)
                     idx_start = next((idx for idx, h in enumerate(horaires) if h >= start_time), 0)

@@ -81,10 +81,10 @@
                         <ul id="daysList" class="list-group mb-2"></ul>
                     </div>
 
-                    <!-- Cases Absent et Pas besoin de matériel -->
+                    <!-- Cases Absent, Pas besoin de matériel et Examen -->
                     <div class="mb-3">
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="absent" name="absent" value="true">
                                     <label class="form-check-label fw-bold" for="absent">
@@ -92,7 +92,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="no_material" name="no_material" value="true">
                                     <label class="form-check-label fw-bold" for="no_material">
@@ -100,8 +100,16 @@
                                     </label>
                                 </div>
                             </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="exam_mode" name="exam_mode" value="true">
+                                    <label class="form-check-label fw-bold" for="exam_mode">
+                                        📝 Examen (surveillance d'examen)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <small class="text-muted">Si absent ou pas besoin de matériel, seule la sélection du niveau sera nécessaire.</small>
+                        <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
                     </div>
                     
                     <div class="row" id="main-content">
@@ -186,12 +194,6 @@
                                     <input class="form-check-input" type="checkbox" id="imprimante" name="materials" value="Imprimante">
                                     <label class="form-check-label" for="imprimante">
                                         Imprimante
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="examen" name="materials" value="Examen">
-                                    <label class="form-check-label" for="examen">
-                                        Examen
                                     </label>
                                 </div>
                             </div>
@@ -294,9 +296,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Gestion des cases "Absent" et "Pas besoin de matériel"
+    // Gestion des cases "Absent", "Pas besoin de matériel" et "Examen"
     const absentCheckbox = document.getElementById('absent');
     const noMaterialCheckbox = document.getElementById('no_material');
+    const examModeCheckbox = document.getElementById('exam_mode');
     const sectionsToHide = [
         'material-section',
         'computers-section', 
@@ -308,18 +311,25 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleSpecialModes() {
         const isAbsent = absentCheckbox.checked;
         const isNoMaterial = noMaterialCheckbox.checked;
+        const isExamMode = examModeCheckbox.checked;
         
         // S'assurer qu'une seule option est cochée à la fois
-        if (isAbsent && isNoMaterial) {
-            // Si les deux sont cochées, décocher l'autre selon qui a été cliqué en dernier
+        const checkedCount = [isAbsent, isNoMaterial, isExamMode].filter(Boolean).length;
+        if (checkedCount > 1) {
+            // Si plusieurs sont cochées, décocher les autres selon qui a été cliqué en dernier
             if (document.activeElement === absentCheckbox) {
                 noMaterialCheckbox.checked = false;
-            } else {
+                examModeCheckbox.checked = false;
+            } else if (document.activeElement === noMaterialCheckbox) {
                 absentCheckbox.checked = false;
+                examModeCheckbox.checked = false;
+            } else if (document.activeElement === examModeCheckbox) {
+                absentCheckbox.checked = false;
+                noMaterialCheckbox.checked = false;
             }
         }
         
-        const shouldHideSections = absentCheckbox.checked || noMaterialCheckbox.checked;
+        const shouldHideSections = absentCheckbox.checked || noMaterialCheckbox.checked || examModeCheckbox.checked;
         
         sectionsToHide.forEach(sectionId => {
             const section = document.getElementById(sectionId);
@@ -350,7 +360,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const alertDiv = document.createElement('div');
             alertDiv.id = 'special-mode-info';
             alertDiv.className = 'alert alert-info mt-2';
-            const modeText = absentCheckbox.checked ? 'absence' : 'cours sans matériel';
+            let modeText = 'mode spécial';
+            if (absentCheckbox.checked) modeText = 'absence';
+            else if (noMaterialCheckbox.checked) modeText = 'cours sans matériel';
+            else if (examModeCheckbox.checked) modeText = 'examen';
             alertDiv.innerHTML = `<i class="fas fa-info-circle"></i> Mode ${modeText} activé : seuls l'enseignant et le niveau sont requis.`;
             absentCheckbox.closest('.mb-3').appendChild(alertDiv);
         } else if (!shouldHideSections && infoMessage) {
@@ -360,6 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     absentCheckbox.addEventListener('change', toggleSpecialModes);
     noMaterialCheckbox.addEventListener('change', toggleSpecialModes);
+    examModeCheckbox.addEventListener('change', toggleSpecialModes);
     
     // Initialiser l'état au chargement
     toggleSpecialModes();
@@ -441,6 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Vérification des modes spéciaux
         const isAbsent = document.getElementById('absent').checked;
         const isNoMaterial = document.getElementById('no_material').checked;
+        const isExamMode = document.getElementById('exam_mode').checked;
         
         if (isAbsent) {
             // En mode absent, on met des valeurs par défaut
@@ -454,6 +469,13 @@ document.addEventListener('DOMContentLoaded', function() {
             data.selected_materials = 'Pas besoin de matériel';
             data.computers_needed = '0';
             data.material_description = 'Cours théorique sans matériel';
+            data.notes = '';
+            data.quantity = '1';
+        } else if (isExamMode) {
+            // En mode examen
+            data.selected_materials = 'Examen';
+            data.computers_needed = '0';
+            data.material_description = 'Surveillance d\'examen';
             data.notes = '';
             data.quantity = '1';
         } else {
