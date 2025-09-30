@@ -1159,6 +1159,6 @@ def api_generate_planning():
 
 if __name__ == '__main__':
     import os
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     debug = True  # Activé pour debug temporaire
-    app.run(debug=debug, host='0.0.0.0', port=port, use_reloader=False)
+    app.run(debug=debug, host='127.0.0.1', port=port, use_reloader=False)

@@ -2,39 +2,132 @@ import sqlite3
 import os
 from datetime import datetime
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
 DATABASE_PATH = 'material_requests.db'
+
+def get_db_connection():
+    """Get database connection - PostgreSQL in production, SQLite locally"""
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url and POSTGRES_AVAILABLE:
+        # Production: PostgreSQL sur Railway
+        try:
+            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+            return conn, 'postgresql'
+        except Exception as e:
+            print(f"Erreur PostgreSQL: {e}")
+            # Fallback vers SQLite si PostgreSQL échoue
+            pass
+    
+    # Local: SQLite
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn, 'sqlite'
 
 def init_database():
     """Initialize the database with required tables"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
-    # Create teachers table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS teachers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Create material requests table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS material_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            teacher_id INTEGER NOT NULL,
-            request_date DATE NOT NULL,
-            horaire TEXT,
-            class_name TEXT NOT NULL,
-            material_description TEXT NOT NULL,
-            quantity INTEGER DEFAULT 1,
-            selected_materials TEXT,
-            computers_needed INTEGER DEFAULT 0,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (teacher_id) REFERENCES teachers (id)
-        )
-    ''')
+    if db_type == 'postgresql':
+        # PostgreSQL schemas
+        # Create teachers table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS teachers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create material requests table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS material_requests (
+                id SERIAL PRIMARY KEY,
+                teacher_id INTEGER NOT NULL,
+                request_date DATE NOT NULL,
+                horaire VARCHAR(10),
+                class_name VARCHAR(100) NOT NULL,
+                material_description TEXT NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                selected_materials TEXT,
+                computers_needed INTEGER DEFAULT 0,
+                notes TEXT,
+                prepared BOOLEAN DEFAULT FALSE,
+                modified BOOLEAN DEFAULT FALSE,
+                group_count INTEGER,
+                material_prof TEXT,
+                room_type VARCHAR(20) DEFAULT 'Mixte',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+            )
+        ''')
+        
+        # Create rooms table for planning (PostgreSQL)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS rooms (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) NOT NULL UNIQUE,
+                type VARCHAR(20) NOT NULL,
+                ordinateurs INTEGER DEFAULT 0,
+                chaises INTEGER DEFAULT 0,
+                eviers INTEGER DEFAULT 0,
+                hotte INTEGER DEFAULT 0,
+                bancs_optiques INTEGER DEFAULT 0,
+                oscilloscopes INTEGER DEFAULT 0,
+                becs_electriques INTEGER DEFAULT 0,
+                support_filtration INTEGER DEFAULT 0,
+                imprimante INTEGER DEFAULT 0,
+                examen INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create student numbers table (PostgreSQL)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS student_numbers (
+                id SERIAL PRIMARY KEY,
+                teacher_name VARCHAR(100) NOT NULL UNIQUE,
+                student_count INTEGER NOT NULL DEFAULT 20,
+                level VARCHAR(20) DEFAULT '2nde',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+    else:
+        # SQLite schemas (code existant)
+        # Create teachers table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS teachers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create material requests table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS material_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                request_date DATE NOT NULL,
+                horaire TEXT,
+                class_name TEXT NOT NULL,
+                material_description TEXT NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                selected_materials TEXT,
+                computers_needed INTEGER DEFAULT 0,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+            )
+        ''')
     # Ajout du champ horaire si absent
     try:
         cursor.execute('ALTER TABLE material_requests ADD COLUMN horaire TEXT')
@@ -135,11 +228,16 @@ def init_database():
             # C21 séparée (à la fin)
             ('C21', 'mixte', 0, 40, 0, 0, 0, 0, 0, 0, 0, 1),
         ]
-        cursor.executemany('''
+        
+        # Utilise les bons placeholders selon la base de données
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        placeholders = ', '.join([placeholder] * 12)
+        
+        cursor.executemany(f'''
             INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
                              bancs_optiques, oscilloscopes, becs_electriques, 
                              support_filtration, imprimante, examen) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({placeholders})
         ''', sample_rooms)
     
     # Insert sample student numbers if table is empty
@@ -158,9 +256,10 @@ def init_database():
             ('Richard', 29, '2nde'),
             ('Vila', 30, '2nde'),
         ]
-        cursor.executemany('''
+        student_placeholders = ', '.join([placeholder] * 3)
+        cursor.executemany(f'''
             INSERT INTO student_numbers (teacher_name, student_count, level) 
-            VALUES (?, ?, ?)
+            VALUES ({student_placeholders})
         ''', sample_students)
     
     # Insert sample teachers if table is empty
@@ -185,21 +284,19 @@ def init_database():
             ('Vernudachi',),
             ('Vila Gisbert',),
         ]
-        cursor.executemany('INSERT INTO teachers (name) VALUES (?)', sample_teachers)
+        cursor.executemany(f'INSERT INTO teachers (name) VALUES ({placeholder})', sample_teachers)
     
     conn.commit()
     conn.close()
 
-def get_db_connection():
-    """Get a database connection"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row  # Enable column access by name
-    return conn
+# Ancienne fonction supprimée - remplacée par la nouvelle get_db_connection() qui supporte PostgreSQL
 
 def get_all_teachers():
     """Get all teachers from the database"""
-    conn = get_db_connection()
-    teachers = conn.execute('SELECT * FROM teachers ORDER BY name').fetchall()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM teachers ORDER BY name')
+    teachers = cursor.fetchall()
     conn.close()
     return teachers
 
