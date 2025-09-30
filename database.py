@@ -286,6 +286,7 @@ def init_database():
             ('Lefranc',),
             ('Martrou',),
             ('Masnou',),
+            ('Mazy',),
             ('Moreau',),
             ('Paupy',),
             ('Potier',),
@@ -313,13 +314,17 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                         notes='', exam=False, group_count=1, material_prof=''):
     """Add a new material request"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    placeholders = ', '.join([placeholder] * 12)
+    
+    cursor.execute(f'''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
          selected_materials, computers_needed, notes, exam, group_count, material_prof)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, exam, group_count, material_prof))
     conn.commit()
@@ -329,7 +334,11 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
 
 def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     """Get material requests with optional filters"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
     query = '''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
@@ -339,45 +348,53 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     params = []
     
     if start_date:
-        query += ' AND mr.request_date >= ?'
+        query += f' AND mr.request_date >= {placeholder}'
         params.append(start_date)
     
     if end_date:
-        query += ' AND mr.request_date <= ?'
+        query += f' AND mr.request_date <= {placeholder}'
         params.append(end_date)
     
     if teacher_id:
-        query += ' AND mr.teacher_id = ?'
+        query += f' AND mr.teacher_id = {placeholder}'
         params.append(teacher_id)
     
     query += ' ORDER BY mr.request_date, mr.created_at'
     
-    requests = conn.execute(query, params).fetchall()
+    cursor.execute(query, params)
+    requests = cursor.fetchall()
     conn.close()
     return requests
 
 def get_requests_for_calendar():
     """Get all requests formatted for calendar display"""
-    conn = get_db_connection()
-    requests = conn.execute('''
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
         SELECT mr.id, mr.request_date, mr.class_name, mr.material_description, 
                mr.quantity, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         ORDER BY mr.request_date
-    ''').fetchall()
+    ''')
+    requests = cursor.fetchall()
     conn.close()
     return requests
 
 def get_material_request_by_id(request_id):
     """Get a specific material request by ID"""
-    conn = get_db_connection()
-    request = conn.execute('''
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    cursor.execute(f'''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
-        WHERE mr.id = ?
-    ''', (request_id,)).fetchone()
+        WHERE mr.id = {placeholder}
+    ''', (request_id,))
+    request = cursor.fetchone()
     conn.close()
     return request
 
@@ -385,14 +402,21 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
                            horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                            notes='', group_count=1, material_prof=''):
     """Update an existing material request and mark it as modified"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    placeholders = ', '.join([placeholder] * 12)
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    
+    cursor.execute(f'''
         UPDATE material_requests 
-        SET teacher_id=?, request_date=?, horaire=?, class_name=?, material_description=?, 
-            quantity=?, selected_materials=?, computers_needed=?, notes=?, 
-            group_count=?, material_prof=?, prepared=FALSE, modified=TRUE
-        WHERE id=?
+        SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
+            class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
+            selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
+            group_count={placeholder}, material_prof={placeholder}, prepared={false_val}, modified={true_val}
+        WHERE id={placeholder}
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, group_count, material_prof, request_id))
     conn.commit()
@@ -401,11 +425,16 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
 
 def toggle_prepared_status(request_id):
     """Toggle the prepared status of a request"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+    
     # Get current status
-    current = conn.execute('SELECT prepared FROM material_requests WHERE id = ?', (request_id,)).fetchone()
+    cursor.execute(f'SELECT prepared FROM material_requests WHERE id = {placeholder}', (request_id,))
+    current = cursor.fetchone()
     if not current:
         conn.close()
         return False
@@ -414,9 +443,9 @@ def toggle_prepared_status(request_id):
     # When marking as prepared, remove modified flag
     # When unmarking prepared, keep modified flag as is
     if new_prepared:
-        cursor.execute('UPDATE material_requests SET prepared=TRUE, modified=FALSE WHERE id=?', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared={true_val}, modified={false_val} WHERE id={placeholder}', (request_id,))
     else:
-        cursor.execute('UPDATE material_requests SET prepared=FALSE WHERE id=?', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared={false_val} WHERE id={placeholder}', (request_id,))
     
     conn.commit()
     conn.close()
@@ -424,9 +453,11 @@ def toggle_prepared_status(request_id):
 
 def delete_material_request(request_id):
     """Delete a material request"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM material_requests WHERE id = ?', (request_id,))
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM material_requests WHERE id = {placeholder}', (request_id,))
     conn.commit()
     deleted = cursor.rowcount > 0
     conn.close()
@@ -434,9 +465,11 @@ def delete_material_request(request_id):
 
 def update_room_type(request_id, room_type):
     """Update the room type of a material request"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE material_requests SET room_type = ? WHERE id = ?', (room_type, request_id))
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'UPDATE material_requests SET room_type = {placeholder} WHERE id = {placeholder}', (room_type, request_id))
     conn.commit()
     updated = cursor.rowcount > 0
     conn.close()
@@ -444,21 +477,30 @@ def update_room_type(request_id, room_type):
 
 def get_all_rooms():
     """Get all rooms from the database"""
-    conn = get_db_connection()
-    rooms = conn.execute('SELECT * FROM rooms ORDER BY name').fetchall()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM rooms ORDER BY name')
+    rooms = cursor.fetchall()
     conn.close()
     return rooms
 
 def update_room(room_id, room_data):
     """Update a room in the database"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    placeholders = ', '.join([placeholder] * 13)
+    
     try:
-        conn.execute('''
+        cursor.execute(f'''
             UPDATE rooms SET 
-                name = ?, type = ?, ordinateurs = ?, chaises = ?, eviers = ?, 
-                hotte = ?, bancs_optiques = ?, oscilloscopes = ?, becs_electriques = ?, 
-                support_filtration = ?, imprimante = ?, examen = ?
-            WHERE id = ?
+                name = {placeholder}, type = {placeholder}, ordinateurs = {placeholder}, 
+                chaises = {placeholder}, eviers = {placeholder}, hotte = {placeholder}, 
+                bancs_optiques = {placeholder}, oscilloscopes = {placeholder}, 
+                becs_electriques = {placeholder}, support_filtration = {placeholder}, 
+                imprimante = {placeholder}, examen = {placeholder}
+            WHERE id = {placeholder}
         ''', (
             room_data.get('name'),
             room_data.get('type'),
@@ -479,18 +521,20 @@ def update_room(room_id, room_data):
         return True
     except Exception as e:
         conn.close()
-        print(f"Erreur lors de la mise à jour de la salle: {e}")
+        logger.error(f"Erreur lors de la mise à jour de la salle: {e}")
         return False
 
 def import_rooms_from_csv_content(csv_content):
     """Import rooms from CSV content, replacing existing rooms"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
     try:
         import csv as csv_module
         import io
         
         # Clear existing rooms
-        conn.execute('DELETE FROM rooms')
+        cursor.execute('DELETE FROM rooms')
         
         # Parse CSV content
         csv_reader = csv_module.reader(io.StringIO(csv_content))
@@ -517,37 +561,47 @@ def import_rooms_from_csv_content(csv_content):
                 int(row[11])  # examen
             ))
         
-        # Insert new rooms
-        conn.executemany('''
-            INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
-                             bancs_optiques, oscilloscopes, becs_electriques, 
-                             support_filtration, imprimante, examen) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', rooms_data)
+        # Insert new rooms with proper placeholders
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        placeholders = ', '.join([placeholder] * 12)
+        
+        for room_data in rooms_data:
+            cursor.execute(f'''
+                INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
+                                 bancs_optiques, oscilloscopes, becs_electriques, 
+                                 support_filtration, imprimante, examen) 
+                VALUES ({placeholders})
+            ''', room_data)
         
         conn.commit()
         conn.close()
         return True
     except Exception as e:
         conn.close()
-        print(f"Erreur lors de l'import CSV: {e}")
+        logger.error(f"Erreur lors de l'import CSV: {e}")
         raise e
 
 def get_all_student_numbers():
     """Get all student numbers from the database"""
-    conn = get_db_connection()
-    students = conn.execute('SELECT * FROM student_numbers ORDER BY teacher_name').fetchall()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM student_numbers ORDER BY teacher_name')
+    students = cursor.fetchall()
     conn.close()
     return students
 
 def update_student_number(student_id, student_data):
     """Update student number in the database"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
     try:
-        conn.execute('''
+        cursor.execute(f'''
             UPDATE student_numbers SET 
-                teacher_name = ?, student_count = ?, level = ?
-            WHERE id = ?
+                teacher_name = {placeholder}, student_count = {placeholder}, level = {placeholder}
+            WHERE id = {placeholder}
         ''', (
             student_data.get('teacher_name'),
             student_data.get('student_count', 20),
@@ -559,31 +613,40 @@ def update_student_number(student_id, student_data):
         return True
     except Exception as e:
         conn.close()
-        print(f"Erreur lors de la mise à jour de l'effectif: {e}")
+        logger.error(f"Erreur lors de la mise à jour de l'effectif: {e}")
         return False
 
 def add_student_number(teacher_name, student_count, level='2nde'):
     """Add a new student number entry"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    placeholders = ', '.join([placeholder] * 3)
+    
     try:
-        conn.execute('''
+        cursor.execute(f'''
             INSERT INTO student_numbers (teacher_name, student_count, level) 
-            VALUES (?, ?, ?)
+            VALUES ({placeholders})
         ''', (teacher_name, student_count, level))
         conn.commit()
-        student_id = conn.lastrowid
+        student_id = cursor.lastrowid
         conn.close()
         return student_id
     except Exception as e:
         conn.close()
-        print(f"Erreur lors de l'ajout de l'effectif: {e}")
+        logger.error(f"Erreur lors de l'ajout de l'effectif: {e}")
         return None
 
 def delete_student_number(student_id):
     """Delete a student number entry"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
     try:
-        conn.execute('DELETE FROM student_numbers WHERE id = ?', (student_id,))
+        cursor.execute(f'DELETE FROM student_numbers WHERE id = {placeholder}', (student_id,))
         conn.commit()
         conn.close()
         return True
@@ -594,25 +657,35 @@ def delete_student_number(student_id):
 
 def get_student_count_for_teacher(teacher_name, level):
     """Get student count for a specific teacher and level"""
-    conn = get_db_connection()
-    result = conn.execute('''
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    cursor.execute(f'''
         SELECT student_count FROM student_numbers 
-        WHERE teacher_name = ? AND level = ?
-    ''', (teacher_name, level)).fetchone()
+        WHERE teacher_name = {placeholder} AND level = {placeholder}
+    ''', (teacher_name, level))
+    result = cursor.fetchone()
     conn.close()
     return result['student_count'] if result else 20  # Default fallback
 
 def get_planning_data(date_str):
     """Get all material requests for planning generation on a specific date"""
-    conn = get_db_connection()
-    requests = conn.execute('''
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    cursor.execute(f'''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
-        WHERE mr.request_date = ?
+        WHERE mr.request_date = {placeholder}
         AND mr.selected_materials != 'Enseignant absent'
         ORDER BY mr.horaire, mr.created_at
-    ''', (date_str,)).fetchall()
+    ''', (date_str,))
+    requests = cursor.fetchall()
     conn.close()
     return requests
 
