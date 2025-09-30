@@ -1,13 +1,19 @@
 import sqlite3
 import os
+import logging
 from datetime import datetime
+
+# Configuration des logs
+logger = logging.getLogger(__name__)
 
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
     POSTGRES_AVAILABLE = True
+    logger.info("PostgreSQL disponible")
 except ImportError:
     POSTGRES_AVAILABLE = False
+    logger.info("PostgreSQL non disponible, utilisation de SQLite")
 
 DATABASE_PATH = 'material_requests.db'
 
@@ -18,14 +24,17 @@ def get_db_connection():
     if database_url and POSTGRES_AVAILABLE:
         # Production: PostgreSQL sur Railway
         try:
+            logger.info(f"Tentative de connexion PostgreSQL: {database_url[:50]}...")
             conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+            logger.info("Connexion PostgreSQL réussie")
             return conn, 'postgresql'
         except Exception as e:
-            print(f"Erreur PostgreSQL: {e}")
+            logger.error(f"Erreur PostgreSQL: {e}")
             # Fallback vers SQLite si PostgreSQL échoue
             pass
     
     # Local: SQLite
+    logger.info("Utilisation de SQLite")
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn, 'sqlite'
