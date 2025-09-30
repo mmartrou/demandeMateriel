@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, m
 import csv
 import io
 import os
+import logging
 from datetime import datetime, timedelta
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
@@ -10,10 +11,20 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_student_numbers, update_student_number, add_student_number, 
                       delete_student_number, get_student_count_for_teacher)
 
+# Configuration des logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
 # Initialisation de la base de données au démarrage
-init_database()
+try:
+    logger.info("Initialisation de la base de données...")
+    init_database()
+    logger.info("Base de données initialisée avec succès")
+except Exception as e:
+    logger.error(f"Erreur lors de l'initialisation de la base de données: {e}")
+    # Ne pas arrêter l'application, continuer avec SQLite en fallback
 
 
 # Route Générateur de Planning
@@ -1160,5 +1171,7 @@ def api_generate_planning():
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 8080))
-    debug = True  # Activé pour debug temporaire
-    app.run(debug=debug, host='127.0.0.1', port=port, use_reloader=False)
+    # Production mode pour Railway
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    logger.info(f"Démarrage de l'application sur le port {port}, debug={debug}")
+    app.run(debug=debug, host='0.0.0.0', port=port, use_reloader=False)
