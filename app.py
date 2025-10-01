@@ -83,10 +83,10 @@ def api_get_requests():
             'selected_materials': req['selected_materials'] if req['selected_materials'] else '',
             'computers_needed': req['computers_needed'] if req['computers_needed'] else 0,
             'notes': req['notes'],
-            'prepared': req['prepared'] if req['prepared'] else False,
-            'modified': req['modified'] if req['modified'] else False,
+            'prepared': bool(req['prepared']),
+            'modified': bool(req['modified']),
             'room_type': req['room_type'] if req['room_type'] else 'Mixte',
-            'exam': req['exam'] if req['exam'] else False,
+            'exam': bool(req['exam']),
             'created_at': req['created_at']
         })
     

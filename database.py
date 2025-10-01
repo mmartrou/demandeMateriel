@@ -2,6 +2,7 @@ import sqlite3
 import os
 import logging
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 
 # Configuration des logs
 logger = logging.getLogger(__name__)
@@ -19,19 +20,65 @@ DATABASE_PATH = 'material_requests.db'
 
 def get_db_connection():
     """Get database connection - PostgreSQL in production, SQLite locally"""
+    
+    # Option 1: Variables PostgreSQL séparées (plus fiable)
+    pg_host = os.getenv('PGHOST')
+    pg_user = os.getenv('PGUSER') 
+    pg_password = os.getenv('PGPASSWORD')
+    pg_database = os.getenv('PGDATABASE')
+    pg_port = os.getenv('PGPORT', '5432')
+    
+    # Option 2: URL complète (fallback)
     database_url = os.getenv('DATABASE_URL')
     
-    if database_url and POSTGRES_AVAILABLE:
+    if POSTGRES_AVAILABLE and (pg_host or database_url):
         # Production: PostgreSQL sur Railway
-        try:
-            logger.info(f"Tentative de connexion PostgreSQL: {database_url[:50]}...")
-            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
-            logger.info("Connexion PostgreSQL réussie")
-            return conn, 'postgresql'
-        except Exception as e:
-            logger.error(f"Erreur PostgreSQL: {e}")
-            # Fallback vers SQLite si PostgreSQL échoue
-            pass
+        
+        # Approche 1: Variables séparées (plus fiable, évite les problèmes d'encodage)
+        if pg_host and pg_user and pg_password and pg_database:
+            try:
+                logger.info(f"Connexion PostgreSQL avec variables séparées: {pg_host}:{pg_port}")
+                conn = psycopg2.connect(
+                    host=pg_host,
+                    port=pg_port,
+                    user=pg_user,
+                    password=pg_password,
+                    database=pg_database,
+                    cursor_factory=RealDictCursor,
+                    connect_timeout=10,
+                    client_encoding='utf8'
+                )
+                logger.info("✅ Connexion PostgreSQL (variables séparées) réussie")
+                return conn, 'postgresql'
+                
+            except Exception as e:
+                logger.error(f"Erreur PostgreSQL (variables séparées): {e}")
+                
+        # Approche 2: URL complète (fallback)
+        elif database_url:
+            try:
+                logger.info("Tentative avec URL PostgreSQL...")
+                
+                # Essayer l'URL directement d'abord
+                try:
+                    logger.info(f"Connexion directe: {database_url[:50]}...")
+                    conn = psycopg2.connect(
+                        database_url, 
+                        cursor_factory=RealDictCursor,
+                        connect_timeout=10,
+                        client_encoding='utf8'
+                    )
+                    logger.info("✅ Connexion PostgreSQL (URL) réussie")
+                    return conn, 'postgresql'
+                    
+                except UnicodeDecodeError as ude:
+                    logger.warning(f"Erreur d'encodage URL: {ude}")
+                    logger.info("Les variables séparées évitent ce problème !")
+                    
+            except Exception as e:
+                logger.error(f"Erreur PostgreSQL (URL): {e}")
+        
+        logger.info("Fallback vers SQLite après échec PostgreSQL")
     
     # Local: SQLite
     logger.info("Utilisation de SQLite")
