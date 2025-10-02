@@ -304,6 +304,7 @@ def api_get_request_by_id(request_id):
         'prepared': request_data['prepared'] if request_data['prepared'] else False,
         'modified': request_data['modified'] if request_data['modified'] else False,
         'room_type': request_data['room_type'] if request_data['room_type'] else 'Mixte',
+        'request_name': request_data['request_name'] if request_data['request_name'] else '',
         'created_at': request_data['created_at']
     }
     
@@ -331,7 +332,8 @@ def api_update_request(request_id):
             data.get('quantity', 1),
             data.get('selected_materials', ''),
             data.get('computers_needed', 0),
-            data.get('notes', '')
+            data.get('notes', ''),
+            request_name=data.get('request_name', '')
         )
         
         if success:
