@@ -54,6 +54,18 @@
                     </div>
                 </div>
                 
+                <!-- View Mode Toggle -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="groupByRequestName" onchange="toggleViewMode()">
+                            <label class="form-check-label fw-bold" for="groupByRequestName">
+                                🏷️ Grouper par nom de demande (voir tous les horaires d'une même demande)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Loading indicator -->
                 <div id="loadingIndicator" class="text-center d-none">
                     <div class="spinner-border text-primary" role="status">
@@ -68,18 +80,18 @@
                             <tr>
                                 <th>ID</th>
                                 <th>Enseignant</th>
-                                <th>Date</th>
-                                <th>Horaire</th>
-                                <th>Niveau</th>
-                                <th>Groupes</th>
-                                <th>Matériel sélectionné</th>
-                                <th>Ordinateurs</th>
-                                <th>Description</th>
-                                <th>Matériel Prof</th>
-                                <th>Notes</th>
-                                <th>Statut</th>
-                                <th>Actions</th>
-                                <th>Créé le</th>
+                                <th>🏷️ Nom de demande</th>
+                                <th>📅 Date</th>
+                                <th>⏰ Horaire</th>
+                                <th>🎓 Niveau</th>
+                                <th>👥 Groupes</th>
+                                <th>💻 Ordinateurs</th>
+                                <th>📋 Description</th>
+                                <th>🔬 Matériel Prof</th>
+                                <th>📝 Notes</th>
+                                <th>📊 Statut</th>
+                                <th>⚙️ Actions</th>
+                                <th>📅 Créé le</th>
                             </tr>
                         </thead>
                         <tbody id="requestsTableBody">
@@ -111,7 +123,7 @@
                     <input type="hidden" id="editRequestId">
                     
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label for="editTeacher" class="form-label">👨‍🏫 Enseignant *</label>
                             <select class="form-select" id="editTeacher" required>
                                 {% for teacher in teachers %}
@@ -119,7 +131,12 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <label for="editRequestName" class="form-label">🏷️ Nom de la demande</label>
+                            <input type="text" class="form-control" id="editRequestName" placeholder="Ex: TP Distillation, Contrôle Atomes...">
+                            <div class="form-text">Optionnel - Pour regrouper les demandes similaires</div>
+                        </div>
+                        <div class="col-md-4">
                             <label for="editDate" class="form-label">📅 Date *</label>
                             <input type="date" class="form-control" id="editDate" required>
                         </div>
@@ -225,11 +242,6 @@
                         </label>
                         <textarea class="form-control" id="editMaterialDescription" rows="4" 
                                   placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
-                    </div>
-                    
-                    <div class="mb-3" id="editSelectedMaterialsSection">
-                        <label for="editSelectedMaterials" class="form-label">✅ Matériel sélectionné</label>
-                        <textarea class="form-control" id="editSelectedMaterials" rows="2"></textarea>
                     </div>
                     
                     <div class="mb-3" id="editMaterialProfSection">
@@ -361,11 +373,11 @@ function loadRequests() {
                 row.innerHTML = `
                     <td>${request.id}</td>
                     <td><div class="fw-bold">${request.teacher_name}</div></td>
+                    <td><span class="badge bg-primary">${request.request_name || '<em class="text-muted">Sans nom</em>'}</span></td>
                     <td>${formatDate(request.request_date)}</td>
                     <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
                     <td><span class="badge bg-info">${request.class_name}</span></td>
                     <td><span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span></td>
-                    <td><small class="text-muted" style="white-space: pre-wrap;">${request.selected_materials || '<em>Aucun</em>'}</small></td>
                     <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>
                     <td>${request.material_description}</td>
                     <td><small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small></td>
@@ -451,6 +463,7 @@ function editRequest(requestId) {
             // Populate form
             document.getElementById('editRequestId').value = request.id;
             document.getElementById('editTeacher').value = request.teacher_id;
+            document.getElementById('editRequestName').value = request.request_name || '';
             document.getElementById('editDate').value = request.request_date;
             document.getElementById('editHoraire').value = request.horaire || '';
             document.getElementById('editClassName').value = request.class_name;
@@ -458,21 +471,26 @@ function editRequest(requestId) {
             document.getElementById('editNoMaterial').checked = isNoMaterial;
             document.getElementById('editExamMode').checked = isExamMode;
             
-            if (isAbsent || isNoMaterial || isExamMode) {
-                // If absent, no material needed, or exam, clear material fields
-                document.getElementById('editSelectedMaterials').value = '';
-            } else {
-                // Normal request, show actual values
-                document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
-            }
-            
             document.getElementById('editQuantity').value = request.group_count || request.quantity || 1;
             document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
             document.getElementById('editMaterialProf').value = request.material_prof || '';
             document.getElementById('editNotes').value = request.notes || '';
             
-            // Load selected materials in textarea
-            document.getElementById('editSelectedMaterials').value = request.selected_materials || '';
+            // Fill material description field
+            if (isAbsent || isNoMaterial || isExamMode) {
+                // Pour les modes spéciaux, laisser vide
+                document.getElementById('editMaterialDescription').value = '';
+            } else {
+                // Pour les demandes normales, extraire le matériel de material_description
+                let materialContent = request.material_description || '';
+                
+                // Si la description commence par "Matériel requis: ", extraire seulement la partie après
+                if (materialContent.startsWith('Matériel requis: ')) {
+                    materialContent = materialContent.substring('Matériel requis: '.length);
+                }
+                
+                document.getElementById('editMaterialDescription').value = materialContent;
+            }
             
             // Toggle sections based on special modes
             toggleEditSpecialModes();
@@ -495,6 +513,7 @@ function saveRequestChanges() {
     
     const formData = {
         teacher_id: parseInt(document.getElementById('editTeacher').value),
+        request_name: document.getElementById('editRequestName').value,
         request_date: document.getElementById('editDate').value,
         horaire: document.getElementById('editHoraire').value,
         class_name: document.getElementById('editClassName').value,
@@ -515,15 +534,18 @@ function saveRequestChanges() {
         formData.selected_materials = 'Examen';
         formData.material_description = 'Surveillance d\'examen';
     } else {
-        // Récupération du matériel depuis la zone de texte
-        formData.selected_materials = document.getElementById('editSelectedMaterials').value;
+        // Récupérer le contenu du champ matériel
+        const materialContent = document.getElementById('editMaterialDescription').value;
         
-        // Génération automatique de la description basée sur le matériel saisi
-        if (formData.selected_materials) {
-            formData.material_description = `Matériel requis: ${formData.selected_materials}`;
+        // Ajouter le préfixe si du matériel est spécifié
+        if (materialContent && materialContent.trim()) {
+            formData.material_description = `Matériel requis: ${materialContent}`;
         } else {
             formData.material_description = 'Cours sans matériel spécifique';
         }
+        
+        // Garder selected_materials vide pour les demandes normales
+        formData.selected_materials = '';
     }
     
     fetch(`/api/requests/${requestId}`, {
@@ -601,8 +623,10 @@ function deleteRequest() {
         
         // Fermer le modal
         const modalElement = document.getElementById('editRequestModal');
-        const modal = new bootstrap.Modal(modalElement);
-        modal.hide();
+        const modal = bootstrap.Modal.getInstance(modalElement);
+        if (modal) {
+            modal.hide();
+        }
         
         // Recharger la liste des demandes
         loadRequests();
@@ -639,7 +663,6 @@ function toggleEditSpecialModes() {
     const quantitySection = document.getElementById('editQuantitySection');
     const materialSection = document.getElementById('editMaterialSection');
     const materialProfSection = document.getElementById('editMaterialProfSection');
-    const selectedMaterialsSection = document.getElementById('editSelectedMaterialsSection');
     const materialCheckboxSection = document.getElementById('editMaterialCheckboxSection');
     
     // S'assurer qu'une seule option est cochée à la fois
@@ -665,7 +688,6 @@ function toggleEditSpecialModes() {
         if (quantitySection) quantitySection.style.display = 'none';
         if (materialSection) materialSection.style.display = 'none';
         if (materialProfSection) materialProfSection.style.display = 'none';
-        if (selectedMaterialsSection) selectedMaterialsSection.style.display = 'none';
         if (materialCheckboxSection) materialCheckboxSection.style.display = 'none';
         
         // Remove required attribute
@@ -676,7 +698,6 @@ function toggleEditSpecialModes() {
         if (quantitySection) quantitySection.style.display = 'block';
         if (materialSection) materialSection.style.display = 'block';
         if (materialProfSection) materialProfSection.style.display = 'block';
-        if (selectedMaterialsSection) selectedMaterialsSection.style.display = 'block';
         if (materialCheckboxSection) materialCheckboxSection.style.display = 'block';
         
         // Add required attribute back
@@ -716,6 +737,100 @@ function showErrorToast(message) {
     } else {
         alert(message);
     }
+}
+
+// Toggle entre vue normale et vue groupée
+function toggleViewMode() {
+    const isGrouped = document.getElementById('groupByRequestName').checked;
+    if (isGrouped) {
+        loadGroupedRequests();
+    } else {
+        loadRequests();
+    }
+}
+
+// Charger les demandes groupées par nom
+function loadGroupedRequests() {
+    const tableBody = document.getElementById('requestsTableBody');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const teacherId = document.getElementById('filterTeacher').value;
+    
+    if (!teacherId) {
+        showErrorToast('Veuillez sélectionner un enseignant pour voir le groupage par nom de demande');
+        document.getElementById('groupByRequestName').checked = false;
+        return;
+    }
+    
+    loadingIndicator.classList.remove('d-none');
+    tableBody.innerHTML = '';
+    
+    // Récupérer toutes les demandes de l'enseignant
+    const params = new URLSearchParams();
+    params.append('teacher_id', teacherId);
+    
+    fetch(`/api/requests?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            loadingIndicator.classList.add('d-none');
+            
+            // Grouper par nom de demande
+            const groupedRequests = {};
+            data.requests.forEach(request => {
+                const requestName = request.request_name || 'Sans nom';
+                if (!groupedRequests[requestName]) {
+                    groupedRequests[requestName] = [];
+                }
+                groupedRequests[requestName].push(request);
+            });
+            
+            // Afficher les groupes
+            Object.keys(groupedRequests).forEach(requestName => {
+                const requests = groupedRequests[requestName];
+                const firstRequest = requests[0];
+                
+                // Créer la liste des horaires
+                const scheduleList = requests.map(req => {
+                    const date = formatDate(req.request_date);
+                    const time = req.horaire || 'Pas d\'horaire';
+                    return `${date} à ${time}`;
+                }).join('<br>');
+                
+                // Créer une ligne groupée
+                const row = document.createElement('tr');
+                row.className = 'table-warning'; // Couleur différente pour les groupes
+                
+                row.innerHTML = `
+                    <td colspan="2"><strong>${requestName}</strong> (${requests.length} demande${requests.length > 1 ? 's' : ''})</td>
+                    <td><span class="badge bg-primary">${requestName}</span></td>
+                    <td><div class="small">${scheduleList}</div></td>
+                    <td><span class="badge bg-info">${firstRequest.class_name}</span></td>
+                    <td><span class="badge bg-secondary">${firstRequest.group_count || firstRequest.quantity || 1}</span></td>
+                    <td><span class="badge bg-warning">${firstRequest.computers_needed || 0}</span></td>
+                    <td>${firstRequest.material_description}</td>
+                    <td><small class="text-muted">${firstRequest.material_prof || '<em>Aucun</em>'}</small></td>
+                    <td><small class="text-muted">${firstRequest.notes || '<em>Aucune</em>'}</small></td>
+                    <td><span class="badge bg-info">${requests.length} demande${requests.length > 1 ? 's' : ''}</span></td>
+                    <td><button class="btn btn-outline-secondary btn-sm" onclick="expandGroup('${requestName}', ${teacherId})">📋 Détails</button></td>
+                    <td><small class="text-muted">${formatDateTime(firstRequest.created_at)}</small></td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            loadingIndicator.classList.add('d-none');
+            showErrorToast('Erreur lors du chargement des demandes groupées');
+        });
+}
+
+// Fonction pour développer un groupe et voir les détails
+function expandGroup(requestName, teacherId) {
+    // Basculer vers la vue normale et filtrer par ce nom de demande
+    document.getElementById('groupByRequestName').checked = false;
+    // Ici on pourrait ajouter un filtre par nom de demande si on le souhaite
+    loadRequests();
+    showSuccessToast(`Affichage des détails pour: ${requestName}`);
 }
 </script>
 {% endblock %}
