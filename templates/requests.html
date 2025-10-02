@@ -289,10 +289,9 @@ function getCookie(name) {
 }
 
 function initializeFilters() {
-    // Ne pas définir de date par défaut pour voir toutes les demandes
-    // L'utilisateur peut filtrer manuellement s'il le souhaite
-    // const today = new Date().toISOString().split('T')[0];
-    // document.getElementById('filterStartDate').value = today;
+    // Définir automatiquement la date de début à aujourd'hui
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('filterStartDate').value = today;
     
     // Restaurer l'enseignant depuis le cookie
     const savedTeacher = getCookie('selectedTeacher');
