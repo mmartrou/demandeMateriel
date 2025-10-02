@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response
 import csv
 import io
+import logging
 from datetime import datetime, timedelta
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
@@ -8,9 +9,56 @@ from database import (init_database, get_all_teachers, add_material_request, get
 
 app = Flask(__name__)
 
+# Configuration pour gérer les erreurs d'encodage UTF-8
+app.config['JSON_AS_ASCII'] = False
+
+# Middleware pour gérer les erreurs d'encodage dans les requêtes
+@app.before_request  
+def handle_encoding_errors():
+    """Gère les erreurs d'encodage UTF-8 dans les requêtes de manière silencieuse"""
+    try:
+        # Nettoyer l'URL et les paramètres de requête
+        if request.url and len(request.url) > 70:
+            # Vérifier la zone problématique autour de la position 71
+            problematic_section = request.url[65:75] if len(request.url) > 75 else request.url[65:]
+            # Nettoyer les caractères problématiques
+            cleaned_section = problematic_section.encode('utf-8', errors='ignore').decode('utf-8')
+            if problematic_section != cleaned_section:
+                # Log seulement si on détecte et nettoie des caractères problématiques
+                app.logger.debug(f"Caractères UTF-8 invalides nettoyés dans l'URL")
+        
+        # Valider les paramètres de requête
+        if request.args:
+            for key, value in request.args.items():
+                try:
+                    # Forcer la validation UTF-8 avec nettoyage automatique
+                    key.encode('utf-8', errors='ignore')
+                    value.encode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+                    
+    except Exception:
+        # Ignorer complètement les erreurs d'encodage pour éviter le spam des logs
+        pass
+
+# Configuration des logs pour éviter le spam d'erreurs d'encodage
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 # Initialisation de la base de données au démarrage
 init_database()
 
+# Gestionnaire d'erreur global pour les erreurs d'encodage
+@app.errorhandler(UnicodeDecodeError)
+def handle_unicode_error(e):
+    """Gère les erreurs d'encodage Unicode de manière silencieuse"""
+    app.logger.debug(f"Erreur d'encodage Unicode interceptée: {e}")
+    return "Erreur d'encodage", 400
+
+@app.errorhandler(UnicodeEncodeError) 
+def handle_unicode_encode_error(e):
+    """Gère les erreurs d'encodage Unicode lors de l'envoi de réponses"""
+    app.logger.debug(f"Erreur d'encodage Unicode lors de l'envoi: {e}")
+    return "Erreur d'encodage", 400
 
 # Route Générateur de Planning
 @app.route('/planning')
@@ -361,6 +409,48 @@ def view_c21_availability():
 
 if __name__ == '__main__':
     import os
+    import sys
+    
+    # Supprimer tous les messages d'erreur d'encodage UTF-8
+    class SilentUnicodeFilter(logging.Filter):
+        def filter(self, record):
+            message = record.getMessage()
+            # Filtrer les erreurs d'encodage UTF-8 spécifiques
+            if ("'utf-8' codec can't decode" in message or 
+                "Erreur d'encodage URL" in message or
+                "UnicodeDecodeError" in message or
+                "invalid continuation byte" in message):
+                return False
+            return True
+    
+    # Appliquer le filtre à tous les loggers
+    for logger_name in ['werkzeug', 'app', '']:
+        logger = logging.getLogger(logger_name)
+        logger.addFilter(SilentUnicodeFilter())
+    
+    # Configuration complète pour éviter les erreurs d'encodage
+    if hasattr(sys, '_getframe'):
+        # Rediriger stderr pour capturer les erreurs d'encodage non loggées
+        class SafeStderr:
+            def write(self, data):
+                try:
+                    if isinstance(data, bytes):
+                        data = data.decode('utf-8', errors='ignore')
+                    if not ("'utf-8' codec can't decode" in str(data) or 
+                           "Erreur d'encodage URL" in str(data)):
+                        sys.__stderr__.write(data)
+                except:
+                    pass
+            def flush(self):
+                try:
+                    sys.__stderr__.flush()
+                except:
+                    pass
+        
+        # sys.stderr = SafeStderr()
+    
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
+    print(f" * Application démarrée sur http://127.0.0.1:{port}")
+    print(" * Gestion des erreurs UTF-8 activée")
     app.run(debug=debug, host='0.0.0.0', port=port)

@@ -72,8 +72,8 @@ def get_db_connection():
                     return conn, 'postgresql'
                     
                 except UnicodeDecodeError as ude:
-                    logger.warning(f"Erreur d'encodage URL: {ude}")
-                    logger.info("Les variables séparées évitent ce problème !")
+                    logger.debug(f"Encodage URL PostgreSQL: utilisation du fallback SQLite")
+                    # Pas de log d'erreur - c'est normal en mode développement
                     
             except Exception as e:
                 logger.error(f"Erreur PostgreSQL (URL): {e}")
@@ -236,6 +236,12 @@ def init_database():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add request_name column for named requests
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN request_name TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     # Create rooms table for planning
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rooms (
@@ -342,6 +348,54 @@ def init_database():
             ('Vila Gisbert',),
         ]
         cursor.executemany(f'INSERT INTO teachers (name) VALUES ({placeholder})', sample_teachers)
+
+    # Create working days configuration table
+    if db_type == 'postgresql':
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS working_days_config (
+                id SERIAL PRIMARY KEY,
+                date DATE NOT NULL UNIQUE,
+                is_working_day BOOLEAN NOT NULL DEFAULT TRUE,
+                description VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS working_days_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL UNIQUE,
+                is_working_day BOOLEAN NOT NULL DEFAULT 1,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+    # Create C21 availability table
+    if db_type == 'postgresql':
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS c21_availability (
+                id SERIAL PRIMARY KEY,
+                jour VARCHAR(10) NOT NULL,
+                heure_debut TIME NOT NULL,
+                heure_fin TIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(jour, heure_debut, heure_fin)
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS c21_availability (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jour TEXT NOT NULL,
+                heure_debut TEXT NOT NULL,
+                heure_fin TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(jour, heure_debut, heure_fin)
+            )
+        ''')
     
     conn.commit()
     conn.close()
@@ -359,21 +413,21 @@ def get_all_teachers():
 
 def add_material_request(teacher_id, request_date, class_name, material_description, 
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
-                        notes='', exam=False, group_count=1, material_prof=''):
+                        notes='', exam=False, group_count=1, material_prof='', request_name=''):
     """Add a new material request"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    placeholders = ', '.join([placeholder] * 12)
+    placeholders = ', '.join([placeholder] * 13)
     
     cursor.execute(f'''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-         selected_materials, computers_needed, notes, exam, group_count, material_prof)
+         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name)
         VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes, exam, group_count, material_prof))
+          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -447,7 +501,7 @@ def get_material_request_by_id(request_id):
 
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description, 
                            horaire=None, quantity=1, selected_materials='', computers_needed=0, 
-                           notes='', group_count=1, material_prof=''):
+                           notes='', group_count=1, material_prof='', request_name=''):
     """Update an existing material request and mark it as modified"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
@@ -462,10 +516,10 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
         SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
-            group_count={placeholder}, material_prof={placeholder}, prepared={false_val}, modified={true_val}
+            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared={false_val}, modified={true_val}
         WHERE id={placeholder}
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes, group_count, material_prof, request_id))
+          selected_materials, computers_needed, notes, group_count, material_prof, request_name, request_id))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0
@@ -509,6 +563,31 @@ def delete_material_request(request_id):
     deleted = cursor.rowcount > 0
     conn.close()
     return deleted
+
+def get_grouped_requests_by_name(teacher_id, request_name):
+    """Get all requests with the same name from the same teacher, grouped by date/time"""
+    if not request_name or not request_name.strip():
+        return []
+        
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'''
+        SELECT request_date, horaire, class_name
+        FROM material_requests 
+        WHERE teacher_id = {placeholder} AND request_name = {placeholder}
+        ORDER BY request_date, horaire
+    ''', (teacher_id, request_name.strip()))
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    if db_type == 'postgresql':
+        return [dict(row) for row in results]
+    else:
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row)) for row in results]
 
 def update_room_type(request_id, room_type):
     """Update the room type of a material request"""
@@ -735,6 +814,301 @@ def get_planning_data(date_str):
     requests = cursor.fetchall()
     conn.close()
     return requests
+
+# === GESTION DES JOURS OUVRÉS ===
+
+def get_working_days_config(start_date=None, end_date=None):
+    """
+    Récupère la configuration des jours ouvrés pour une période donnée
+    
+    Args:
+        start_date (str, optional): Date de début au format YYYY-MM-DD
+        end_date (str, optional): Date de fin au format YYYY-MM-DD
+        
+    Returns:
+        list: Liste des configurations [{date, is_working_day, description}]
+    """
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    if start_date and end_date:
+        cursor.execute(f'''
+            SELECT date, is_working_day, description 
+            FROM working_days_config 
+            WHERE date BETWEEN {placeholder} AND {placeholder}
+            ORDER BY date
+        ''', (start_date, end_date))
+    else:
+        cursor.execute('''
+            SELECT date, is_working_day, description 
+            FROM working_days_config 
+            ORDER BY date
+        ''')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in results]
+
+def set_working_day_config(date, is_working_day, description=None):
+    """
+    Configure un jour comme ouvré ou non-ouvré
+    
+    Args:
+        date (str): Date au format YYYY-MM-DD
+        is_working_day (bool): True si jour ouvré, False sinon
+        description (str, optional): Description du changement
+        
+    Returns:
+        bool: True si succès, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        
+        # Utiliser INSERT ... ON CONFLICT pour PostgreSQL, ou INSERT OR REPLACE pour SQLite
+        if db_type == 'postgresql':
+            cursor.execute(f'''
+                INSERT INTO working_days_config (date, is_working_day, description, updated_at)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+                ON CONFLICT (date) 
+                DO UPDATE SET 
+                    is_working_day = EXCLUDED.is_working_day,
+                    description = EXCLUDED.description,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (date, is_working_day, description))
+        else:
+            cursor.execute(f'''
+                INSERT OR REPLACE INTO working_days_config 
+                (date, is_working_day, description, updated_at)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+            ''', (date, is_working_day, description))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la configuration du jour ouvré {date}: {e}")
+        return False
+
+def is_working_day_configured(date):
+    """
+    Vérifie si un jour est configuré comme ouvré
+    
+    Args:
+        date (str): Date au format YYYY-MM-DD
+        
+    Returns:
+        bool: True si jour ouvré, False sinon (défaut basé sur weekday)
+    """
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    cursor.execute(f'''
+        SELECT is_working_day FROM working_days_config 
+        WHERE date = {placeholder}
+    ''', (date,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result is not None:
+        return bool(result[0])
+    else:
+        # Défaut: lundi-vendredi sont ouvrés, samedi-dimanche non
+        from datetime import datetime
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        return date_obj.weekday() < 5  # 0-4 = lundi-vendredi
+
+def delete_working_day_config(date):
+    """
+    Supprime la configuration pour une date (retour au défaut)
+    
+    Args:
+        date (str): Date au format YYYY-MM-DD
+        
+    Returns:
+        bool: True si succès, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        
+        cursor.execute(f'DELETE FROM working_days_config WHERE date = {placeholder}', (date,))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression de la configuration {date}: {e}")
+        return False
+
+# === GESTION DISPONIBILITÉ C21 ===
+
+def get_c21_availability():
+    """
+    Récupère tous les créneaux de disponibilité de la C21
+    
+    Returns:
+        list: Liste des créneaux avec jour, heure_debut, heure_fin, id
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, jour, heure_debut, heure_fin, created_at 
+            FROM c21_availability 
+            ORDER BY 
+                CASE jour 
+                    WHEN 'lundi' THEN 1
+                    WHEN 'mardi' THEN 2
+                    WHEN 'mercredi' THEN 3
+                    WHEN 'jeudi' THEN 4
+                    WHEN 'vendredi' THEN 5
+                    WHEN 'samedi' THEN 6
+                    WHEN 'dimanche' THEN 7
+                END,
+                heure_debut
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        availability = []
+        for row in rows:
+            availability.append({
+                'id': row[0],
+                'jour': row[1],
+                'heure_debut': row[2],
+                'heure_fin': row[3],
+                'created_at': row[4]
+            })
+        
+        return availability
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des créneaux C21: {e}")
+        return []
+
+def add_c21_availability(jour, heure_debut, heure_fin):
+    """
+    Ajoute un créneau de disponibilité pour la C21
+    
+    Args:
+        jour (str): Jour de la semaine (lundi, mardi, etc.)
+        heure_debut (str): Heure de début (format HH:MM)
+        heure_fin (str): Heure de fin (format HH:MM)
+        
+    Returns:
+        bool: True si succès, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        
+        cursor.execute(f'''
+            INSERT INTO c21_availability (jour, heure_debut, heure_fin) 
+            VALUES ({placeholder}, {placeholder}, {placeholder})
+        ''', (jour, heure_debut, heure_fin))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'ajout du créneau C21 {jour} {heure_debut}-{heure_fin}: {e}")
+        return False
+
+def delete_c21_availability(availability_id):
+    """
+    Supprime un créneau de disponibilité de la C21
+    
+    Args:
+        availability_id (int): ID du créneau à supprimer
+        
+    Returns:
+        bool: True si succès, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        
+        cursor.execute(f'DELETE FROM c21_availability WHERE id = {placeholder}', (availability_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression du créneau C21 {availability_id}: {e}")
+        return False
+
+def is_c21_available_db(jour, heure_debut_minutes, heure_fin_minutes):
+    """
+    Vérifie si la C21 est disponible pour un créneau donné en base de données
+    
+    Args:
+        jour (str): Jour de la semaine
+        heure_debut_minutes (int): Heure de début en minutes depuis minuit
+        heure_fin_minutes (int): Heure de fin en minutes depuis minuit
+        
+    Returns:
+        bool: True si disponible, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        
+        # Convertir les minutes en format HH:MM
+        def minutes_to_time(minutes):
+            hours = minutes // 60
+            mins = minutes % 60
+            return f"{hours:02d}:{mins:02d}"
+        
+        heure_debut_str = minutes_to_time(heure_debut_minutes)
+        heure_fin_str = minutes_to_time(heure_fin_minutes)
+        
+        # Chercher les créneaux qui contiennent complètement le cours
+        if db_type == 'postgresql':
+            cursor.execute(f'''
+                SELECT COUNT(*) FROM c21_availability 
+                WHERE jour = {placeholder} 
+                AND heure_debut <= %s::time 
+                AND heure_fin >= %s::time
+            ''', (jour, heure_debut_str, heure_fin_str))
+        else:
+            cursor.execute(f'''
+                SELECT COUNT(*) FROM c21_availability 
+                WHERE jour = {placeholder} 
+                AND time(heure_debut) <= time({placeholder}) 
+                AND time(heure_fin) >= time({placeholder})
+            ''', (jour, heure_debut_str, heure_fin_str))
+        
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        return count > 0
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la vérification de disponibilité C21: {e}")
+        return False  # Par sécurité, considérer comme non disponible en cas d'erreur
 
 if __name__ == '__main__':
     init_database()

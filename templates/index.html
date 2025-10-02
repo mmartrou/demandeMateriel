@@ -136,6 +136,15 @@
                             </select>
                         </div>
                         
+                        <div class="col-md-4 mb-3">
+                            <label for="request_name" class="form-label">
+                                🏷️ Nom de la demande
+                            </label>
+                            <input type="text" class="form-control" id="request_name" name="request_name" 
+                                   placeholder="Ex: TP Chimie organique, Cours optique..." maxlength="100">
+                            <small class="text-muted">Optionnel - pour regrouper des demandes similaires</small>
+                        </div>
+                        
                         <div class="col-md-4 mb-3" id="computers-section">
                             <label for="computers_needed" class="form-label">
                                 💻 Nombre d'ordinateurs
@@ -462,6 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Ajouter les nouveaux champs
         data.group_count = document.getElementById('quantity').value;
         data.material_prof = document.getElementById('material_prof').value;
+        data.request_name = document.getElementById('request_name').value;
         
         // Vérification des modes spéciaux
         const isAbsent = document.getElementById('absent').checked;
