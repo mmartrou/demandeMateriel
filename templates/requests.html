@@ -289,9 +289,10 @@ function getCookie(name) {
 }
 
 function initializeFilters() {
-    // Définir la date d'aujourd'hui par défaut
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('filterStartDate').value = today;
+    // Ne pas définir de date par défaut pour voir toutes les demandes
+    // L'utilisateur peut filtrer manuellement s'il le souhaite
+    // const today = new Date().toISOString().split('T')[0];
+    // document.getElementById('filterStartDate').value = today;
     
     // Restaurer l'enseignant depuis le cookie
     const savedTeacher = getCookie('selectedTeacher');
@@ -372,7 +373,7 @@ function loadRequests() {
                 
                 row.innerHTML = `
                     <td>${request.id}</td>
-                    <td><div class="fw-bold">${request.teacher_name}</div></td>
+                    <td><div class="fw-bold">${request.teacher_name || '<em class="text-muted">Nom manquant</em>'}</div></td>
                     <td><span class="badge bg-primary">${request.request_name || '<em class="text-muted">Sans nom</em>'}</span></td>
                     <td>${formatDate(request.request_date)}</td>
                     <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
