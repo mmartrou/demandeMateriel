@@ -138,11 +138,11 @@
                         
                         <div class="col-md-4 mb-3">
                             <label for="request_name" class="form-label">
-                                🏷️ Nom de la demande
+                                🏷️ Nom de la demande *
                             </label>
                             <input type="text" class="form-control" id="request_name" name="request_name" 
-                                   placeholder="Ex: TP Chimie organique, Cours optique..." maxlength="100">
-                            <small class="text-muted">Optionnel - pour regrouper des demandes similaires</small>
+                                   placeholder="Ex: TP Chimie organique, Cours optique..." maxlength="100" required>
+                            <small class="text-muted">Obligatoire - pour identifier et regrouper les demandes similaires</small>
                         </div>
                         
                         <div class="col-md-4 mb-3" id="computers-section">
@@ -472,6 +472,13 @@ document.addEventListener('DOMContentLoaded', function() {
         data.group_count = document.getElementById('quantity').value;
         data.material_prof = document.getElementById('material_prof').value;
         data.request_name = document.getElementById('request_name').value;
+        
+        // Validation du nom de demande (obligatoire)
+        if (!data.request_name || data.request_name.trim() === '') {
+            showErrorToast('Le nom de la demande est obligatoire.');
+            document.getElementById('request_name').focus();
+            return;
+        }
         
         // Vérification des modes spéciaux
         const isAbsent = document.getElementById('absent').checked;
