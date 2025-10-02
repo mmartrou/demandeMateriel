@@ -119,6 +119,7 @@ def api_get_requests():
             'prepared': req['prepared'] if req['prepared'] else False,
             'modified': req['modified'] if req['modified'] else False,
             'room_type': req['room_type'] if req['room_type'] else 'Mixte',
+            'request_name': req['request_name'] if req['request_name'] else '',
             'created_at': req['created_at']
         })
     
@@ -219,7 +220,8 @@ def api_add_request():
                     quantity=data.get('quantity', 1),
                     selected_materials=data.get('selected_materials', ''),
                     computers_needed=data.get('computers_needed', 0),
-                    notes=data.get('notes', '')
+                    notes=data.get('notes', ''),
+                    request_name=data.get('request_name', '')
                 )
                 request_ids.append(request_id)
 
