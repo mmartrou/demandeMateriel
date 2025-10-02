@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Test Calendrier{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2>🔧 Test Calendrier Simplifié</h2>
+            
+            <!-- Test basique -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Test 1: Affichage basique</h5>
+                </div>
+                <div class="card-body">
+                    <div id="test-basic" class="border p-3">
+                        <p>Calendrier de test</p>
+                        <div id="test-calendar-container">
+                            <!-- Contenu généré par JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test API -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Test 2: API working-days</h5>
+                </div>
+                <div class="card-body">
+                    <button id="test-api" class="btn btn-primary">Tester API</button>
+                    <div id="api-result" class="mt-2"></div>
+                </div>
+            </div>
+            
+            <!-- Debug -->
+            <div class="card">
+                <div class="card-header">
+                    <h5>Debug Console</h5>
+                </div>
+                <div class="card-body">
+                    <div id="debug-log" class="bg-dark text-light p-3" style="height: 200px; overflow-y: scroll; font-family: monospace;">
+                        Démarrage debug...<br>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Test ultra basique
+console.log('🚀 Script chargé!');
+alert('JavaScript fonctionne!');
+
+// Debug logger
+function debugLog(message) {
+    console.log('DEBUG:', message);
+    const timestamp = new Date().toLocaleTimeString();
+    const debugEl = document.getElementById('debug-log');
+    if (debugEl) {
+        debugEl.innerHTML += `[${timestamp}] ${message}<br>`;
+        debugEl.scrollTop = debugEl.scrollTop;
+    }
+}
+
+// Test 1: Calendrier simple
+function testBasicCalendar() {
+    debugLog('Test calendrier basique...');
+    
+    const container = document.getElementById('test-calendar-container');
+    if (!container) {
+        debugLog('❌ Container non trouvé');
+        return;
+    }
+    
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    let html = `<h6>Octobre ${currentYear}</h6>`;
+    html += '<table class="table table-bordered">';
+    html += '<tr><th>Dim</th><th>Lun</th><th>Mar</th><th>Mer</th><th>Jeu</th><th>Ven</th><th>Sam</th></tr>';
+    
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    
+    let html_row = '<tr>';
+    
+    // Jours vides au début
+    for (let i = 0; i < firstDay.getDay(); i++) {
+        html_row += '<td></td>';
+    }
+    
+    // Jours du mois
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        if ((firstDay.getDay() + day - 1) % 7 === 0 && day > 1) {
+            html_row += '</tr><tr>';
+        }
+        
+        const isToday = day === today.getDate();
+        const cellClass = isToday ? 'bg-primary text-white' : '';
+        html_row += `<td class="${cellClass}">${day}</td>`;
+    }
+    
+    html_row += '</tr>';
+    html += html_row + '</table>';
+    
+    container.innerHTML = html;
+    debugLog('✅ Calendrier basique généré');
+}
+
+// Test 2: API
+async function testAPI() {
+    debugLog('Test API /api/working-days...');
+    
+    try {
+        const response = await fetch('/api/working-days');
+        debugLog(`Status: ${response.status}`);
+        
+        if (response.ok) {
+            const data = await response.json();
+            debugLog(`✅ API OK - ${data.length} éléments`);
+            document.getElementById('api-result').innerHTML = 
+                `<div class="alert alert-success">API fonctionne - ${data.length} configurations trouvées</div>`;
+        } else {
+            const text = await response.text();
+            debugLog(`❌ API erreur: ${text}`);
+            document.getElementById('api-result').innerHTML = 
+                `<div class="alert alert-danger">Erreur API: ${response.status}</div>`;
+        }
+    } catch (error) {
+        debugLog(`❌ Erreur fetch: ${error.message}`);
+        document.getElementById('api-result').innerHTML = 
+            `<div class="alert alert-danger">Erreur réseau: ${error.message}</div>`;
+    }
+}
+
+// Initialisation
+console.log('🎯 Avant addEventListener');
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📋 DOM chargé');
+    alert('DOM Ready!');
+    
+    debugLog('DOM chargé');
+    
+    try {
+        // Test calendrier
+        testBasicCalendar();
+        
+        // Bind API test
+        const testBtn = document.getElementById('test-api');
+        if (testBtn) {
+            testBtn.addEventListener('click', function() {
+                console.log('Bouton cliqué!');
+                testAPI();
+            });
+            debugLog('Bouton lié');
+        } else {
+            debugLog('❌ Bouton test-api non trouvé');
+        }
+        
+        debugLog('Tests initialisés');
+    } catch (error) {
+        console.error('Erreur initialisation:', error);
+        debugLog('❌ Erreur init: ' + error.message);
+    }
+});
+
+console.log('🏁 Script terminé');
+</script>
+{% endblock %}

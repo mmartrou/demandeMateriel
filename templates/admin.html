@@ -11,22 +11,45 @@
         </div>
     </div>
     
-    <div class="row">
-        <div class="card-footer">
-            <a href="{{ url_for('view_rooms') }}" class="btn btn-primary">
-                <i class="fas fa-cog"></i> Configurer les Salles
-            </a>
-        </div>
-        <div class="card-footer">
-            <a href="{{ url_for('view_students') }}" class="btn btn-success">
-                <i class="fas fa-edit"></i> Gérer les Effectifs (2nd)
-            </a>
+    <div class="row g-3">
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="d-grid">
+                <a href="{{ url_for('view_rooms') }}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-cog"></i> Configurer les Salles
+                </a>
+            </div>
         </div>
         
-        <div class="card-footer">
-            <a href="{{ url_for('planning') }}" class="btn btn-warning">
-                <i class="fas fa-cogs"></i> Générateur de Planning
-            </a>
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="d-grid">
+                <a href="{{ url_for('view_students') }}" class="btn btn-success btn-lg">
+                    <i class="fas fa-edit"></i> Gérer les Effectifs (2nd)
+                </a>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="d-grid">
+                <a href="{{ url_for('planning') }}" class="btn btn-warning btn-lg">
+                    <i class="fas fa-cogs"></i> Générateur de Planning
+                </a>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="d-grid">
+                <a href="{{ url_for('view_working_days') }}" class="btn btn-info btn-lg">
+                    <i class="fas fa-calendar-alt"></i> Configuration Jours Ouvrés
+                </a>
+            </div>
+        </div>
+        
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="d-grid">
+                <a href="{{ url_for('view_c21_availability') }}" class="btn btn-danger btn-lg">
+                    <i class="fas fa-door-open"></i> Disponibilité Salle C21
+                </a>
+            </div>
         </div>
     </div>
     

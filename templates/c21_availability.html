@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}Disponibilité C21 - Administration{% endblock %}
+
+{% block extra_css %}
+<style>
+.time-slot {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    margin: 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.time-slot.available {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+.time-slot.available:hover {
+    background-color: #c1e1c5;
+}
+
+.time-slot:not(.available) {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+
+.time-slot:not(.available):hover {
+    background-color: #e9ecef;
+}
+
+.day-column {
+    min-width: 120px;
+}
+
+.time-grid {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.current-slots {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.slot-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    background-color: #f8f9fa;
+}
+
+.slot-item:hover {
+    background-color: #e9ecef;
+}
+
+.btn-remove {
+    padding: 2px 8px;
+    font-size: 12px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1><i class="fas fa-door-open"></i> Disponibilité de la salle C21</h1>
+                <a href="/admin" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Retour Admin
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Créneaux actuels -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-list"></i> Créneaux Configurés</h5>
+                </div>
+                <div class="card-body">
+                    <div id="current-slots" class="current-slots">
+                        <div id="loading-slots" class="text-center py-3">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Chargement...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <p class="text-muted mb-1">
+                            <strong>Total :</strong> <span id="total-slots" class="text-info">0</span> créneaux
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ajout manuel -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-plus"></i> Ajouter un Créneau</h5>
+                </div>
+                <div class="card-body">
+                    <form id="add-slot-form">
+                        <div class="mb-3">
+                            <label for="jour" class="form-label">Jour</label>
+                            <select class="form-select" id="jour" required>
+                                <option value="">Sélectionner un jour</option>
+                                <option value="lundi">Lundi</option>
+                                <option value="mardi">Mardi</option>
+                                <option value="mercredi">Mercredi</option>
+                                <option value="jeudi">Jeudi</option>
+                                <option value="vendredi">Vendredi</option>
+                                <option value="samedi">Samedi</option>
+                                <option value="dimanche">Dimanche</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="heure_debut" class="form-label">Heure de début</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <select class="form-select" id="heure_debut_h" required>
+                                        <option value="">Heure</option>
+                                        <option value="09">09h</option>
+                                        <option value="10">10h</option>
+                                        <option value="11">11h</option>
+                                        <option value="12">12h</option>
+                                        <option value="13">13h</option>
+                                        <option value="14">14h</option>
+                                        <option value="15">15h</option>
+                                        <option value="16">16h</option>
+                                        <option value="17">17h</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <select class="form-select" id="heure_debut_m" required>
+                                        <option value="">Minutes</option>
+                                        <option value="00">00</option>
+                                        <option value="05">05</option>
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="25">25</option>
+                                        <option value="30">30</option>
+                                        <option value="35">35</option>
+                                        <option value="40">40</option>
+                                        <option value="45">45</option>
+                                        <option value="50">50</option>
+                                        <option value="55">55</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <small class="text-muted">Heures de 9h à 17h, minutes par multiples de 5</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="heure_fin" class="form-label">Heure de fin</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <select class="form-select" id="heure_fin_h" required>
+                                        <option value="">Heure</option>
+                                        <option value="09">09h</option>
+                                        <option value="10">10h</option>
+                                        <option value="11">11h</option>
+                                        <option value="12">12h</option>
+                                        <option value="13">13h</option>
+                                        <option value="14">14h</option>
+                                        <option value="15">15h</option>
+                                        <option value="16">16h</option>
+                                        <option value="17">17h</option>
+                                        <option value="18">18h</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <select class="form-select" id="heure_fin_m" required>
+                                        <option value="">Minutes</option>
+                                        <option value="00">00</option>
+                                        <option value="05">05</option>
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="25">25</option>
+                                        <option value="30">30</option>
+                                        <option value="35">35</option>
+                                        <option value="40">40</option>
+                                        <option value="45">45</option>
+                                        <option value="50">50</option>
+                                        <option value="55">55</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <small class="text-muted">Heures de 9h à 17h, minutes par multiples de 5</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus"></i> Ajouter le Créneau
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Planning visuel -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-calendar-week"></i> Planning Hebdomadaire</h5>
+                </div>
+                <div class="card-body">
+                    <div id="weekly-planning" class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Génération du planning...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmation de suppression -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmer la suppression</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Êtes-vous sûr de vouloir supprimer ce créneau ?
+                <div class="mt-2">
+                    <strong id="delete-slot-info"></strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete">Supprimer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class C21AvailabilityManager {
+    constructor() {
+        this.slots = [];
+        this.init();
+    }
+
+    init() {
+        this.bindEvents();
+        this.loadSlots();
+    }
+
+    bindEvents() {
+        document.getElementById('add-slot-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.addSlot();
+        });
+
+        document.getElementById('confirm-delete').addEventListener('click', () => {
+            this.confirmDelete();
+        });
+    }
+
+    async loadSlots() {
+        try {
+            const response = await fetch('/api/c21-availability');
+            if (response.ok) {
+                this.slots = await response.json();
+                this.renderSlots();
+                this.renderWeeklyPlanning();
+            } else {
+                this.showError('Erreur lors du chargement des créneaux');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            this.showError('Erreur de connexion');
+        }
+    }
+
+    async addSlot() {
+        const jour = document.getElementById('jour').value;
+        const heure_debut_h = document.getElementById('heure_debut_h').value;
+        const heure_debut_m = document.getElementById('heure_debut_m').value;
+        const heure_fin_h = document.getElementById('heure_fin_h').value;
+        const heure_fin_m = document.getElementById('heure_fin_m').value;
+
+        if (!jour || !heure_debut_h || !heure_debut_m || !heure_fin_h || !heure_fin_m) {
+            this.showError('Tous les champs sont requis');
+            return;
+        }
+
+        // Construire les heures au format HH:MM
+        const heure_debut = `${heure_debut_h}:${heure_debut_m}`;
+        const heure_fin = `${heure_fin_h}:${heure_fin_m}`;
+
+        // Vérifier que l'heure de fin est après l'heure de début
+        if (heure_debut >= heure_fin) {
+            this.showError('L\'heure de fin doit être après l\'heure de début');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/c21-availability', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jour: jour,
+                    heure_debut: heure_debut,
+                    heure_fin: heure_fin
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.showSuccess('Créneau ajouté avec succès');
+                this.resetForm();
+                this.loadSlots();
+            } else {
+                this.showError(result.error || 'Erreur lors de l\'ajout');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            this.showError('Erreur de connexion');
+        }
+    }
+
+    prepareDelete(slotId, slotInfo) {
+        this.slotToDelete = slotId;
+        document.getElementById('delete-slot-info').textContent = slotInfo;
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
+    async confirmDelete() {
+        if (!this.slotToDelete) return;
+
+        try {
+            const response = await fetch(`/api/c21-availability/${this.slotToDelete}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.showSuccess('Créneau supprimé avec succès');
+                bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                this.loadSlots();
+            } else {
+                this.showError(result.error || 'Erreur lors de la suppression');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            this.showError('Erreur de connexion');
+        }
+
+        this.slotToDelete = null;
+    }
+
+    renderSlots() {
+        const container = document.getElementById('current-slots');
+        
+        if (this.slots.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">Aucun créneau configuré</p>';
+            document.getElementById('total-slots').textContent = '0';
+            return;
+        }
+
+        let html = '';
+        this.slots.forEach(slot => {
+            const slotInfo = `${this.capitalizeFirst(slot.jour)} ${slot.heure_debut}-${slot.heure_fin}`;
+            html += `
+                <div class="slot-item">
+                    <span>
+                        <strong>${this.capitalizeFirst(slot.jour)}</strong><br>
+                        <small>${slot.heure_debut} - ${slot.heure_fin}</small>
+                    </span>
+                    <button type="button" class="btn btn-outline-danger btn-remove" 
+                            onclick="c21Manager.prepareDelete(${slot.id}, '${slotInfo}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        document.getElementById('total-slots').textContent = this.slots.length;
+    }
+
+    renderWeeklyPlanning() {
+        const container = document.getElementById('weekly-planning');
+        const jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+        
+        let html = '<div class="row">';
+        
+        jours.forEach(jour => {
+            const daySlots = this.slots.filter(slot => slot.jour === jour);
+            
+            html += `
+                <div class="col-12 mb-2">
+                    <div class="card">
+                        <div class="card-header py-2">
+                            <h6 class="mb-0">${this.capitalizeFirst(jour)}</h6>
+                        </div>
+                        <div class="card-body py-2">
+            `;
+            
+            if (daySlots.length === 0) {
+                html += '<small class="text-muted">Aucun créneau</small>';
+            } else {
+                daySlots.forEach(slot => {
+                    html += `<div class="badge bg-success me-1 mb-1">${slot.heure_debut}-${slot.heure_fin}</div>`;
+                });
+            }
+            
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    capitalizeFirst(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    resetForm() {
+        document.getElementById('jour').value = '';
+        document.getElementById('heure_debut_h').value = '';
+        document.getElementById('heure_debut_m').value = '';
+        document.getElementById('heure_fin_h').value = '';
+        document.getElementById('heure_fin_m').value = '';
+    }
+
+    showSuccess(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showError(message) {
+        this.showNotification(message, 'danger');
+    }
+
+    showNotification(message, type) {
+        // Créer une notification toast
+        const toastContainer = document.querySelector('.toast-container') || (() => {
+            const container = document.createElement('div');
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            document.body.appendChild(container);
+            return container;
+        })();
+
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+
+        toastContainer.appendChild(toast);
+        new bootstrap.Toast(toast).show();
+
+        // Supprimer le toast après fermeture
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    }
+}
+
+// Initialiser le gestionnaire
+const c21Manager = new C21AvailabilityManager();
+</script>
+{% endblock %}

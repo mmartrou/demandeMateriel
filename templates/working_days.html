@@ -1,0 +1,822 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration Jours Ouvrés{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>📅 Configuration des Jours Ouvrés</h2>
+                <a href="/admin" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Retour Admin
+                </a>
+            </div>
+            
+            <!-- Instructions -->
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                <strong>Instructions :</strong> 
+                Cliquez sur un jour pour le marquer comme ouvré (vert) ou non-ouvré (rouge). 
+                Les weekends sont non-ouvrés par défaut. Cette configuration affecte le calcul des délais de 2 jours ouvrés.
+            </div>
+
+            <!-- Navigation mois -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-primary" id="prevMonth">
+                                <i class="fas fa-chevron-left"></i> Mois précédent
+                            </button>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <h4 id="currentMonthYear" class="mb-0"></h4>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-outline-primary" id="nextMonth">
+                                Mois suivant <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Légende -->
+                    <div class="mb-3 text-center">
+                        <span class="badge bg-success me-2">
+                            <i class="fas fa-check"></i> Jour ouvré
+                        </span>
+                        <span class="badge bg-danger me-2">
+                            <i class="fas fa-times"></i> Jour non-ouvré
+                        </span>
+                    </div>
+
+                    <!-- Calendrier -->
+                    <div id="workingDaysCalendar" class="calendar-container">
+                        <div id="calendar-loading" class="text-center py-4">
+                            <i class="fas fa-spinner fa-spin"></i> Chargement du calendrier...
+                        </div>
+                        <!-- Le calendrier sera généré par JavaScript -->
+                    </div>
+                    
+                    <!-- Debug info -->
+                    <div id="debug-info" class="mt-3 p-2 bg-light rounded" style="display: none;">
+                        <small class="text-muted">Debug: <span id="debug-text">Initialisation...</span></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions rapides -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-hand-pointer"></i> Sélection Multiple</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3">
+                                <small>
+                                    <strong>Ctrl + Clic :</strong> Sélection individuelle<br>
+                                    <strong>Shift + Clic :</strong> Sélection par plage
+                                </small>
+                            </p>
+                            <div id="multiSelectControls" style="display: none;">
+                                <div class="alert alert-info">
+                                    <strong><span id="selectedDaysCount">0</span> jour(s) sélectionné(s)</strong>
+                                </div>
+                                <button class="btn btn-success btn-sm me-2" id="markSelectedWorking">
+                                    <i class="fas fa-check"></i> Marquer comme ouvré
+                                </button>
+                                <button class="btn btn-danger btn-sm me-2" id="markSelectedNonWorking">
+                                    <i class="fas fa-times"></i> Marquer comme non-ouvré
+                                </button>
+                                <button class="btn btn-secondary btn-sm" id="clearSelection">
+                                    <i class="fas fa-times-circle"></i> Annuler sélection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-info"></i> Statistiques</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="calendarStats">
+                                <p class="mb-1">
+                                    <strong>Jours ouvrés :</strong> 
+                                    <span id="workingDaysCount" class="text-success">-</span>
+                                </p>
+                                <p class="mb-0">
+                                    <strong>Jours non-ouvrés :</strong> 
+                                    <span id="nonWorkingDaysCount" class="text-danger">-</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour détails jour -->
+<div class="modal fade" id="dayDetailsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails du jour</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="dayConfigForm">
+                    <div class="mb-3">
+                        <label class="form-label">Date :</label>
+                        <input type="text" id="modalDate" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Statut :</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="workingStatus" id="isWorking" value="true">
+                            <label class="form-check-label text-success" for="isWorking">
+                                <i class="fas fa-check"></i> Jour ouvré
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="workingStatus" id="isNotWorking" value="false">
+                            <label class="form-check-label text-danger" for="isNotWorking">
+                                <i class="fas fa-times"></i> Jour non-ouvré
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="dayDescription" class="form-label">Description (optionnel) :</label>
+                        <input type="text" class="form-control" id="dayDescription" placeholder="Ex: Jour férié, Vacances...">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" id="resetDayConfig">
+                    <i class="fas fa-undo"></i> Réinitialiser
+                </button>
+                <button type="button" class="btn btn-primary" id="saveDayConfig">
+                    <i class="fas fa-save"></i> Sauvegarder
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.calendar-container {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.calendar-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 auto;
+}
+
+.calendar-table th,
+.calendar-table td {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    text-align: center;
+    vertical-align: middle;
+    position: relative;
+    min-width: 40px;
+    height: 50px;
+}
+
+.calendar-table th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+.calendar-day {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 4px;
+    margin: 2px;
+    padding: 6px;
+    min-height: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+}
+
+.calendar-day:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.calendar-day.working {
+    background-color: #d4edda;
+    color: #155724;
+    border: 2px solid #c3e6cb;
+}
+
+.calendar-day.non-working {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 2px solid #f5c6cb;
+}
+
+.calendar-day.today {
+    font-weight: bold;
+    position: relative;
+}
+
+.calendar-day.today::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background-color: #007bff;
+    border-radius: 50%;
+}
+
+.calendar-day.selected {
+    box-shadow: 0 0 0 3px #007bff;
+    z-index: 1;
+    position: relative;
+}
+
+.calendar-day.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #007bff;
+    background: white;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.other-month {
+    opacity: 0.3;
+}
+
+.day-number {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.day-status {
+    font-size: 10px;
+    margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+    .calendar-table th,
+    .calendar-table td {
+        padding: 4px;
+        min-width: 35px;
+        height: 40px;
+    }
+    
+    .calendar-day {
+        padding: 4px;
+        min-height: 30px;
+    }
+    
+    .day-number {
+        font-size: 12px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class WorkingDaysCalendar {
+    constructor() {
+        console.log('WorkingDaysCalendar: Initialisation...');
+        this.debugElement = document.getElementById('debug-info');
+        this.debugText = document.getElementById('debug-text');
+        this.showDebug('Constructor démarré');
+        
+        this.currentDate = new Date();
+        this.currentMonth = this.currentDate.getMonth();
+        this.currentYear = this.currentDate.getFullYear();
+        this.workingDaysConfig = {};
+        this.selectedDate = null;
+        
+        // Sélection multiple
+        this.selectedDays = new Set();
+        this.multiSelectMode = false;
+        this.lastClickedDay = null;
+        
+        this.showDebug('Variables initialisées');
+        this.init();
+    }
+    
+    showDebug(message) {
+        console.log('Calendar Debug:', message);
+        if (this.debugElement && this.debugText) {
+            this.debugElement.style.display = 'block';
+            this.debugText.textContent = message;
+        }
+    }
+    
+    init() {
+        this.showDebug('Début init()');
+        try {
+            this.bindEvents();
+            this.showDebug('Events bindés');
+            this.loadMonth();
+            this.showDebug('Mois chargé');
+        } catch (error) {
+            this.showDebug('Erreur init: ' + error.message);
+            console.error('Erreur init calendrier:', error);
+        }
+    }
+    
+    bindEvents() {
+        document.getElementById('prevMonth').addEventListener('click', () => {
+            this.currentMonth--;
+            if (this.currentMonth < 0) {
+                this.currentMonth = 11;
+                this.currentYear--;
+            }
+            this.loadMonth();
+        });
+        
+        document.getElementById('nextMonth').addEventListener('click', () => {
+            this.currentMonth++;
+            if (this.currentMonth > 11) {
+                this.currentMonth = 0;
+                this.currentYear++;
+            }
+            this.loadMonth();
+        });
+        
+        // Modal events
+        document.getElementById('saveDayConfig').addEventListener('click', () => {
+            this.saveDayConfig();
+        });
+        
+        document.getElementById('resetDayConfig').addEventListener('click', () => {
+            this.resetDayConfig();
+        });
+        
+        // Sélection multiple events
+        document.getElementById('markSelectedWorking').addEventListener('click', () => {
+            this.markSelectedAs(true);
+        });
+        
+        document.getElementById('markSelectedNonWorking').addEventListener('click', () => {
+            this.markSelectedAs(false);
+        });
+        
+        document.getElementById('clearSelection').addEventListener('click', () => {
+            this.clearSelection();
+        });
+        
+        // Écouter les touches Ctrl/Shift pour activer mode multi-sélection
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.shiftKey) {
+                this.multiSelectMode = true;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (!e.ctrlKey && !e.shiftKey) {
+                this.multiSelectMode = false;
+            }
+        });
+    }
+    
+    async loadMonth() {
+        this.showDebug(`Chargement mois ${this.currentMonth + 1}/${this.currentYear}`);
+        const startDate = new Date(this.currentYear, this.currentMonth, 1);
+        const endDate = new Date(this.currentYear, this.currentMonth + 1, 0);
+        
+        // Charger la configuration pour le mois
+        try {
+            const url = `/api/working-days?start_date=${this.formatDate(startDate)}&end_date=${this.formatDate(endDate)}`;
+            this.showDebug(`Requête API: ${url}`);
+            
+            const response = await fetch(url);
+            if (response.ok) {
+                const config = await response.json();
+                this.workingDaysConfig = {};
+                config.forEach(item => {
+                    this.workingDaysConfig[item.date] = item;
+                });
+                this.showDebug(`Config chargée: ${config.length} éléments`);
+            } else {
+                this.showDebug(`Erreur API: ${response.status}`);
+            }
+        } catch (error) {
+            this.showDebug(`Erreur fetch: ${error.message}`);
+            console.error('Erreur chargement configuration:', error);
+        }
+        
+        this.showDebug('Début rendu calendrier');
+        this.renderCalendar();
+        this.updateStats();
+    }
+    
+    renderCalendar() {
+        this.showDebug('renderCalendar() démarré');
+        try {
+            const monthNames = [
+                'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+                'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+            ];
+            
+            const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+            
+            // Mise à jour du titre
+            const titleElement = document.getElementById('currentMonthYear');
+            if (!titleElement) {
+                this.showDebug('Erreur: élément currentMonthYear non trouvé');
+                return;
+            }
+            
+            titleElement.textContent = `${monthNames[this.currentMonth]} ${this.currentYear}`;
+            this.showDebug('Titre mis à jour');
+            
+            // Génération du calendrier
+            const firstDay = new Date(this.currentYear, this.currentMonth, 1);
+            const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
+            const startCalendar = new Date(firstDay);
+            // Ajuster pour commencer par lundi (0=dim, 1=lun, etc.)
+            const dayOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+            startCalendar.setDate(startCalendar.getDate() - dayOffset);
+        
+        let html = '<table class="calendar-table table">';
+        
+        // En-têtes des jours
+        html += '<thead><tr>';
+        dayNames.forEach(day => {
+            html += `<th>${day}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        
+        // Génération des semaines
+        const current = new Date(startCalendar);
+        const today = new Date();
+        
+        while (current <= lastDay || current.getDay() !== 0) {
+            html += '<tr>';
+            
+            for (let day = 0; day < 7; day++) {
+                const dateStr = this.formatDate(current);
+                const isCurrentMonth = current.getMonth() === this.currentMonth;
+                const isToday = current.toDateString() === today.toDateString();
+                const config = this.workingDaysConfig[dateStr];
+                
+                let dayClass = 'calendar-day';
+                let statusIcon = '';
+                
+                // Déterminer le statut du jour
+                if (config) {
+                    if (config.is_working_day) {
+                        dayClass += ' working';
+                        statusIcon = '<i class="fas fa-check"></i>';
+                    } else {
+                        dayClass += ' non-working';
+                        statusIcon = '<i class="fas fa-times"></i>';
+                    }
+                } else {
+                    // Défaut: lun-ven ouvrés, WE non-ouvrés
+                    const weekday = current.getDay();
+                    if (weekday >= 1 && weekday <= 5) {
+                        dayClass += ' working';
+                        statusIcon = '<i class="fas fa-check"></i>';
+                    } else {
+                        dayClass += ' non-working';
+                        statusIcon = '<i class="fas fa-times"></i>';
+                    }
+                }
+                
+                if (!isCurrentMonth) {
+                    dayClass += ' other-month';
+                }
+                
+                if (isToday) {
+                    dayClass += ' today';
+                }
+                
+                html += `
+                    <td>
+                        <div class="${dayClass}" data-date="${dateStr}" onclick="calendar.handleDayClick(event, '${dateStr}')">
+                            <div class="day-number">${current.getDate()}</div>
+                            <div class="day-status">${statusIcon}</div>
+                        </div>
+                    </td>
+                `;
+                
+                current.setDate(current.getDate() + 1);
+            }
+            
+            html += '</tr>';
+            
+            if (current > lastDay && current.getDay() === 1) break; // Arrêter au lundi suivant
+        }
+        
+        html += '</tbody></table>';
+        
+        const calendarElement = document.getElementById('workingDaysCalendar');
+        if (calendarElement) {
+            calendarElement.innerHTML = html;
+            this.showDebug('Calendrier HTML injecté');
+        } else {
+            this.showDebug('Erreur: élément workingDaysCalendar non trouvé');
+        }
+        
+        } catch (error) {
+            this.showDebug('Erreur renderCalendar: ' + error.message);
+            console.error('Erreur rendu calendrier:', error);
+        }
+    }
+    
+    formatDate(date) {
+        return date.toISOString().split('T')[0];
+    }
+    
+    handleDayClick(event, dateStr) {
+        if (event.shiftKey && this.lastClickedDay) {
+            // Sélection par plage (Shift)
+            event.preventDefault();
+            this.selectRange(this.lastClickedDay, dateStr);
+        } else if (event.ctrlKey) {
+            // Sélection multiple (Ctrl)
+            event.preventDefault();
+            this.toggleDaySelection(dateStr);
+            this.lastClickedDay = dateStr;
+        } else if (this.selectedDays.size > 0) {
+            // Clic simple avec sélection active - annuler sélection
+            this.clearSelection();
+            this.openDayModal(dateStr);
+        } else {
+            // Clic normal
+            this.openDayModal(dateStr);
+            this.lastClickedDay = dateStr;
+        }
+    }
+    
+    toggleDaySelection(dateStr) {
+        if (this.selectedDays.has(dateStr)) {
+            this.selectedDays.delete(dateStr);
+        } else {
+            this.selectedDays.add(dateStr);
+        }
+        this.updateSelectionUI();
+    }
+    
+    selectRange(startDateStr, endDateStr) {
+        // Convertir les dates pour comparaison
+        const startDate = new Date(startDateStr);
+        const endDate = new Date(endDateStr);
+        
+        // S'assurer que startDate <= endDate
+        const fromDate = startDate <= endDate ? startDate : endDate;
+        const toDate = startDate <= endDate ? endDate : startDate;
+        
+        // Vider la sélection actuelle
+        this.selectedDays.clear();
+        
+        // Sélectionner tous les jours dans la plage
+        const currentDate = new Date(fromDate);
+        while (currentDate <= toDate) {
+            const dateStr = this.formatDate(currentDate);
+            this.selectedDays.add(dateStr);
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        this.updateSelectionUI();
+    }
+    
+    updateSelectionUI() {
+        // Mettre à jour le compteur
+        document.getElementById('selectedDaysCount').textContent = this.selectedDays.size;
+        
+        // Afficher/masquer les contrôles
+        const controls = document.getElementById('multiSelectControls');
+        if (this.selectedDays.size > 0) {
+            controls.style.display = 'block';
+        } else {
+            controls.style.display = 'none';
+        }
+        
+        // Mettre à jour l'apparence des jours sélectionnés
+        document.querySelectorAll('.calendar-day').forEach(dayElement => {
+            const dateStr = dayElement.getAttribute('data-date');
+            if (this.selectedDays.has(dateStr)) {
+                dayElement.classList.add('selected');
+            } else {
+                dayElement.classList.remove('selected');
+            }
+        });
+    }
+    
+    clearSelection() {
+        this.selectedDays.clear();
+        this.lastClickedDay = null;
+        this.updateSelectionUI();
+    }
+    
+    async markSelectedAs(isWorking) {
+        if (this.selectedDays.size === 0) return;
+        
+        const updates = [];
+        for (const dateStr of this.selectedDays) {
+            updates.push({
+                date: dateStr,
+                is_working_day: isWorking,
+                description: `Modification groupée - ${isWorking ? 'Ouvré' : 'Non ouvré'}`
+            });
+        }
+        
+        try {
+            const response = await fetch('/api/working-days/bulk', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    updates: updates
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Erreur lors de la mise à jour');
+            }
+            
+            // Recharger le mois pour refléter les changements
+            await this.loadMonth();
+            this.clearSelection();
+            
+            let message = `${result.updated_count} jour(s) modifié(s) avec succès !`;
+            if (result.errors && result.errors.length > 0) {
+                message += `\n\nAvertissements:\n${result.errors.join('\n')}`;
+            }
+            
+            alert(message);
+            
+        } catch (error) {
+            console.error('Erreur lors de la modification groupée:', error);
+            alert('Erreur lors de la modification : ' + error.message);
+        }
+    }
+    
+    openDayModal(dateStr) {
+        this.selectedDate = dateStr;
+        const config = this.workingDaysConfig[dateStr];
+        
+        document.getElementById('modalDate').value = dateStr;
+        
+        if (config) {
+            document.getElementById(config.is_working_day ? 'isWorking' : 'isNotWorking').checked = true;
+            document.getElementById('dayDescription').value = config.description || '';
+        } else {
+            // Défaut basé sur le jour de la semaine
+            const date = new Date(dateStr);
+            const isWeekday = date.getDay() >= 1 && date.getDay() <= 5;
+            document.getElementById(isWeekday ? 'isWorking' : 'isNotWorking').checked = true;
+            document.getElementById('dayDescription').value = '';
+        }
+        
+        new bootstrap.Modal(document.getElementById('dayDetailsModal')).show();
+    }
+    
+    async saveDayConfig() {
+        const isWorking = document.getElementById('isWorking').checked;
+        const description = document.getElementById('dayDescription').value;
+        
+        try {
+            const response = await fetch(`/api/working-days/${this.selectedDate}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    is_working_day: isWorking,
+                    description: description
+                })
+            });
+            
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('dayDetailsModal')).hide();
+                this.loadMonth(); // Recharger le calendrier
+                this.showNotification('Configuration sauvegardée avec succès', 'success');
+            } else {
+                this.showNotification('Erreur lors de la sauvegarde', 'danger');
+            }
+        } catch (error) {
+            console.error('Erreur sauvegarde:', error);
+            this.showNotification('Erreur lors de la sauvegarde', 'danger');
+        }
+    }
+    
+    async resetDayConfig() {
+        try {
+            const response = await fetch(`/api/working-days/${this.selectedDate}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('dayDetailsModal')).hide();
+                this.loadMonth(); // Recharger le calendrier
+                this.showNotification('Configuration réinitialisée', 'info');
+            } else {
+                this.showNotification('Erreur lors de la réinitialisation', 'danger');
+            }
+        } catch (error) {
+            console.error('Erreur réinitialisation:', error);
+            this.showNotification('Erreur lors de la réinitialisation', 'danger');
+        }
+    }
+    
+    updateStats() {
+        let workingCount = 0;
+        let nonWorkingCount = 0;
+        
+        // Calculer pour tous les jours du mois affiché
+        const firstDay = new Date(this.currentYear, this.currentMonth, 1);
+        const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
+        
+        const currentDate = new Date(firstDay);
+        while (currentDate <= lastDay) {
+            const dateStr = this.formatDate(currentDate);
+            const config = this.workingDaysConfig[dateStr];
+            
+            let isWorking;
+            if (config) {
+                // Jour configuré
+                isWorking = config.is_working_day;
+            } else {
+                // Jour par défaut : lun-ven ouvrés, sam-dim non-ouvrés
+                const weekday = currentDate.getDay();
+                isWorking = weekday >= 1 && weekday <= 5;
+            }
+            
+            if (isWorking) {
+                workingCount++;
+            } else {
+                nonWorkingCount++;
+            }
+            
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        document.getElementById('workingDaysCount').textContent = workingCount;
+        document.getElementById('nonWorkingDaysCount').textContent = nonWorkingCount;
+    }
+    
+    showNotification(message, type) {
+        // Créer une notification toast
+        const toastContainer = document.querySelector('.toast-container') || (() => {
+            const container = document.createElement('div');
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            document.body.appendChild(container);
+            return container;
+        })();
+        
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        
+        toastContainer.appendChild(toast);
+        new bootstrap.Toast(toast).show();
+        
+        // Supprimer après 5 secondes
+        setTimeout(() => {
+            toast.remove();
+        }, 5000);
+    }
+}
+
+// Initialiser le calendrier
+let calendar;
+document.addEventListener('DOMContentLoaded', () => {
+    calendar = new WorkingDaysCalendar();
+});
+</script>
+{% endblock %}
