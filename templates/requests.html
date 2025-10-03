@@ -77,6 +77,7 @@
                                 <th>📋 Description</th>
                                 <th>🔬 Matériel Prof</th>
                                 <th>📝 Notes</th>
+                                <th>📁 Image</th>
                                 <th>📊 Statut</th>
                                 <th>⚙️ Actions</th>
                                 <th>📅 Créé le</th>
@@ -242,6 +243,26 @@
                         <label for="editNotes" class="form-label">📝 Notes supplémentaires</label>
                         <textarea class="form-control" id="editNotes" rows="2"></textarea>
                     </div>
+                    
+                    <!-- Option pour modifier toutes les demandes liées -->
+                    <div class="mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="editAllRelated" checked>
+                                    <label class="form-check-label fw-bold" for="editAllRelated">
+                                        🔗 Modifier toutes les demandes liées (même enseignant + même nom)
+                                    </label>
+                                </div>
+                                <small class="text-muted" id="relatedRequestsInfo">
+                                    Les modifications s'appliqueront à toutes les demandes du même nom pour cet enseignant.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Ajout d'une section dédiée à l'image -->
+                    <div id="editImageSection" class="mb-3"></div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -254,10 +275,44 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de validation des modifications -->
+<div class="modal fade" id="validationModal" tabindex="-1" aria-labelledby="validationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="validationModalLabel">📝 Valider les modifications</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Les modifications suivantes sont en attente de validation :</p>
+                <div id="modificationsPreview" class="mb-3">
+                    <!-- Les modifications seront affichées ici -->
+                </div>
+                <div class="alert alert-info">
+                    <strong>Note :</strong> Une fois validées, ces modifications seront appliquées définitivement à la demande.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="rejectModifications()" title="Rejeter et supprimer les modifications">
+                    ❌ Rejeter
+                </button>
+                <button type="button" class="btn btn-success" onclick="validateModifications()" title="Appliquer les modifications">
+                    ✅ Valider
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// Variables globales pour le suivi des modifications
+let originalRequestData = {};
+let modifiedRequests = new Map(); // Stocke les modifications pour chaque demande
+
 // Gestion des cookies
 function setCookie(name, value, days = 30) {
     const expires = new Date();
@@ -276,6 +331,139 @@ function getCookie(name) {
     return null;
 }
 
+// Fonction pour comparer deux textes et générer un affichage avec les modifications
+function generateDiffDisplay(originalText, newText) {
+    if (originalText === newText) {
+        return newText; // Aucun changement
+    }
+    
+    // Diviser les textes en mots pour une comparaison plus fine
+    const originalWords = originalText.split(/(\s+)/);
+    const newWords = newText.split(/(\s+)/);
+    
+    let result = '';
+    let i = 0, j = 0;
+    
+    // Algorithme simple de comparaison mot par mot
+    while (i < originalWords.length || j < newWords.length) {
+        if (i >= originalWords.length) {
+            // Tous les mots restants sont des ajouts
+            while (j < newWords.length) {
+                if (newWords[j].trim()) {
+                    result += `<span class="text-addition">${newWords[j]}</span>`;
+                } else {
+                    result += newWords[j]; // Préserver les espaces
+                }
+                j++;
+            }
+        } else if (j >= newWords.length) {
+            // Tous les mots restants sont des suppressions
+            while (i < originalWords.length) {
+                if (originalWords[i].trim()) {
+                    result += `<span class="text-deletion">${originalWords[i]}</span>`;
+                } else {
+                    result += originalWords[i]; // Préserver les espaces
+                }
+                i++;
+            }
+        } else if (originalWords[i] === newWords[j]) {
+            // Mot identique
+            result += originalWords[i];
+            i++;
+            j++;
+        } else {
+            // Chercher le mot suivant dans l'autre texte
+            let foundInNew = -1;
+            let foundInOriginal = -1;
+            
+            // Chercher le mot original dans le nouveau texte
+            for (let k = j + 1; k < Math.min(newWords.length, j + 5); k++) {
+                if (originalWords[i] === newWords[k]) {
+                    foundInNew = k;
+                    break;
+                }
+            }
+            
+            // Chercher le mot nouveau dans l'original
+            for (let k = i + 1; k < Math.min(originalWords.length, i + 5); k++) {
+                if (newWords[j] === originalWords[k]) {
+                    foundInOriginal = k;
+                    break;
+                }
+            }
+            
+            if (foundInNew !== -1 && (foundInOriginal === -1 || foundInNew - j < foundInOriginal - i)) {
+                // Le mot original se trouve plus tard dans le nouveau texte
+                // Traiter les mots entre j et foundInNew comme des ajouts
+                for (let k = j; k < foundInNew; k++) {
+                    if (newWords[k].trim()) {
+                        result += `<span class="text-addition">${newWords[k]}</span>`;
+                    } else {
+                        result += newWords[k];
+                    }
+                }
+                result += originalWords[i]; // Mot identique
+                i++;
+                j = foundInNew + 1;
+            } else if (foundInOriginal !== -1) {
+                // Le mot nouveau se trouve plus tard dans l'original
+                // Traiter les mots entre i et foundInOriginal comme des suppressions
+                for (let k = i; k < foundInOriginal; k++) {
+                    if (originalWords[k].trim()) {
+                        result += `<span class="text-deletion">${originalWords[k]}</span>`;
+                    } else {
+                        result += originalWords[k];
+                    }
+                }
+                result += newWords[j]; // Mot identique
+                i = foundInOriginal + 1;
+                j++;
+            } else {
+                // Mots différents, traiter comme suppression + ajout
+                if (originalWords[i].trim()) {
+                    result += `<span class="text-deletion">${originalWords[i]}</span>`;
+                } else {
+                    result += originalWords[i];
+                }
+                if (newWords[j].trim()) {
+                    result += `<span class="text-addition">${newWords[j]}</span>`;
+                } else {
+                    result += newWords[j];
+                }
+                i++;
+                j++;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// Fonction pour enrichir l'affichage d'une demande avec les modifications
+function enhanceRequestDisplay(request, fieldName, originalValue) {
+    // Vérifier d'abord les modifications locales (pour l'affichage immédiat après édition)
+    const requestChanges = modifiedRequests.get(request.id.toString());
+    
+    if (requestChanges && requestChanges[fieldName]) {
+        // Cette demande a été modifiée dans ce champ localement
+        return `<div class="modified-field recently-modified">${requestChanges[fieldName].diff}</div>`;
+    }
+    
+    // Vérifier les modifications en attente dans la base de données
+    const pendingMods = allPendingModifications.get(request.id);
+    if (pendingMods) {
+        const fieldModification = pendingMods.find(mod => mod.field_name === fieldName);
+        if (fieldModification) {
+            // Générer l'affichage de la différence
+            const diff = generateDiffDisplay(fieldModification.original_value, fieldModification.new_value);
+            return `<div class="modified-field">${diff}</div>`;
+        }
+    }
+    
+    // Aucune modification, affichage normal
+    return originalValue;
+}
+
 function initializeFilters() {
     // Définir automatiquement la date de début à aujourd'hui
     const today = new Date().toISOString().split('T')[0];
@@ -292,12 +480,46 @@ function initializeFilters() {
     console.log(`📅 Date par défaut définie: ${today}`);
 }
 
+    // Variables globales pour stocker les modifications en attente
+let requestsWithPendingModifications = new Set();
+let allPendingModifications = new Map(); // Map<requestId, modifications[]>
+
 document.addEventListener('DOMContentLoaded', function() {
     initializeFilters();
+    loadRequestsWithPendingModifications();
     loadRequests();
 });
 
-function loadRequests() {
+function loadRequestsWithPendingModifications() {
+    // Charger les IDs des demandes avec modifications
+    fetch('/api/requests-with-pending-modifications')
+        .then(response => response.json())
+        .then(requestIds => {
+            requestsWithPendingModifications = new Set(requestIds);
+        })
+        .catch(error => {
+            console.error('Error loading pending modifications IDs:', error);
+        });
+    
+    // Charger toutes les modifications en attente
+    fetch('/api/pending-modifications')
+        .then(response => response.json())
+        .then(modifications => {
+            allPendingModifications.clear();
+            
+            // Grouper les modifications par request_id
+            modifications.forEach(mod => {
+                const requestId = mod.request_id;
+                if (!allPendingModifications.has(requestId)) {
+                    allPendingModifications.set(requestId, []);
+                }
+                allPendingModifications.get(requestId).push(mod);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading all pending modifications:', error);
+        });
+}function loadRequests() {
     const loadingIndicator = document.getElementById('loadingIndicator');
     const tableBody = document.getElementById('requestsTableBody');
     const noResults = document.getElementById('noResults');
@@ -355,14 +577,27 @@ function loadRequests() {
             // Populate table
             filteredRequests.forEach(request => {
                 const row = document.createElement('tr');
-                row.style.cursor = 'pointer';
+                
+                // Vérifier si l'édition est possible (délai 2 jours ouvrés)
+                const canEdit = canEditRequest(request);
+                row.style.cursor = canEdit ? 'pointer' : 'not-allowed';
+                
+                // Toujours permettre le double-clic pour ouvrir la modale (en lecture seule si nécessaire)
                 row.addEventListener('dblclick', () => editRequest(request.id));
+                
+                if (canEdit) {
+                    row.title = 'Double-cliquez pour modifier';
+                } else {
+                    row.title = 'Double-cliquez pour visualiser (modification impossible - moins de 2 jours ouvrés)';
+                    row.style.opacity = '0.7';
+                }
                 
                 const statusBadge = getStatusBadge(request);
                 const preparedButton = getPreparedButton(request);
+                const validationButton = getValidationButton(request);
                 
                 // Trouver les autres demandes du même enseignant avec le même nom
-                const relatedRequests = allRequests.filter(r => 
+                const relatedRequests = window.allRequests.filter(r => 
                     r.teacher_id === request.teacher_id && 
                     r.request_name === request.request_name && 
                     r.request_name && // Seulement si le nom existe
@@ -378,22 +613,75 @@ function loadRequests() {
                     otherSchedules = `<br><small class="text-muted">📅 Autres horaires: ${schedules}</small>`;
                 }
                 
+                // Améliorer l'affichage avec les modifications si elles existent
+                const displayRequestName = enhanceRequestDisplay(request, 'request_name', 
+                    `<span class="badge bg-primary">${request.request_name || '<em class="text-muted">Sans nom</em>'}</span>`);
+                
+                const displayHoraire = enhanceRequestDisplay(request, 'horaire', 
+                    `<span class="badge bg-success">${request.horaire || '-'}</span>`);
+                
+                const displayClassName = enhanceRequestDisplay(request, 'class_name', 
+                    `<span class="badge bg-info">${request.class_name}</span>`);
+                
+                const displayQuantity = enhanceRequestDisplay(request, 'quantity', 
+                    `<span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span>`);
+                
+                const displayComputersNeeded = enhanceRequestDisplay(request, 'computers_needed', 
+                    `<span class="badge bg-warning">${request.computers_needed || 0}</span>`);
+                
+                const displayMaterialDescription = enhanceRequestDisplay(request, 'material_description', 
+                    request.material_description);
+                
+                const displayMaterialProf = enhanceRequestDisplay(request, 'material_prof', 
+                    `<small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small>`);
+                
+                const displayNotes = enhanceRequestDisplay(request, 'notes', 
+                    `<span style="white-space: pre-wrap;">${request.notes || '<em class="text-muted">Aucune</em>'}</span>`);
+
+                // Gestion de l'affichage de l'image
+                let displayImage = '<em class="text-muted">Aucune</em>';
+                if (request.image_url && request.image_url.trim()) {
+                    displayImage = `
+                        <img src="${request.image_url}" 
+                             alt="Image de la demande" 
+                             class="img-thumbnail" 
+                             style="max-width: 50px; max-height: 50px; cursor: pointer;"
+                             onclick="showImageModal('${request.image_url}', 'Demande #${request.id} - ${request.teacher_name}')"
+                             title="Cliquez pour agrandir">
+                    `;
+                }
+
+                // Vérifier si la demande peut être modifiée
+                const canEditRow = canEditRequest(request);
+                const rowStyle = canEditRow ? 'cursor: pointer;' : 'cursor: pointer; opacity: 0.7;';
+                const tooltip = canEditRow ? 'Double-cliquez pour modifier' : 'Double-cliquez pour visualiser (modification impossible - moins de 2 jours ouvrés)';
+                
                 row.innerHTML = `
                     <td>${request.id}</td>
                     <td><div class="fw-bold">${request.teacher_name || '<em class="text-muted">Nom manquant</em>'}</div></td>
-                    <td><span class="badge bg-primary">${request.request_name || '<em class="text-muted">Sans nom</em>'}</span></td>
+                    <td>${displayRequestName}</td>
                     <td>${formatDate(request.request_date)}${otherSchedules}</td>
-                    <td><span class="badge bg-success">${request.horaire || '-'}</span></td>
-                    <td><span class="badge bg-info">${request.class_name}</span></td>
-                    <td><span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span></td>
-                    <td><span class="badge bg-warning">${request.computers_needed || 0}</span></td>
-                    <td>${request.material_description}</td>
-                    <td><small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small></td>
-                    <td style="white-space: pre-wrap;">${request.notes || '<em class="text-muted">Aucune</em>'}</td>
+                    <td>${displayHoraire}</td>
+                    <td>${displayClassName}</td>
+                    <td>${displayQuantity}</td>
+                    <td>${displayComputersNeeded}</td>
+                    <td>${displayMaterialDescription}</td>
+                    <td>${displayMaterialProf}</td>
+                    <td>${displayNotes}</td>
+                    <td>${displayImage}</td>
                     <td>${statusBadge}</td>
-                    <td>${preparedButton}</td>
+                    <td>
+                        ${preparedButton}
+                        ${validationButton ? `<br class="d-block d-sm-none">${validationButton}` : ''}
+                    </td>
                     <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
                 `;
+                
+                // Ajouter le style et le double-clic à la ligne
+                row.style.cssText = rowStyle;
+                row.title = tooltip;
+                row.addEventListener('dblclick', () => editRequest(request.id));
+                
                 tableBody.appendChild(row);
             });
         })
@@ -458,36 +746,296 @@ function getPreparedButton(request) {
     return `<button class="btn btn-sm ${buttonClass}" onclick="togglePrepared(${request.id}); event.stopPropagation();">${buttonText}</button>`;
 }
 
+function getValidationButton(request) {
+    if (requestsWithPendingModifications.has(request.id)) {
+        // Vérifier si la demande peut encore être modifiée (délai 2 jours ouvrés)
+        if (!canEditRequest(request)) {
+            return `<span class="btn btn-sm btn-secondary disabled" title="Délai insuffisant - impossible de valider (moins de 2 jours ouvrés)">
+                        🔒 Délai dépassé
+                    </span>`;
+        }
+        return `<button class="btn btn-sm btn-warning" onclick="showValidationModal(${request.id}); event.stopPropagation();" title="Valider les modifications en attente">
+                    📝 Valider modifications
+                </button>`;
+    }
+    return '';
+}
+
+function canEditRequest(request) {
+    // Calculer si on a au moins 2 jours ouvrés avant la date de la demande
+    const requestDate = new Date(request.request_date + 'T08:00:00'); // Cours à 8h
+    const now = new Date();
+    
+    let workingDaysCount = 0;
+    let checkDate = new Date(now);
+    checkDate.setDate(now.getDate() + 1); // Commencer par demain
+    
+    while (checkDate < requestDate) {
+        const dayOfWeek = checkDate.getDay();
+        // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            workingDaysCount++;
+        }
+        checkDate.setDate(checkDate.getDate() + 1);
+    }
+    
+    return workingDaysCount >= 2;
+}
+
+function showRequestInReadOnlyMode(request) {
+    // Remplir le formulaire avec les données de la demande
+    populateEditForm(request);
+    
+    // Désactiver tous les champs de saisie
+    const formElements = document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea');
+    formElements.forEach(element => {
+        element.disabled = true;
+    });
+    
+    // Masquer le bouton de sauvegarde
+    const saveButton = document.querySelector('#editRequestModal .btn-primary');
+    if (saveButton) {
+        saveButton.style.display = 'none';
+    }
+    
+    // Ajouter un message d'information
+    const modalBody = document.querySelector('#editRequestModal .modal-body');
+    let infoMessage = modalBody.querySelector('.readonly-info-message');
+    if (!infoMessage) {
+        infoMessage = document.createElement('div');
+        infoMessage.className = 'readonly-info-message alert alert-info mb-3';
+        infoMessage.innerHTML = '<i class="fas fa-info-circle"></i> Cette demande ne peut plus être modifiée car elle est programmée dans moins de 2 jours ouvrés. Vous pouvez consulter les détails ci-dessous.';
+        modalBody.insertBefore(infoMessage, modalBody.firstChild);
+    }
+    
+    // Changer le titre de la modale
+    const modalTitle = document.querySelector('#editRequestModal .modal-title');
+    if (modalTitle) {
+        modalTitle.textContent = 'Visualisation de la demande';
+    }
+    
+    // Marquer la modale comme étant en mode lecture seule
+    document.getElementById('editRequestModal').setAttribute('data-readonly', 'true');
+    
+    // Nettoyer les backdrops avant d'afficher la modale
+    clearModalBackdrops();
+    
+    // Afficher la modale simplement
+    const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
+    modal.show();
+}
+
+function populateEditForm(request) {
+    // Check if this is a special request type
+    const isAbsent = request.selected_materials === 'Absent' && request.material_description === 'Enseignant absent';
+    const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
+    const isExamMode = request.selected_materials === 'Examen' && request.material_description === 'Surveillance d\'examen';
+    
+    // Populate form - with safety checks
+    const editRequestId = document.getElementById('editRequestId');
+    const editTeacher = document.getElementById('editTeacher');
+    const editRequestName = document.getElementById('editRequestName');
+    const editDate = document.getElementById('editDate');
+    const editHoraire = document.getElementById('editHoraire');
+    const editClassName = document.getElementById('editClassName');
+    const editAbsent = document.getElementById('editAbsent');
+    const editNoMaterial = document.getElementById('editNoMaterial');
+    const editExamMode = document.getElementById('editExamMode');
+    
+    if (editRequestId) editRequestId.value = request.id;
+    if (editTeacher) editTeacher.value = request.teacher_id;
+    if (editRequestName) editRequestName.value = request.request_name || '';
+    if (editDate) editDate.value = request.request_date;
+    if (editHoraire) editHoraire.value = request.horaire || '';
+    if (editClassName) editClassName.value = request.class_name;
+    if (editAbsent) editAbsent.checked = isAbsent;
+    if (editNoMaterial) editNoMaterial.checked = isNoMaterial;
+    if (editExamMode) editExamMode.checked = isExamMode;
+    
+    const editQuantity = document.getElementById('editQuantity');
+    const editComputersNeeded = document.getElementById('editComputersNeeded');
+    const editMaterialProf = document.getElementById('editMaterialProf');
+    const editNotes = document.getElementById('editNotes');
+    
+    if (editQuantity) editQuantity.value = request.group_count || request.quantity || 1;
+    if (editComputersNeeded) editComputersNeeded.value = request.computers_needed || 0;
+    if (editMaterialProf) editMaterialProf.value = request.material_prof || '';
+    if (editNotes) editNotes.value = request.notes || '';
+    
+    // Gérer l'affichage de l'image (compatible avec différents éléments)
+    const currentImageDiv = document.getElementById('editCurrentImage');
+    const imageSection = document.getElementById('editImageSection');
+    
+    const imageElement = currentImageDiv || imageSection;
+    if (imageElement) {
+        if (request.image_url && request.image_url.trim()) {
+            const imageHtml = currentImageDiv ? `
+                <div class="mb-2">
+                    <label class="form-label">Image actuelle :</label><br>
+                    <img src="${request.image_url}" alt="Image actuelle" class="img-thumbnail" style="max-width: 200px; max-height: 200px; cursor: pointer;" onclick="showImageModal('${request.image_url}', 'Demande #${request.id}')">
+                </div>
+            ` : `
+                <div class="mb-2 text-center">
+                    <img src="${request.image_url}" alt="Image de la demande" class="img-thumbnail" style="max-width:120px;max-height:120px;cursor:pointer;" onclick="showImageModal('${request.image_url}', 'Demande #${request.id} - ${request.teacher_name}')">
+                    <div><small class="text-muted">Cliquez pour agrandir</small></div>
+                </div>
+            `;
+            imageElement.innerHTML = imageHtml;
+        } else {
+            imageElement.innerHTML = currentImageDiv ? 
+                '<p class="text-muted">Aucune image associée</p>' : 
+                '<em class="text-muted">Aucune image associée</em>';
+        }
+    }
+}
+
+
+
+function clearModalBackdrops() {
+    // Supprimer tous les backdrops qui traînent
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(backdrop => {
+        backdrop.remove();
+    });
+    
+    // Remettre le body en état normal
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+}
+
+// Fonction d'urgence accessible globalement pour débloquer l'interface
+window.emergencyUnblock = function() {
+    clearModalBackdrops();
+    // Fermer toutes les modales ouvertes
+    const modals = document.querySelectorAll('.modal.show');
+    modals.forEach(modal => {
+        const instance = bootstrap.Modal.getInstance(modal);
+        if (instance) {
+            instance.hide();
+        }
+    });
+    console.log('Interface débloquée');
+};
+
+function resetEditForm() {
+    try {
+        // Nettoyer les backdrops avant tout
+        clearModalBackdrops();
+        
+        // Réactiver tous les champs
+        const formElements = document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea');
+        formElements.forEach(element => {
+            if (element) element.disabled = false;
+        });
+        
+        // Réafficher le bouton de sauvegarde
+        const saveButton = document.querySelector('#editRequestModal .btn-primary');
+        if (saveButton) {
+            saveButton.style.display = '';
+        }
+        
+        // Supprimer le message d'information
+        const infoMessage = document.querySelector('#editRequestModal .readonly-info-message');
+        if (infoMessage) {
+            infoMessage.remove();
+        }
+        
+        // Remettre le titre original
+        const modalTitle = document.querySelector('#editRequestModal .modal-title');
+        if (modalTitle) {
+            modalTitle.textContent = 'Modifier la demande';
+        }
+    } catch (error) {
+        console.error('Erreur dans resetEditForm:', error);
+        // En cas d'erreur, forcer le nettoyage des backdrops
+        clearModalBackdrops();
+    }
+}
+
 function editRequest(requestId) {
     // Fetch request details
     fetch(`/api/requests/${requestId}`)
         .then(response => response.json())
         .then(request => {
-            // Check if this is a special request type
+            // Vérifier si la demande peut être modifiée (délai 2 jours ouvrés)
+            const canEdit = canEditRequest(request);
+            if (!canEdit) {
+                // Mode lecture seule - afficher la modale mais bloquer les modifications
+                showRequestInReadOnlyMode(request);
+                return;
+            }
+            // Sauvegarder l'état original de la demande pour le suivi des modifications
+            originalRequestData = {
+                request_name: request.request_name || '',
+                class_name: request.class_name || '',
+                material_description: request.material_description || '',
+                material_prof: request.material_prof || '',
+                notes: request.notes || '',
+                horaire: request.horaire || '',
+                quantity: request.group_count || request.quantity || 1,
+                computers_needed: request.computers_needed || 0
+            };
+            
+            // S'assurer que la modale est en mode édition (nettoyer le mode lecture seule si nécessaire)
+            const modalElement = document.getElementById('editRequestModal');
+            if (modalElement && modalElement.getAttribute('data-readonly') === 'true') {
+                resetEditForm();
+            }
+            modalElement.removeAttribute('data-readonly');
+            
+            // Utiliser la fonction centralisée pour remplir le formulaire
+            populateEditForm(request);
+            
+            // Stocker les valeurs originales pour la mise à jour groupée
+            const editRequestId = document.getElementById('editRequestId');
+            if (editRequestId) {
+                editRequestId.setAttribute('data-teacher-id', request.teacher_id);
+                editRequestId.setAttribute('data-request-name', request.request_name || '');
+            }
+
+            // Redéfinir les variables pour les modes spéciaux (utilisées plus loin)
             const isAbsent = request.selected_materials === 'Absent' && request.material_description === 'Enseignant absent';
             const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
             const isExamMode = request.selected_materials === 'Examen' && request.material_description === 'Surveillance d\'examen';
             
-            // Populate form
-            document.getElementById('editRequestId').value = request.id;
-            document.getElementById('editTeacher').value = request.teacher_id;
-            document.getElementById('editRequestName').value = request.request_name || '';
-            document.getElementById('editDate').value = request.request_date;
-            document.getElementById('editHoraire').value = request.horaire || '';
-            document.getElementById('editClassName').value = request.class_name;
-            document.getElementById('editAbsent').checked = isAbsent;
-            document.getElementById('editNoMaterial').checked = isNoMaterial;
-            document.getElementById('editExamMode').checked = isExamMode;
+            // Calculer le nombre de demandes liées (même enseignant + même nom)
+            let relatedCount = 0;
+            if (window.allRequests && request.request_name) {
+                relatedCount = window.allRequests.filter(r => 
+                    r.teacher_id === request.teacher_id && 
+                    r.request_name === request.request_name &&
+                    r.request_name // Seulement si le nom existe
+                ).length;
+            }
             
-            document.getElementById('editQuantity').value = request.group_count || request.quantity || 1;
-            document.getElementById('editComputersNeeded').value = request.computers_needed || 0;
-            document.getElementById('editMaterialProf').value = request.material_prof || '';
-            document.getElementById('editNotes').value = request.notes || '';
+            // Mettre à jour le texte d'information et la checkbox
+            const relatedInfo = document.getElementById('relatedRequestsInfo');
+            const bulkCheckbox = document.getElementById('editAllRelated');
+            
+            if (relatedCount > 1) {
+                relatedInfo.textContent = `${relatedCount} demandes seront modifiées simultanément (même enseignant + même nom "${request.request_name}").`;
+                relatedInfo.className = 'text-info fw-bold';
+                // Cocher par défaut s'il y a des demandes liées
+                bulkCheckbox.checked = true;
+                bulkCheckbox.disabled = false;
+            } else {
+                relatedInfo.textContent = 'Aucune autre demande liée trouvée. Seule cette demande sera modifiée.';
+                relatedInfo.className = 'text-muted';
+                // Décocher et désactiver s'il n'y a pas de demandes liées
+                bulkCheckbox.checked = false;
+                bulkCheckbox.disabled = true;
+            }
             
             // Fill material description field
+            const editMaterialDescription = document.getElementById('editMaterialDescription');
+            if (!editMaterialDescription) {
+                throw new Error('Champ description du matériel manquant');
+            }
+            
             if (isAbsent || isNoMaterial || isExamMode) {
                 // Pour les modes spéciaux, laisser vide
-                document.getElementById('editMaterialDescription').value = '';
+                editMaterialDescription.value = '';
             } else {
                 // Pour les demandes normales, extraire le matériel de material_description
                 let materialContent = request.material_description || '';
@@ -497,20 +1045,103 @@ function editRequest(requestId) {
                     materialContent = materialContent.substring('Matériel requis: '.length);
                 }
                 
-                document.getElementById('editMaterialDescription').value = materialContent;
+                editMaterialDescription.value = materialContent;
             }
             
             // Toggle sections based on special modes
             toggleEditSpecialModes();
             
-            // Show modal
+            // Nettoyer les backdrops avant d'afficher la modale
+            clearModalBackdrops();
+            
+            // Afficher la modale simplement
             const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
             modal.show();
         })
         .catch(error => {
-            console.error('Error:', error);
-            showErrorToast('Erreur lors du chargement de la demande');
+            console.error('Error loading request:', error);
+            showErrorToast('Erreur lors du chargement de la demande: ' + error.message);
         });
+}
+
+// Fonction pour calculer et stocker les différences avant sauvegarde
+function calculateRequestChanges(requestId, newData) {
+    const changes = {};
+    
+    // Comparer chaque champ modifiable
+    const fieldsToCompare = ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire'];
+    
+    for (const field of fieldsToCompare) {
+        const originalValue = originalRequestData[field] || '';
+        const newValue = newData[field] || '';
+        
+        if (originalValue !== newValue) {
+            changes[field] = {
+                original: originalValue,
+                new: newValue,
+                diff: generateDiffDisplay(originalValue, newValue)
+            };
+        }
+    }
+    
+    // Comparer les champs numériques
+    if (originalRequestData.quantity !== newData.quantity) {
+        changes.quantity = {
+            original: originalRequestData.quantity,
+            new: newData.quantity,
+            diff: `${originalRequestData.quantity} → ${newData.quantity}`
+        };
+    }
+    
+    if (originalRequestData.computers_needed !== newData.computers_needed) {
+        changes.computers_needed = {
+            original: originalRequestData.computers_needed,
+            new: newData.computers_needed,
+            diff: `${originalRequestData.computers_needed} → ${newData.computers_needed}`
+        };
+    }
+    
+    // Stocker les changements si il y en a
+    if (Object.keys(changes).length > 0) {
+        modifiedRequests.set(requestId, changes);
+    } else {
+        modifiedRequests.delete(requestId); // Supprimer si aucun changement
+    }
+    
+    return changes;
+}
+
+// Fonction pour sauvegarder les modifications en attente
+async function savePendingModifications(requestId, changes) {
+    const pendingPromises = [];
+    
+    for (const [fieldName, change] of Object.entries(changes)) {
+        const pendingModification = {
+            request_id: requestId,
+            field_name: fieldName,
+            original_value: change.original,
+            new_value: change.new,
+            modified_by: 'User' // Peut être personnalisé plus tard
+        };
+        
+        const promise = fetch('/api/pending-modifications', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(pendingModification)
+        });
+        
+        pendingPromises.push(promise);
+    }
+    
+    try {
+        await Promise.all(pendingPromises);
+        return true;
+    } catch (error) {
+        console.error('Erreur lors de la sauvegarde des modifications en attente:', error);
+        return false;
+    }
 }
 
 function saveRequestChanges() {
@@ -518,18 +1149,29 @@ function saveRequestChanges() {
     const isAbsent = document.getElementById('editAbsent').checked;
     const isNoMaterial = document.getElementById('editNoMaterial').checked;
     const isExamMode = document.getElementById('editExamMode').checked;
+    const bulkEdit = document.getElementById('editAllRelated').checked;
     
-    const formData = {
-        teacher_id: parseInt(document.getElementById('editTeacher').value),
+    const currentData = {
         request_name: document.getElementById('editRequestName').value,
-        request_date: document.getElementById('editDate').value,
         horaire: document.getElementById('editHoraire').value,
         class_name: document.getElementById('editClassName').value,
         quantity: parseInt(document.getElementById('editQuantity').value) || 1,
-        group_count: parseInt(document.getElementById('editQuantity').value) || 1,
         computers_needed: parseInt(document.getElementById('editComputersNeeded').value) || 0,
         material_prof: document.getElementById('editMaterialProf').value,
         notes: document.getElementById('editNotes').value
+    };
+
+    const formData = {
+        teacher_id: parseInt(document.getElementById('editTeacher').value),
+        request_name: currentData.request_name,
+        request_date: document.getElementById('editDate').value,
+        horaire: currentData.horaire,
+        class_name: currentData.class_name,
+        quantity: currentData.quantity,
+        group_count: currentData.quantity,
+        computers_needed: currentData.computers_needed,
+        material_prof: currentData.material_prof,
+        notes: currentData.notes
     };
     
     if (isAbsent) {
@@ -556,18 +1198,59 @@ function saveRequestChanges() {
         formData.selected_materials = '';
     }
     
-    fetch(`/api/requests/${requestId}`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            throw new Error(data.error);
+    // Ajouter material_description au currentData pour la comparaison
+    currentData.material_description = formData.material_description;
+    
+    // Calculer les changements avant la sauvegarde
+    const changes = calculateRequestChanges(requestId, currentData);
+    
+    // Vérifier s'il y a des changements à sauvegarder
+    if (Object.keys(changes).length === 0) {
+        showSuccessToast('Aucune modification détectée');
+        // Fermer le modal
+        const modalElement = document.getElementById('editRequestModal');
+        const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+        modal.hide();
+        return;
+    }
+    
+    // Sauvegarder les modifications en attente au lieu de les appliquer directement
+    let savePromise;
+    let relatedRequestsCount = 1;
+    
+    if (bulkEdit) {
+        // Modification groupée - sauvegarder pour toutes les demandes liées
+        const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
+        const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
+        
+        if (!window.allRequests) {
+            throw new Error('Les données des demandes ne sont pas disponibles. Veuillez rafraîchir la page.');
         }
+        
+        const relatedRequests = window.allRequests.filter(req => 
+            req.teacher_id === originalTeacherId && 
+            req.request_name === originalRequestName
+        );
+        
+        relatedRequestsCount = relatedRequests.length;
+        
+        // Sauvegarder les modifications en attente pour chaque demande
+        const savePromises = relatedRequests.map(req => 
+            savePendingModifications(req.id, changes)
+        );
+        
+        savePromise = Promise.all(savePromises);
+    } else {
+        // Modification individuelle
+        savePromise = savePendingModifications(requestId, changes);
+    }
+    
+    savePromise
+    .then(success => {
+        if (!success) {
+            throw new Error('Erreur lors de la sauvegarde des modifications');
+        }
+        
         // Hide modal - Use multiple methods to ensure it closes
         const modalElement = document.getElementById('editRequestModal');
         
@@ -591,13 +1274,289 @@ function saveRequestChanges() {
             }
         }, 100);
         
-        // Reload requests
+        // Mettre à jour les Maps locales pour l'affichage immédiat
+        if (bulkEdit && Object.keys(changes).length > 0) {
+            const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
+            const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
+            
+            if (window.allRequests) {
+                const relatedRequests = window.allRequests.filter(req => 
+                    req.teacher_id === originalTeacherId && 
+                    req.request_name === originalRequestName
+                );
+                
+                relatedRequests.forEach(req => {
+                    // Mettre à jour la Map locale pour l'affichage immédiat
+                    modifiedRequests.set(req.id.toString(), changes);
+                    
+                    // Mettre à jour la Map globale des modifications en attente
+                    if (!allPendingModifications.has(req.id)) {
+                        allPendingModifications.set(req.id, []);
+                    }
+                    
+                    // Ajouter les nouvelles modifications à la liste
+                    Object.entries(changes).forEach(([fieldName, change]) => {
+                        const modification = {
+                            request_id: req.id,
+                            field_name: fieldName,
+                            original_value: change.original,
+                            new_value: change.new
+                        };
+                        
+                        allPendingModifications.get(req.id).push(modification);
+                    });
+                    
+                    // Ajouter à la liste des demandes avec modifications
+                    requestsWithPendingModifications.add(req.id);
+                });
+            }
+        }
+        
+        // Reload requests pour afficher le bouton de validation
+        loadRequestsWithPendingModifications();
         loadRequests();
-        showSuccessToast('Demande modifiée avec succès');
+        
+        // Message de succès adapté
+        const successMessage = bulkEdit ? 
+            `${relatedRequestsCount} modifications sauvegardées en attente de validation` : 
+            'Modifications sauvegardées en attente de validation';
+        showSuccessToast(successMessage);
     })
     .catch(error => {
         console.error('Error:', error);
-        showErrorToast('Erreur lors de la modification: ' + error.message);
+        showErrorToast('Erreur lors de la sauvegarde: ' + error.message);
+    });
+}
+
+// Variables globales pour le modal de validation
+let currentValidationRequestId = null;
+
+function showValidationModal(requestId) {
+    currentValidationRequestId = requestId;
+    
+    // Trouver la demande actuelle pour identifier les demandes liées
+    const currentRequest = window.allRequests.find(req => req.id === requestId);
+    if (!currentRequest) {
+        showErrorToast('Erreur: Demande non trouvée');
+        return;
+    }
+    
+    // Charger les modifications en attente pour cette demande
+    fetch(`/api/pending-modifications?request_id=${requestId}`)
+        .then(response => response.json())
+        .then(modifications => {
+            // Compter les demandes liées avec des modifications
+            const relatedRequestsWithModifications = window.allRequests.filter(req => 
+                req.teacher_id === currentRequest.teacher_id && 
+                req.request_name === currentRequest.request_name &&
+                requestsWithPendingModifications.has(req.id)
+            );
+            
+            displayModificationsPreview(modifications, relatedRequestsWithModifications.length);
+            
+            // Afficher le modal
+            const modal = new bootstrap.Modal(document.getElementById('validationModal'));
+            modal.show();
+        })
+        .catch(error => {
+            console.error('Error loading pending modifications:', error);
+            showErrorToast('Erreur lors du chargement des modifications');
+        });
+}
+
+function displayModificationsPreview(modifications, relatedCount = 1) {
+    const previewContainer = document.getElementById('modificationsPreview');
+    
+    if (modifications.length === 0) {
+        previewContainer.innerHTML = '<p class="text-muted">Aucune modification en attente.</p>';
+        return;
+    }
+    
+    let html = '';
+    
+    // Afficher l'information sur les demandes liées
+    if (relatedCount > 1) {
+        html += `<div class="alert alert-info">
+            <strong>📋 Demandes liées :</strong> Cette action s'appliquera à <strong>${relatedCount} demandes</strong> 
+            du même enseignant avec le même nom.
+        </div>`;
+    }
+    
+    html += '<div class="table-responsive"><table class="table table-sm">';
+    html += '<thead><tr><th>Champ</th><th>Valeur actuelle</th><th>Nouvelle valeur</th></tr></thead><tbody>';
+    
+    modifications.forEach(mod => {
+        const fieldLabel = getFieldLabel(mod.field_name);
+        html += `
+            <tr>
+                <td><strong>${fieldLabel}</strong></td>
+                <td><span class="text-muted">${mod.original_value || '<em>Vide</em>'}</span></td>
+                <td><span class="text-primary fw-bold">${mod.new_value || '<em>Vide</em>'}</span></td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    previewContainer.innerHTML = html;
+}
+
+function getFieldLabel(fieldName) {
+    const labels = {
+        'request_name': 'Nom de la demande',
+        'class_name': 'Classe',
+        'material_description': 'Description du matériel',
+        'material_prof': 'Matériel professeur',
+        'notes': 'Notes',
+        'horaire': 'Horaire',
+        'quantity': 'Nombre de groupes',
+        'computers_needed': 'Ordinateurs nécessaires'
+    };
+    return labels[fieldName] || fieldName;
+}
+
+function validateModifications() {
+    if (!currentValidationRequestId) {
+        showErrorToast('Erreur: Aucune demande sélectionnée');
+        return;
+    }
+    
+    // D'abord, récupérer les informations de la demande pour trouver les demandes liées
+    const currentRequest = window.allRequests.find(req => req.id === currentValidationRequestId);
+    if (!currentRequest) {
+        showErrorToast('Erreur: Demande non trouvée');
+        return;
+    }
+    
+    // Trouver toutes les demandes liées (même enseignant + même nom) qui ont des modifications en attente
+    const relatedRequestsWithModifications = window.allRequests.filter(req => 
+        req.teacher_id === currentRequest.teacher_id && 
+        req.request_name === currentRequest.request_name &&
+        requestsWithPendingModifications.has(req.id)
+    );
+    
+    if (relatedRequestsWithModifications.length === 0) {
+        showErrorToast('Aucune modification en attente trouvée');
+        return;
+    }
+    
+    // Valider toutes les demandes liées
+    const validationPromises = relatedRequestsWithModifications.map(req => 
+        fetch(`/api/pending-modifications/${req.id}/validate`, {
+            method: 'POST'
+        }).then(response => response.json())
+    );
+    
+    Promise.all(validationPromises)
+    .then(results => {
+        // Vérifier s'il y a des erreurs
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+            throw new Error(`Erreurs lors de la validation: ${errors.map(e => e.error).join(', ')}`);
+        }
+        
+        // Fermer le modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
+        modal.hide();
+        
+        // Nettoyer les Maps locales et mettre à jour les objets de demandes
+        relatedRequestsWithModifications.forEach(req => {
+            modifiedRequests.delete(req.id.toString());
+            allPendingModifications.delete(req.id);
+            requestsWithPendingModifications.delete(req.id);
+            
+            // Mettre à jour l'objet de la demande pour refléter que modified = false
+            const requestInList = window.allRequests.find(r => r.id === req.id);
+            if (requestInList) {
+                requestInList.modified = false;
+            }
+        });
+        
+        // Rafraîchir la liste
+        loadRequestsWithPendingModifications();
+        loadRequests();
+        
+        const successMessage = relatedRequestsWithModifications.length > 1 ? 
+            `${relatedRequestsWithModifications.length} demandes validées avec succès` : 
+            'Modifications validées avec succès';
+        showSuccessToast(successMessage);
+    })
+    .catch(error => {
+        console.error('Error validating modifications:', error);
+        showErrorToast('Erreur lors de la validation: ' + error.message);
+    });
+}
+
+function rejectModifications() {
+    if (!currentValidationRequestId) {
+        showErrorToast('Erreur: Aucune demande sélectionnée');
+        return;
+    }
+    
+    // Trouver les demandes liées pour informer l'utilisateur
+    const currentRequest = window.allRequests.find(req => req.id === currentValidationRequestId);
+    if (!currentRequest) {
+        showErrorToast('Erreur: Demande non trouvée');
+        return;
+    }
+    
+    const relatedRequestsWithModifications = window.allRequests.filter(req => 
+        req.teacher_id === currentRequest.teacher_id && 
+        req.request_name === currentRequest.request_name &&
+        requestsWithPendingModifications.has(req.id)
+    );
+    
+    const confirmMessage = relatedRequestsWithModifications.length > 1 ? 
+        `Êtes-vous sûr de vouloir rejeter les modifications de ${relatedRequestsWithModifications.length} demandes liées ? Elles seront définitivement supprimées.` :
+        'Êtes-vous sûr de vouloir rejeter ces modifications ? Elles seront définitivement supprimées.';
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Rejeter les modifications pour toutes les demandes liées
+    const rejectionPromises = relatedRequestsWithModifications.map(req => 
+        fetch(`/api/pending-modifications/${req.id}/reject`, {
+            method: 'POST'
+        }).then(response => response.json())
+    );
+    
+    Promise.all(rejectionPromises)
+    .then(results => {
+        // Vérifier s'il y a des erreurs
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+            throw new Error(`Erreurs lors du rejet: ${errors.map(e => e.error).join(', ')}`);
+        }
+        
+        // Fermer le modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
+        modal.hide();
+        
+        // Nettoyer les Maps locales et mettre à jour les objets de demandes
+        relatedRequestsWithModifications.forEach(req => {
+            modifiedRequests.delete(req.id.toString());
+            allPendingModifications.delete(req.id);
+            requestsWithPendingModifications.delete(req.id);
+            
+            // Mettre à jour l'objet de la demande pour refléter que modified = false
+            const requestInList = window.allRequests.find(r => r.id === req.id);
+            if (requestInList) {
+                requestInList.modified = false;
+            }
+        });
+        
+        // Rafraîchir la liste
+        loadRequestsWithPendingModifications();
+        loadRequests();
+        
+        const successMessage = relatedRequestsWithModifications.length > 1 ? 
+            `${relatedRequestsWithModifications.length} demandes rejetées` : 
+            'Modifications rejetées';
+        showSuccessToast(successMessage);
+    })
+    .catch(error => {
+        console.error('Error rejecting modifications:', error);
+        showErrorToast('Erreur lors du rejet: ' + error.message);
     });
 }
 
@@ -747,7 +1706,59 @@ function showErrorToast(message) {
     }
 }
 
+// Fonction pour afficher une image dans un modal
+function showImageModal(imageUrl, title) {
+    // Créer ou réutiliser le modal d'image
+    let imageModal = document.getElementById('imageModal');
+    if (!imageModal) {
+        // Créer le modal s'il n'existe pas
+        imageModal = document.createElement('div');
+        imageModal.id = 'imageModal';
+        imageModal.className = 'modal fade';
+        imageModal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="imageModalTitle">Image</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <img id="imageModalImg" src="" alt="Image" class="img-fluid">
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(imageModal);
+    }
+    
+    // Mettre à jour le contenu du modal
+    document.getElementById('imageModalTitle').textContent = title || 'Image';
+    document.getElementById('imageModalImg').src = imageUrl;
+    
+    // Afficher le modal
+    const modal = new bootstrap.Modal(imageModal);
+    modal.show();
+    // Correction accessibilité : retirer aria-hidden
+    imageModal.removeAttribute('aria-hidden');
+}
+
 // Toggle entre vue normale et vue groupée
 
 </script>
+
+<!-- Modal pour afficher les images en grand -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalTitle">Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="imageModalImg" src="" alt="Image" class="img-fluid">
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

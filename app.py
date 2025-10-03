@@ -5,7 +5,10 @@ import logging
 from datetime import datetime, timedelta
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
-                      toggle_prepared_status, delete_material_request, update_room_type)
+                      toggle_prepared_status, delete_material_request, update_room_type,
+                      add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
+                      validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability)
+from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 
 app = Flask(__name__)
 
@@ -104,24 +107,25 @@ def api_get_requests():
     # Convert to list of dictionaries for JSON serialization
     requests_list = []
     for req in requests:
-        requests_list.append({
-            'id': req['id'],
-            'teacher_id': req['teacher_id'],
-            'teacher_name': req['teacher_name'],
-            'request_date': req['request_date'],
-            'horaire': req['horaire'],
-            'class_name': req['class_name'],
-            'material_description': req['material_description'],
-            'quantity': req['quantity'],
-            'selected_materials': req['selected_materials'] if req['selected_materials'] else '',
-            'computers_needed': req['computers_needed'] if req['computers_needed'] else 0,
-            'notes': req['notes'],
-            'prepared': req['prepared'] if req['prepared'] else False,
-            'modified': req['modified'] if req['modified'] else False,
-            'room_type': req['room_type'] if req['room_type'] else 'Mixte',
-            'request_name': req['request_name'] if req['request_name'] else '',
-            'created_at': req['created_at']
-        })
+            requests_list.append({
+                'id': req['id'],
+                'teacher_id': req['teacher_id'],
+                'teacher_name': req['teacher_name'],
+                'request_date': req['request_date'],
+                'horaire': req['horaire'],
+                'class_name': req['class_name'],
+                'material_description': req['material_description'],
+                'quantity': req['quantity'],
+                'selected_materials': req['selected_materials'] if req['selected_materials'] else '',
+                'computers_needed': req['computers_needed'] if req['computers_needed'] else 0,
+                'notes': req['notes'],
+                'prepared': req['prepared'] if req['prepared'] else False,
+                'modified': req['modified'] if req['modified'] else False,
+                'room_type': req['room_type'] if req['room_type'] else 'Mixte',
+                'request_name': req['request_name'] if req['request_name'] else '',
+                'created_at': req['created_at'],
+                'image_url': req['image_url'] if 'image_url' in req.keys() else None
+            })
     
     return jsonify(requests_list)
 
@@ -205,6 +209,22 @@ def api_add_request():
         if not data.get('days_horaires') or not isinstance(data['days_horaires'], list) or len(data['days_horaires']) == 0:
             return jsonify({'error': 'Veuillez ajouter au moins un jour avec des horaires.'}), 400
 
+        # Validation du délai de 2 jours ouvrés pour chaque date
+        from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+        
+        for dh in data['days_horaires']:
+            date = dh.get('date')
+            if not date:
+                return jsonify({'error': 'Date manquante pour un des jours'}), 400
+                
+            # Vérifier le délai de 2 jours ouvrés
+            validation = is_request_deadline_respected(date)
+            if not validation['valid']:
+                earliest_date = get_earliest_valid_date()
+                return jsonify({
+                    'error': f'Délai insuffisant pour le {date}. {validation["message"]} Première date disponible: {earliest_date}'
+                }), 400
+
         # Ajout de chaque demande (jour/horaire)
         request_ids = []
         for dh in data['days_horaires']:
@@ -221,7 +241,8 @@ def api_add_request():
                     selected_materials=data.get('selected_materials', ''),
                     computers_needed=data.get('computers_needed', 0),
                     notes=data.get('notes', ''),
-                    request_name=data.get('request_name', '')
+                    request_name=data.get('request_name', ''),
+                    image_url=data.get('image_url', '')
                 )
                 request_ids.append(request_id)
 
@@ -305,7 +326,8 @@ def api_get_request_by_id(request_id):
         'modified': request_data['modified'] if request_data['modified'] else False,
         'room_type': request_data['room_type'] if request_data['room_type'] else 'Mixte',
         'request_name': request_data['request_name'] if request_data['request_name'] else '',
-        'created_at': request_data['created_at']
+        'created_at': request_data['created_at'],
+        'image_url': request_data['image_url'] if 'image_url' in request_data.keys() else None
     }
     
     return jsonify(request_dict)
@@ -321,6 +343,30 @@ def api_update_request(request_id):
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'error': f'Le champ {field} est requis'}), 400
+        
+        # Validation du délai de 2 jours ouvrés pour toute modification
+        current_request = get_material_request_by_id(request_id)
+        if current_request:
+            current_date = current_request['request_date']
+            
+            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+            validation = is_request_deadline_respected(current_date)
+            if not validation['valid']:
+                earliest_date = get_earliest_valid_date()
+                return jsonify({
+                    'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                }), 400
+        
+        # Si la date est modifiée, valider aussi la nouvelle date
+        if 'request_date' in data:
+            new_date = data['request_date']
+            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+            validation = is_request_deadline_respected(new_date)
+            if not validation['valid']:
+                earliest_date = get_earliest_valid_date()
+                return jsonify({
+                    'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
+                }), 400
         
         success = update_material_request(
             request_id,
@@ -411,6 +457,289 @@ def view_c21_availability():
     """C21 availability management page"""
     return render_template('c21_availability.html')
 
+@app.route('/api/pending-modifications', methods=['GET', 'POST'])
+def api_pending_modifications():
+    """API endpoint to get all pending modifications or add a new one"""
+    if request.method == 'GET':
+        request_id = request.args.get('request_id')
+        
+        if request_id:
+            modifications = get_pending_modifications(int(request_id))
+        else:
+            modifications = get_pending_modifications()
+        
+        # Convert to list of dicts for JSON serialization
+        modifications_list = []
+        for mod in modifications:
+            try:
+                teacher_name = mod['teacher_name']
+            except (KeyError, IndexError):
+                teacher_name = ''
+            
+            try:
+                request_name = mod['request_name']
+            except (KeyError, IndexError):
+                request_name = ''
+                
+            modifications_list.append({
+                'id': mod['id'],
+                'request_id': mod['request_id'],
+                'field_name': mod['field_name'],
+                'original_value': mod['original_value'],
+                'new_value': mod['new_value'],
+                'created_at': mod['created_at'],
+                'modified_by': mod['modified_by'],
+                'teacher_name': teacher_name,
+                'request_name': request_name
+            })
+        
+        return jsonify(modifications_list)
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            
+            # Validation des champs requis
+            required_fields = ['request_id', 'field_name', 'original_value', 'new_value']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'Champ manquant: {field}'}), 400
+            
+            # Validation du délai de 2 jours ouvrés si la modification concerne la date
+            if data['field_name'] == 'request_date' or data.get('field_name') == 'request_date':
+                # Récupérer la demande actuelle pour vérifier la date
+                current_request = get_material_request_by_id(data['request_id'])
+                if current_request:
+                    # Utiliser la date actuelle de la demande pour la validation
+                    current_date = current_request['request_date']
+                    
+                    from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                    validation = is_request_deadline_respected(current_date)
+                    if not validation['valid']:
+                        earliest_date = get_earliest_valid_date()
+                        return jsonify({
+                            'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                        }), 400
+            
+            # Si la modification concerne une nouvelle date, valider aussi cette nouvelle date
+            if data['field_name'] == 'request_date':
+                new_date = data['new_value']
+                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                validation = is_request_deadline_respected(new_date)
+                if not validation['valid']:
+                    earliest_date = get_earliest_valid_date()
+                    return jsonify({
+                        'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
+                    }), 400
+            
+            success = add_pending_modification(
+                data['request_id'],
+                data['field_name'],
+                data['original_value'],
+                data['new_value'],
+                data.get('modified_by', 'User')
+            )
+            
+            if success:
+                return jsonify({'message': 'Modification en attente ajoutée avec succès'})
+            else:
+                return jsonify({'error': 'Erreur lors de l\'ajout de la modification'}), 500
+                
+        except Exception as e:
+            return jsonify({'error': f'Erreur lors de l\'ajout: {str(e)}'}), 500
+
+@app.route('/api/requests-with-pending-modifications', methods=['GET'])
+def api_get_requests_with_pending_modifications():
+    """API endpoint to get all request IDs that have pending modifications"""
+    request_ids = get_requests_with_pending_modifications()
+    return jsonify(request_ids)
+
+@app.route('/api/pending-modifications/<int:request_id>/validate', methods=['POST'])
+def api_validate_pending_modifications(request_id):
+    """API endpoint to validate and apply pending modifications for a request"""
+    try:
+        # Validation du délai de 2 jours ouvrés avant d'appliquer les modifications
+        current_request = get_material_request_by_id(request_id)
+        if current_request:
+            current_date = current_request['request_date']
+            
+            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+            validation = is_request_deadline_respected(current_date)
+            if not validation['valid']:
+                earliest_date = get_earliest_valid_date()
+                return jsonify({
+                    'error': f'Validation interdite - délai insuffisant pour la demande du {current_date}. {validation["message"]} Première date modifiable: {earliest_date}'
+                }), 400
+        
+        success = validate_pending_modifications(request_id)
+        if success:
+            return jsonify({'message': 'Modifications validées avec succès'})
+        else:
+            return jsonify({'error': 'Aucune modification en attente trouvée'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de la validation: {str(e)}'}), 500
+
+@app.route('/api/pending-modifications/<int:request_id>/reject', methods=['POST'])
+def api_reject_pending_modifications(request_id):
+    """API endpoint to reject and remove pending modifications for a request"""
+    try:
+        success = reject_pending_modifications(request_id)
+        if success:
+            return jsonify({'message': 'Modifications rejetées avec succès'})
+        else:
+            return jsonify({'error': 'Aucune modification en attente trouvée'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors du rejet: {str(e)}'}), 500
+
+# API endpoints pour les images Google Drive
+@app.route('/api/validate-google-drive-image', methods=['POST'])
+def api_validate_google_drive_image():
+    """API endpoint to validate a Google Drive image URL/ID"""
+    try:
+        data = request.get_json()
+        url_or_id = data.get('url_or_id', '').strip()
+        
+        if not url_or_id:
+            return jsonify({'error': 'URL ou ID Google Drive manquant'}), 400
+        
+        # Extraire l'ID depuis l'URL ou valider l'ID
+        drive_id = extract_google_drive_id(url_or_id)
+        if not drive_id:
+            return jsonify({'error': 'URL ou ID Google Drive invalide'}), 400
+        
+        # Valider que l'image est accessible
+        is_valid, error_message, image_url = validate_google_drive_image(drive_id)
+        
+        if not is_valid:
+            return jsonify({'error': error_message}), 400
+        
+        # Récupérer les informations de l'image
+        image_info = get_image_info(drive_id)
+        
+        return jsonify({
+            'valid': True,
+            'drive_id': drive_id,
+            'image_url': image_url,
+            'image_info': image_info
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de la validation: {str(e)}'}), 500
+
+@app.route('/api/image-info/<drive_id>', methods=['GET'])
+def api_get_image_info(drive_id):
+    """API endpoint to get information about a Google Drive image"""
+    try:
+        image_info = get_image_info(drive_id)
+        if not image_info:
+            return jsonify({'error': 'Image non trouvée ou inaccessible'}), 404
+        
+        return jsonify(image_info)
+        
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de la récupération: {str(e)}'}), 500
+
+@app.route('/api/upload-image', methods=['POST'])
+def api_upload_image():
+    """API endpoint to upload images directly to Google Drive"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'Aucune image fournie'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'Aucun fichier sélectionné'}), 400
+        
+        # Vérifier le type de fichier
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
+        file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        
+        if file_ext not in allowed_extensions:
+            return jsonify({'error': 'Format de fichier non supporté'}), 400
+        
+        # Tentative d'upload vers Google Drive
+        try:
+            from google_drive_service import get_google_drive_service, upload_image_to_google_drive
+            
+            print("Tentative d'upload vers Google Drive...")
+            
+            # Obtenir le service Google Drive
+            service = get_google_drive_service()
+            if service is None:
+                raise Exception("Impossible d'obtenir le service Google Drive")
+            
+            # Conversion du fichier Flask en BytesIO
+            import io
+            file.stream.seek(0)
+            file_bytes = io.BytesIO(file.read())
+            file_bytes.seek(0)
+            # Upload vers Google Drive
+            result = upload_image_to_google_drive(file_bytes, file.filename)
+            if result['success']:
+                print(f"Image uploadée avec succès vers Google Drive: {result['file_id']}")
+                return jsonify({
+                    'success': True,
+                    'image_url': result['public_url'],
+                    'google_drive_id': result['file_id'],
+                    'message': 'Image uploadée vers Google Drive avec succès!'
+                })
+            else:
+                raise Exception(result['error'] or "Échec de l'upload vers Google Drive")
+                
+        except Exception as google_error:
+            print(f"Erreur Google Drive: {google_error}")
+            print("Fallback vers stockage local...")
+            
+            # Fallback vers stockage local
+            import uuid, os
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"demande_materiel_{timestamp}_{unique_id}.{file_ext}"
+            
+            # Sauvegarder l'image localement
+            upload_dir = os.path.join('static', 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            filepath = os.path.join(upload_dir, filename)
+            
+            # Reset du pointeur du fichier si nécessaire
+            file.stream.seek(0)
+            file.save(filepath)
+            
+            # URL locale
+            local_url = f"/static/uploads/{filename}"
+            
+            return jsonify({
+                'success': True,
+                'image_url': local_url,
+                'local_storage': True,
+                'fallback': True,
+                'message': f'Fallback local - Google Drive indisponible: {str(google_error)}'
+            })
+        
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de l\'upload: {str(e)}'}), 500
+
+@app.route('/api/c21-availability', methods=['GET', 'POST'])
+def api_c21_availability():
+    """API pour gérer les créneaux de disponibilité C21"""
+    if request.method == 'GET':
+        slots = get_c21_availability()
+        return jsonify(slots)
+    elif request.method == 'POST':
+        data = request.get_json()
+        jour = data.get('jour')
+        heure_debut = data.get('heure_debut')
+        heure_fin = data.get('heure_fin')
+        if not jour or not heure_debut or not heure_fin:
+            return jsonify({'error': 'Champs manquants'}), 400
+        success = add_c21_availability(jour, heure_debut, heure_fin)
+        if success:
+            return jsonify({'success': True}), 201
+        else:
+            return jsonify({'error': 'Erreur lors de l\'ajout'}), 500
+        
 if __name__ == '__main__':
     import os
     import sys
@@ -453,8 +782,8 @@ if __name__ == '__main__':
         
         # sys.stderr = SafeStderr()
     
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'
     print(f" * Application démarrée sur http://127.0.0.1:{port}")
     print(" * Gestion des erreurs UTF-8 activée")
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=port)

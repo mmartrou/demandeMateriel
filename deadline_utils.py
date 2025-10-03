@@ -212,7 +212,9 @@ def get_earliest_valid_date(current_datetime=None):
     
     # Chercher la première date avec au moins 2 jours ouvrés
     while True:
-        working_days = count_working_days_between(current_datetime, candidate_date)
+        # Important: considérer le cours à 8h00 pour le calcul
+        candidate_datetime = candidate_date.replace(hour=8, minute=0, second=0, microsecond=0)
+        working_days = count_working_days_between(current_datetime, candidate_datetime)
         if working_days >= 2:
             return candidate_date.strftime('%Y-%m-%d')
         candidate_date += timedelta(days=1)

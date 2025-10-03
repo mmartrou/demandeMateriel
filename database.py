@@ -119,7 +119,9 @@ def init_database():
                 modified BOOLEAN DEFAULT FALSE,
                 group_count INTEGER,
                 material_prof TEXT,
+                request_name TEXT,
                 room_type VARCHAR(20) DEFAULT 'Mixte',
+                image_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (teacher_id) REFERENCES teachers (id)
             )
@@ -239,6 +241,12 @@ def init_database():
     # Add request_name column for named requests
     try:
         cursor.execute('ALTER TABLE material_requests ADD COLUMN request_name TEXT')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Add image_url column for Google Drive images
+    try:
+        cursor.execute('ALTER TABLE material_requests ADD COLUMN image_url TEXT')
     except sqlite3.OperationalError:
         pass  # Column already exists
     
@@ -396,6 +404,34 @@ def init_database():
                 UNIQUE(jour, heure_debut, heure_fin)
             )
         ''')
+
+    # Create pending modifications table for tracking changes before validation
+    if db_type == 'postgresql':
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pending_modifications (
+                id SERIAL PRIMARY KEY,
+                request_id INTEGER NOT NULL,
+                field_name VARCHAR(50) NOT NULL,
+                original_value TEXT,
+                new_value TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                modified_by VARCHAR(100),
+                FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pending_modifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER NOT NULL,
+                field_name TEXT NOT NULL,
+                original_value TEXT,
+                new_value TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                modified_by TEXT,
+                FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
+            )
+        ''')
     
     conn.commit()
     conn.close()
@@ -413,21 +449,21 @@ def get_all_teachers():
 
 def add_material_request(teacher_id, request_date, class_name, material_description, 
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
-                        notes='', exam=False, group_count=1, material_prof='', request_name=''):
+                        notes='', exam=False, group_count=1, material_prof='', request_name='', image_url=''):
     """Add a new material request"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    placeholders = ', '.join([placeholder] * 13)
+    placeholders = ', '.join([placeholder] * 14)
     
     cursor.execute(f'''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name)
+         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url)
         VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name))
+          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -1109,6 +1145,154 @@ def is_c21_available_db(jour, heure_debut_minutes, heure_fin_minutes):
     except Exception as e:
         logger.error(f"Erreur lors de la vérification de disponibilité C21: {e}")
         return False  # Par sécurité, considérer comme non disponible en cas d'erreur
+
+def add_pending_modification(request_id, field_name, original_value, new_value, modified_by='System'):
+    """Add a pending modification to the database"""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    try:
+        cursor.execute(f'''
+            INSERT INTO pending_modifications 
+            (request_id, field_name, original_value, new_value, modified_by) 
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+        ''', (request_id, field_name, original_value, new_value, modified_by))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors de l'ajout de la modification en attente: {e}")
+        conn.close()
+        return False
+
+def get_pending_modifications(request_id=None):
+    """Get pending modifications for a specific request or all requests"""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    try:
+        if request_id:
+            cursor.execute(f'''
+                SELECT pm.*, mr.teacher_id, t.name as teacher_name, mr.request_name
+                FROM pending_modifications pm
+                JOIN material_requests mr ON pm.request_id = mr.id
+                JOIN teachers t ON mr.teacher_id = t.id
+                WHERE pm.request_id = {placeholder}
+                ORDER BY pm.created_at DESC
+            ''', (request_id,))
+        else:
+            cursor.execute('''
+                SELECT pm.*, mr.teacher_id, t.name as teacher_name, mr.request_name
+                FROM pending_modifications pm
+                JOIN material_requests mr ON pm.request_id = mr.id
+                JOIN teachers t ON mr.teacher_id = t.id
+                ORDER BY pm.created_at DESC
+            ''')
+        
+        modifications = cursor.fetchall()
+        conn.close()
+        return modifications
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des modifications en attente: {e}")
+        conn.close()
+        return []
+
+def get_requests_with_pending_modifications():
+    """Get all request IDs that have pending modifications"""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT DISTINCT request_id 
+            FROM pending_modifications 
+            ORDER BY request_id
+        ''')
+        
+        request_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return request_ids
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des demandes avec modifications: {e}")
+        conn.close()
+        return []
+
+def validate_pending_modifications(request_id):
+    """Apply all pending modifications for a request and remove them from pending table"""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    try:
+        # Get all pending modifications for this request
+        cursor.execute(f'''
+            SELECT field_name, new_value 
+            FROM pending_modifications 
+            WHERE request_id = {placeholder}
+        ''', (request_id,))
+        
+        modifications = cursor.fetchall()
+        
+        if not modifications:
+            conn.close()
+            return False
+        
+        # Apply each modification to the material_requests table
+        for field_name, new_value in modifications:
+            cursor.execute(f'''
+                UPDATE material_requests 
+                SET {field_name} = {placeholder} 
+                WHERE id = {placeholder}
+            ''', (new_value, request_id))
+        
+        # Reset modified flag to FALSE since modifications are now validated
+        cursor.execute(f'''
+            UPDATE material_requests 
+            SET modified = FALSE 
+            WHERE id = {placeholder}
+        ''', (request_id,))
+        
+        # Remove the pending modifications
+        cursor.execute(f'''
+            DELETE FROM pending_modifications 
+            WHERE request_id = {placeholder}
+        ''', (request_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors de la validation des modifications: {e}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def reject_pending_modifications(request_id):
+    """Reject and remove all pending modifications for a request"""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    
+    try:
+        cursor.execute(f'''
+            DELETE FROM pending_modifications 
+            WHERE request_id = {placeholder}
+        ''', (request_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur lors du rejet des modifications: {e}")
+        conn.close()
+        return False
 
 if __name__ == '__main__':
     init_database()

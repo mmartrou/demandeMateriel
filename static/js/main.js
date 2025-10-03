@@ -53,10 +53,49 @@ function validateDate(elementId, message) {
         element.classList.add('is-invalid');
         showErrorToast('La date ne peut pas être dans le passé');
         return false;
-    } else {
-        element.classList.remove('is-invalid');
-        element.classList.add('is-valid');
-        return true;
+    }
+    
+    // Validation des 2 jours ouvrés - approximation simple
+    const minDate = getMinimumValidDate();
+    if (selectedDate < minDate) {
+        element.classList.add('is-invalid');
+        const minDateStr = minDate.toISOString().split('T')[0];
+        showErrorToast(`Délai insuffisant. Première date possible: ${formatDate(minDateStr)} (2 jours ouvrés minimum)`);
+        return false;
+    }
+    
+    element.classList.remove('is-invalid');
+    element.classList.add('is-valid');
+    return true;
+}
+
+function getMinimumValidDate() {
+    const now = new Date();
+    let candidate = new Date(now);
+    candidate.setDate(now.getDate() + 1);  // Commencer par demain
+    
+    // Chercher la première date avec au moins 2 jours ouvrés
+    while (true) {
+        let workingDaysCount = 0;
+        
+        // Compter les jours ouvrés entre maintenant et la date candidate (exclus)
+        let checkDate = new Date(now);
+        checkDate.setDate(now.getDate() + 1);  // Commencer par demain
+        
+        while (checkDate < candidate) {
+            const dayOfWeek = checkDate.getDay();
+            // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                workingDaysCount++;
+            }
+            checkDate.setDate(checkDate.getDate() + 1);
+        }
+        
+        if (workingDaysCount >= 2) {
+            return candidate;
+        }
+        
+        candidate.setDate(candidate.getDate() + 1);
     }
 }
 
