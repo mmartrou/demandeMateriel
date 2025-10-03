@@ -241,6 +241,64 @@
                                   rows="2" placeholder="Informations complémentaires (optionnel)"></textarea>
                     </div>
                     
+                    <!-- Section Image -->
+                    <div class="mb-3" id="image-section">
+                        <label class="form-label">
+                            📷 Image (optionnelle)
+                        </label>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-2">
+                                    <input type="file" 
+                                           class="form-control" 
+                                           id="image_file_input" 
+                                           name="image_file"
+                                           accept="image/*,image/heic,image/heif"
+                                           capture="environment">
+                                </div>
+                                <div class="d-grid gap-2 d-md-flex">
+                                    <button type="button" class="btn btn-outline-success btn-sm" id="take_photo_btn">
+                                        📸 Prendre une photo
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="upload_image_btn" disabled>
+                                        ⬆️ Uploader vers Drive
+                                    </button>
+                                </div>
+                                <div class="form-text mt-2">
+                                    <small>
+                                        💡 <strong>Simple et rapide :</strong><br>
+                                        📸 Choisissez une image ou prenez une photo → Upload automatique !<br>
+                                        🖼️ L'image apparaîtra directement dans la liste des demandes<br>
+                                        <em class="text-muted">Version 2.0 - Upload simplifié!</em>
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div id="image_preview" class="text-center" style="display: none;">
+                                    <img id="preview_img" src="" alt="Aperçu" class="img-thumbnail" style="max-height: 120px;">
+                                    <div class="mt-2">
+                                        <div id="upload_status" class="mb-2"></div>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" id="remove_image_btn">
+                                            🗑️ Supprimer
+                                        </button>
+                                    </div>
+                                </div>
+                                <!-- Webcam pour la prise de photo -->
+                                <div id="camera_section" style="display: none;">
+                                    <video id="camera_video" autoplay muted style="width: 100%; max-width: 200px;" class="rounded"></video>
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm btn-primary" id="capture_photo_btn">📸 Capturer</button>
+                                        <button type="button" class="btn btn-sm btn-secondary" id="cancel_photo_btn">❌ Annuler</button>
+                                    </div>
+                                    <canvas id="photo_canvas" style="display: none;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="image_error" class="alert alert-danger mt-2" style="display: none;"></div>
+                        <div id="upload_instructions" class="alert alert-info mt-2" style="display: none;"></div>
+                        <input type="hidden" id="image_url" name="image_url">
+                    </div>
+                    
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                         <button type="reset" class="btn btn-outline-secondary me-md-2">
                             🔄 Réinitialiser
@@ -321,7 +379,8 @@ document.addEventListener('DOMContentLoaded', function() {
         'computers-section', 
         'description-section',
         'notes-section',
-        'quantity-section'
+        'quantity-section',
+        'image-section'
     ];
 
     function toggleSpecialModes() {
@@ -406,6 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showErrorToast('Veuillez choisir une date et au moins un horaire.');
             return;
         }
+        // Correction : ajouter le jour + créneaux au tableau avant de réinitialiser
         daysHoraires.push({ date, horaires: horairesChecked });
         updateDaysList();
         // Réinitialise les horaires cochés
@@ -448,30 +508,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // Soumission du formulaire
     document.getElementById('materialRequestForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        
-        // Si aucun jour n'a été ajouté manuellement, utiliser la date et horaires actuels
+        // Ajout automatique du dernier jour si des horaires sont cochés et que ce jour n'est pas déjà dans daysHoraires
+        const currentDate = document.getElementById('planning_date').value;
+        const currentHoraires = Array.from(document.querySelectorAll('input[name="horaire"]:checked')).map(cb => cb.value);
         let finalDaysHoraires = [...daysHoraires];
-        
-        if (finalDaysHoraires.length === 0) {
-            const currentDate = document.getElementById('planning_date').value;
-            const currentHoraires = Array.from(document.querySelectorAll('input[name="horaire"]:checked')).map(cb => cb.value);
-            
-            if (!currentDate || currentHoraires.length === 0) {
-                showErrorToast('Veuillez choisir une date et au moins un horaire.');
-                return;
-            }
-            
+        // Vérifie si le jour courant n'est pas déjà dans daysHoraires
+        const alreadyAdded = finalDaysHoraires.some(dh => dh.date === currentDate);
+        if (currentHoraires.length > 0 && !alreadyAdded) {
             finalDaysHoraires.push({ date: currentDate, horaires: currentHoraires });
-            console.log('🎯 Utilisation automatique de la date/horaires sélectionnés:', currentDate, currentHoraires);
         }
-        
-        const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
-        
-        // Ajouter les nouveaux champs
-        data.group_count = document.getElementById('quantity').value;
-        data.material_prof = document.getElementById('material_prof').value;
-        data.request_name = document.getElementById('request_name').value;
+        if (finalDaysHoraires.length === 0) {
+            showErrorToast('Veuillez choisir une date et au moins un horaire.');
+            return;
+        }
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+
+    // Ajout explicite de l'URL de l'image uploadée
+    data.image_url = document.getElementById('image_url') ? document.getElementById('image_url').value : '';
+
+    // Ajouter les nouveaux champs
+    data.group_count = document.getElementById('quantity').value;
+    data.material_prof = document.getElementById('material_prof').value;
+    data.request_name = document.getElementById('request_name').value;
         
         // Validation du nom de demande (obligatoire)
         if (!data.request_name || data.request_name.trim() === '') {
@@ -547,6 +606,219 @@ document.addEventListener('DOMContentLoaded', function() {
             showErrorToast('Erreur de connexion');
         });
     });
+
+    // Gestion de l'upload d'images
+    const imageFileInput = document.getElementById('image_file_input');
+    const takePhotoBtn = document.getElementById('take_photo_btn');
+    const uploadImageBtn = document.getElementById('upload_image_btn');
+    const imagePreview = document.getElementById('image_preview');
+    const previewImg = document.getElementById('preview_img');
+    const imageError = document.getElementById('image_error');
+    const uploadInstructions = document.getElementById('upload_instructions');
+    const uploadStatus = document.getElementById('upload_status');
+    const imageUrlInput = document.getElementById('image_url');
+    const removeImageBtn = document.getElementById('remove_image_btn');
+    
+    // Éléments pour la caméra
+    const cameraSection = document.getElementById('camera_section');
+    const cameraVideo = document.getElementById('camera_video');
+    const capturePhotoBtn = document.getElementById('capture_photo_btn');
+    const cancelPhotoBtn = document.getElementById('cancel_photo_btn');
+    const photoCanvas = document.getElementById('photo_canvas');
+
+    let selectedFile = null;
+    let mediaStream = null;
+
+    function showImageError(message) {
+        imageError.textContent = message;
+        imageError.style.display = 'block';
+        uploadInstructions.style.display = 'none';
+    }
+
+    function hideImageError() {
+        imageError.style.display = 'none';
+    }
+
+    function showUploadInstructions(message) {
+        uploadInstructions.innerHTML = message;
+        uploadInstructions.style.display = 'block';
+        hideImageError();
+    }
+
+    function updateUploadStatus(message, type = 'info') {
+        const className = type === 'success' ? 'text-success' : type === 'error' ? 'text-danger' : 'text-info';
+        uploadStatus.innerHTML = `<small class="${className}">${message}</small>`;
+    }
+
+    function showImagePreview(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            imagePreview.style.display = 'block';
+            uploadImageBtn.disabled = false;
+            updateUploadStatus('📁 Image sélectionnée - Cliquez sur "Uploader vers Drive"');
+        };
+        reader.readAsDataURL(file);
+        selectedFile = file;
+    }
+
+    function clearImage() {
+        imageFileInput.value = '';
+        imagePreview.style.display = 'none';
+        imageUrlInput.value = '';
+        uploadImageBtn.disabled = true;
+        selectedFile = null;
+        hideImageError();
+        uploadInstructions.style.display = 'none';
+        updateUploadStatus('');
+    }
+
+    function stopCamera() {
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        cameraSection.style.display = 'none';
+    }
+
+    // Gestion de la sélection de fichier avec upload automatique
+    imageFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Vérifier le type de fichier
+            if (!file.type.startsWith('image/')) {
+                showImageError('Veuillez sélectionner un fichier image valide.');
+                return;
+            }
+            
+            // Vérifier la taille (max 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showImageError('L\'image est trop grande (max 10MB).');
+                return;
+            }
+            
+            showImagePreview(file);
+            
+            // Upload automatique dès sélection
+            setTimeout(() => {
+                uploadImageBtn.click();
+            }, 500);
+        }
+    });
+
+    // Prise de photo avec la caméra
+    takePhotoBtn.addEventListener('click', async function() {
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment', // Caméra arrière sur mobile
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            });
+            cameraVideo.srcObject = mediaStream;
+            cameraSection.style.display = 'block';
+        } catch (error) {
+            console.error('Erreur caméra:', error);
+            showImageError('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+        }
+    });
+
+    // Capturer la photo
+    capturePhotoBtn.addEventListener('click', function() {
+        const canvas = photoCanvas;
+        const context = canvas.getContext('2d');
+        
+        canvas.width = cameraVideo.videoWidth;
+        canvas.height = cameraVideo.videoHeight;
+        
+        context.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+        
+        // Convertir en blob
+        canvas.toBlob(function(blob) {
+            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            showImagePreview(file);
+            stopCamera();
+            
+            // Upload automatique après capture
+            setTimeout(() => {
+                uploadImageBtn.click();
+            }, 500);
+        }, 'image/jpeg', 0.8);
+    });
+
+    // Annuler la prise de photo
+    cancelPhotoBtn.addEventListener('click', stopCamera);
+
+    // Upload vers le serveur (qui gère l'upload vers Google Drive)
+    uploadImageBtn.addEventListener('click', function() {
+        if (!selectedFile) {
+            showImageError('Aucune image sélectionnée');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+
+        uploadImageBtn.disabled = true;
+        uploadImageBtn.innerHTML = '⏳ Upload en cours...';
+        updateUploadStatus('📤 Upload vers Google Drive...', 'info');
+
+        fetch('/api/upload-image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showImageError(data.error);
+                updateUploadStatus('❌ Erreur d\'upload', 'error');
+            } else if (data.image_url) {
+                // Image uploadée avec succès
+                imageUrlInput.value = data.image_url;
+                
+                if (data.local_storage) {
+                    updateUploadStatus('✅ Image sauvegardée et prête à utiliser!', 'success');
+                } else {
+                    updateUploadStatus('✅ Image uploadée sur Google Drive!', 'success');
+                }
+                
+                // Plus besoin d'instructions - tout est automatique !
+                hideImageError();
+                uploadInstructions.style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showImageError('Erreur lors de l\'upload');
+            updateUploadStatus('❌ Erreur de connexion', 'error');
+        })
+        .finally(() => {
+            uploadImageBtn.disabled = false;
+            uploadImageBtn.innerHTML = '⬆️ Uploader vers Drive';
+        });
+    });
+
+    removeImageBtn.addEventListener('click', clearImage);
+    
+    // Configuration de la date minimum (2 jours ouvrés)
+    function setMinimumDate() {
+        const dateInput = document.getElementById('planning_date');
+        
+        // Calculer la date minimum (approximation simple)
+        const today = new Date();
+        const minDate = getMinimumValidDate();
+        
+        // Définir la date minimum et par défaut
+        const minDateStr = minDate.toISOString().split('T')[0];
+        dateInput.setAttribute('min', minDateStr);
+        dateInput.value = minDateStr; // Date par défaut
+        
+        console.log(`📅 Date minimum configurée: ${minDateStr} (2 jours ouvrés minimum)`);
+    }
+    
+    // Appeler au chargement de la page
+    setMinimumDate();
 });
 
 

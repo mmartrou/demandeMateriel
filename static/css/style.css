@@ -185,3 +185,40 @@ body {
         font-size: 0.8em;
     }
 }
+
+/* Styles pour le suivi des modifications */
+.text-addition {
+    color: #dc3545 !important; /* Rouge Bootstrap */
+    font-weight: 600;
+    background-color: rgba(220, 53, 69, 0.1);
+    padding: 1px 3px;
+    border-radius: 3px;
+    display: inline;
+}
+
+.text-deletion {
+    text-decoration: line-through;
+    color: #6c757d !important; /* Gris Bootstrap */
+    background-color: rgba(108, 117, 125, 0.1);
+    padding: 1px 3px;
+    border-radius: 3px;
+    display: inline;
+    opacity: 0.8;
+}
+
+/* Styles pour les éléments modifiés dans les listes */
+.modified-field {
+    border-left: 3px solid #dc3545;
+    padding-left: 8px;
+    margin-left: 2px;
+}
+
+/* Animation pour attirer l'attention sur les champs modifiés */
+@keyframes highlight-change {
+    0% { background-color: rgba(220, 53, 69, 0.2); }
+    100% { background-color: transparent; }
+}
+
+.recently-modified {
+    animation: highlight-change 2s ease-out;
+}
