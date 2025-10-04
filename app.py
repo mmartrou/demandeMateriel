@@ -3,12 +3,17 @@ import csv
 import io
 import logging
 from datetime import datetime, timedelta
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
                       toggle_prepared_status, delete_material_request, update_room_type,
                       add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
-                      validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability)
+                      validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability, delete_c21_availability,
+                      get_all_rooms, update_room, import_rooms_from_csv_content,
+                      get_all_student_numbers, update_student_number, add_student_number, delete_student_number)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
+from planning_generator import generer_planning_excel, get_planning_data_for_editor, generer_planning_excel_with_assignments
 
 app = Flask(__name__)
 
@@ -69,6 +74,65 @@ def planning():
     """Page Générateur de Planning pour voir les demandes d'un jour"""
     return render_template('planning.html')
 
+@app.route('/api/generate-planning', methods=['POST'])
+def generate_planning():
+    """Generate Excel planning for a specific date using OR-Tools optimization"""
+    try:
+        data = request.get_json()
+        if not data or 'date' not in data:
+            return jsonify({'error': 'Date manquante'}), 400
+        
+        date_str = data['date']
+        
+        # Use the existing planning generator
+        success, result = generer_planning_excel(date_str)
+        
+        if not success:
+            return jsonify({'error': result}), 404
+        
+        # Extract filename from result message
+        if "Planning généré:" in result:
+            # Extract filename from message like "Planning généré: filename.xlsx (2/3 cours assignés)"
+            file_path = result.split("Planning généré: ")[1].split(" (")[0]
+        else:
+            return jsonify({'error': 'Erreur lors de l\'extraction du nom de fichier'}), 500
+        
+        # Read the generated file and return it
+        try:
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+        except FileNotFoundError:
+            return jsonify({'error': f'Fichier généré non trouvé: {file_path}'}), 500
+        
+        # Create response
+        response = make_response(file_content)
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        
+        # Create filename based on date
+        from datetime import datetime
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            day_names = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+            day_name = day_names[date_obj.weekday()]
+            formatted_date = date_obj.strftime('%d-%m-%Y')
+            filename = f"planning{day_name.upper()}_{formatted_date}.xlsx"
+        except:
+            filename = f"planning_{date_str}.xlsx"
+        
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        
+        # Clean up the temporary file
+        import os
+        try:
+            os.remove(file_path)
+        except:
+            pass
+        
+        return response
+        
+    except Exception as e:
+        logging.error(f"Erreur génération planning: {e}")
+        return jsonify({'error': f'Erreur lors de la génération: {str(e)}'}), 500
 
 @app.route('/')
 def index():
@@ -457,6 +521,11 @@ def view_c21_availability():
     """C21 availability management page"""
     return render_template('c21_availability.html')
 
+@app.route('/admin/planning-editor')
+def planning_editor():
+    """Page d'édition interactive du planning"""
+    return render_template('planning_editor.html')
+
 @app.route('/api/pending-modifications', methods=['GET', 'POST'])
 def api_pending_modifications():
     """API endpoint to get all pending modifications or add a new one"""
@@ -739,6 +808,203 @@ def api_c21_availability():
             return jsonify({'success': True}), 201
         else:
             return jsonify({'error': 'Erreur lors de l\'ajout'}), 500
+
+@app.route('/api/c21-availability/<int:availability_id>', methods=['DELETE'])
+def api_delete_c21_availability(availability_id):
+    """API pour supprimer un créneau de disponibilité C21"""
+    try:
+        success = delete_c21_availability(availability_id)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Créneau non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# API Routes pour la gestion des salles
+@app.route('/api/rooms', methods=['GET'])
+def api_get_rooms():
+    """API endpoint to get all rooms"""
+    try:
+        rooms = get_all_rooms()
+        return jsonify(rooms)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/rooms/<int:room_id>', methods=['PUT'])
+def api_update_room(room_id):
+    """API endpoint to update a room"""
+    try:
+        data = request.get_json()
+        success = update_room(room_id, data)
+        if success:
+            return jsonify({'message': 'Salle mise à jour avec succès'})
+        else:
+            return jsonify({'error': 'Salle non trouvée'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/rooms/import-csv', methods=['POST'])
+def api_import_rooms_csv():
+    """API endpoint to import rooms from CSV"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Aucun fichier fourni'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Aucun fichier sélectionné'}), 400
+        
+        if not file.filename.lower().endswith('.csv'):
+            return jsonify({'error': 'Le fichier doit être au format CSV'}), 400
+        
+        # Lire le contenu du fichier
+        csv_content = file.read().decode('utf-8')
+        
+        # Importer les salles
+        success, message = import_rooms_from_csv_content(csv_content)
+        
+        if success:
+            return jsonify({'message': message})
+        else:
+            return jsonify({'error': message}), 400
+            
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de l\'import: {str(e)}'}), 500
+
+@app.route('/api/rooms/export-csv', methods=['GET'])
+def api_export_rooms_csv():
+    """API endpoint to export rooms as CSV"""
+    try:
+        rooms = get_all_rooms()
+        
+        # Créer le CSV en mémoire
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # En-tête
+        writer.writerow([
+            'nom', 'type', 'ordinateurs', 'chaises', 'eviers', 'hotte',
+            'bancs_optiques', 'oscilloscopes', 'becs_electriques',
+            'support_filtration', 'imprimante', 'examen'
+        ])
+        
+        # Données
+        for room in rooms:
+            writer.writerow([
+                room['name'], room['type'], room['ordinateurs'], room['chaises'],
+                room['eviers'], room['hotte'], room['bancs_optiques'], room['oscilloscopes'],
+                room['becs_electriques'], room['support_filtration'], room['imprimante'], room['examen']
+            ])
+        
+        # Préparer la réponse
+        output.seek(0)
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = 'attachment; filename=salles.csv'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# API Routes pour la gestion des effectifs d'étudiants
+@app.route('/api/students', methods=['GET'])
+def api_get_students():
+    """API endpoint to get all student numbers"""
+    try:
+        students = get_all_student_numbers()
+        return jsonify(students)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students', methods=['POST'])
+def api_add_student():
+    """API endpoint to add a new student number entry"""
+    try:
+        data = request.get_json()
+        teacher_name = data.get('teacher_name')
+        student_count = data.get('student_count')
+        level = data.get('level', '2nde')
+        
+        if not teacher_name or not student_count:
+            return jsonify({'error': 'Nom de l\'enseignant et nombre d\'élèves requis'}), 400
+        
+        success = add_student_number(teacher_name, student_count, level)
+        if success:
+            return jsonify({'message': 'Effectif ajouté avec succès'}), 201
+        else:
+            return jsonify({'error': 'Erreur lors de l\'ajout'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students/<int:student_id>', methods=['PUT'])
+def api_update_student(student_id):
+    """API endpoint to update a student number entry"""
+    try:
+        data = request.get_json()
+        success = update_student_number(student_id, data)
+        if success:
+            return jsonify({'message': 'Effectif mis à jour avec succès'})
+        else:
+            return jsonify({'error': 'Effectif non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+def api_delete_student(student_id):
+    """API endpoint to delete a student number entry"""
+    try:
+        success = delete_student_number(student_id)
+        if success:
+            return jsonify({'message': 'Effectif supprimé avec succès'})
+        else:
+            return jsonify({'error': 'Effectif non trouvé'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Routes API pour l'éditeur de planning
+@app.route('/api/planning-editor/data', methods=['GET'])
+def api_get_planning_data():
+    """API endpoint pour récupérer les données du planning initial pour un jour donné"""
+    try:
+        target_date = request.args.get('date')
+        
+        if not target_date:
+            return jsonify({'error': 'La date est requise'}), 400
+            
+        planning_data = get_planning_data_for_editor(target_date)
+        return jsonify(planning_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/planning-editor/generate', methods=['POST'])
+def api_generate_planning_from_editor():
+    """API endpoint pour générer le planning Excel avec les assignations personnalisées"""
+    try:
+        data = request.get_json()
+        assignments = data.get('assignments', {})
+        target_date = data.get('date')
+        room_assignments = data.get('room_assignments', {})
+        
+        if not target_date:
+            return jsonify({'error': 'La date est requise'}), 400
+        
+        # Générer le fichier Excel avec les assignations personnalisées
+        excel_file = generer_planning_excel_with_assignments(target_date, assignments, room_assignments)
+        
+        if excel_file:
+            # Créer une réponse avec le fichier Excel
+            response = make_response(excel_file.getvalue())
+            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            response.headers['Content-Disposition'] = f'attachment; filename="planning_personnalise_{target_date}.xlsx"'
+            return response
+        else:
+            return jsonify({'error': 'Erreur lors de la génération du planning'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
         
 if __name__ == '__main__':
     import os

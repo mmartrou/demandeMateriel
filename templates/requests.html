@@ -224,6 +224,61 @@
                         </div>
                     </div>
                     
+                    <!-- Matériel spécifique (checkboxes) -->
+                    <div class="mb-3" id="editMaterialCheckboxSection">
+                        <label class="form-label">
+                            🔧 Matériel peu mobile à avoir dans la salle
+                        </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editEviers" name="editMaterials" value="Éviers">
+                                    <label class="form-check-label" for="editEviers">
+                                        Éviers
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editHotte" name="editMaterials" value="Hotte">
+                                    <label class="form-check-label" for="editHotte">
+                                        Hotte
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBancsOptiques" name="editMaterials" value="Bancs optiques">
+                                    <label class="form-check-label" for="editBancsOptiques">
+                                        Bancs optiques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editOscilloscopes" name="editMaterials" value="Oscilloscopes">
+                                    <label class="form-check-label" for="editOscilloscopes">
+                                        Oscilloscopes
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBecsElectriques" name="editMaterials" value="Becs électriques">
+                                    <label class="form-check-label" for="editBecsElectriques">
+                                        Becs électriques
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editSupportFiltration" name="editMaterials" value="Support de filtration">
+                                    <label class="form-check-label" for="editSupportFiltration">
+                                        Support de filtration
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editImprimante" name="editMaterials" value="Imprimante">
+                                    <label class="form-check-label" for="editImprimante">
+                                        Imprimante
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Material description ensuite -->
                     <div class="mb-3" id="editMaterialSection">
                         <label for="editMaterialDescription" class="form-label">
@@ -862,6 +917,9 @@ function populateEditForm(request) {
     if (editMaterialProf) editMaterialProf.value = request.material_prof || '';
     if (editNotes) editNotes.value = request.notes || '';
     
+    // Parser et cocher les matériaux spécifiques
+    parseAndSetSpecificMaterials(request.selected_materials || '');
+    
     // Gérer l'affichage de l'image (compatible avec différents éléments)
     const currentImageDiv = document.getElementById('editCurrentImage');
     const imageSection = document.getElementById('editImageSection');
@@ -890,6 +948,66 @@ function populateEditForm(request) {
 }
 
 
+
+function parseAndSetSpecificMaterials(selectedMaterials) {
+    // Réinitialiser toutes les checkboxes des matériaux spécifiques
+    const materialCheckboxes = document.querySelectorAll('input[name="editMaterials"]');
+    materialCheckboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Parser le texte des matériaux pour identifier les matériaux spécifiques
+    if (selectedMaterials && selectedMaterials.trim()) {
+        const materials = selectedMaterials.split('\n').map(line => line.replace(/^-\s*/, '').trim());
+        
+        // Liste des matériaux spécifiques reconnus
+        const specificMaterialsMap = {
+            'Éviers': 'editEviers',
+            'Hotte': 'editHotte', 
+            'Bancs optiques': 'editBancsOptiques',
+            'Oscilloscopes': 'editOscilloscopes',
+            'Becs électriques': 'editBecsElectriques',
+            'Support de filtration': 'editSupportFiltration',
+            'Imprimante': 'editImprimante'
+        };
+        
+        const remainingMaterials = [];
+        
+        materials.forEach(material => {
+            let isSpecificMaterial = false;
+            
+            // Vérifier si c'est un matériel spécifique
+            for (const [specificName, checkboxId] of Object.entries(specificMaterialsMap)) {
+                if (material.toLowerCase().includes(specificName.toLowerCase()) || 
+                    material === specificName) {
+                    const checkbox = document.getElementById(checkboxId);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+                    isSpecificMaterial = true;
+                    break;
+                }
+            }
+            
+            // Si ce n'est pas un matériel spécifique, l'ajouter aux matériaux libres
+            if (!isSpecificMaterial && material.trim()) {
+                remainingMaterials.push(material);
+            }
+        });
+        
+        // Mettre les matériaux non-spécifiques dans la zone de texte
+        const editMaterialDescription = document.getElementById('editMaterialDescription');
+        if (editMaterialDescription) {
+            editMaterialDescription.value = remainingMaterials.join('\n');
+        }
+    } else {
+        // Pas de matériaux, vider la zone de texte
+        const editMaterialDescription = document.getElementById('editMaterialDescription');
+        if (editMaterialDescription) {
+            editMaterialDescription.value = '';
+        }
+    }
+}
 
 function clearModalBackdrops() {
     // Supprimer tous les backdrops qui traînent
@@ -974,7 +1092,8 @@ function editRequest(requestId) {
                 notes: request.notes || '',
                 horaire: request.horaire || '',
                 quantity: request.group_count || request.quantity || 1,
-                computers_needed: request.computers_needed || 0
+                computers_needed: request.computers_needed || 0,
+                selected_materials: request.selected_materials || ''
             };
             
             // S'assurer que la modale est en mode édition (nettoyer le mode lecture seule si nécessaire)
@@ -1084,6 +1203,18 @@ function calculateRequestChanges(requestId, newData) {
         }
     }
     
+    // Comparer les matériels spécifiques (selected_materials)
+    const originalMaterials = originalRequestData.selected_materials || '';
+    const newMaterials = newData.selected_materials || '';
+    
+    if (originalMaterials !== newMaterials) {
+        changes.selected_materials = {
+            original: originalMaterials,
+            new: newMaterials,
+            diff: generateDiffDisplay(originalMaterials, newMaterials)
+        };
+    }
+    
     // Comparer les champs numériques
     if (originalRequestData.quantity !== newData.quantity) {
         changes.quantity = {
@@ -1177,29 +1308,54 @@ function saveRequestChanges() {
     if (isAbsent) {
         formData.selected_materials = 'Absent';
         formData.material_description = 'Enseignant absent';
+        currentData.selected_materials = formData.selected_materials;
+        currentData.material_description = formData.material_description;
     } else if (isNoMaterial) {
         formData.selected_materials = 'Pas besoin de matériel';
         formData.material_description = 'Cours théorique sans matériel';
+        currentData.selected_materials = formData.selected_materials;
+        currentData.material_description = formData.material_description;
     } else if (isExamMode) {
         formData.selected_materials = 'Examen';
         formData.material_description = 'Surveillance d\'examen';
+        currentData.selected_materials = formData.selected_materials;
+        currentData.material_description = formData.material_description;
     } else {
-        // Récupérer le contenu du champ matériel
-        const materialContent = document.getElementById('editMaterialDescription').value;
+        // Collecter les matériaux spécifiques cochés (pour selected_materials seulement)
+        const specificMaterials = [];
+        const materialCheckboxes = document.querySelectorAll('input[name="editMaterials"]:checked');
+        materialCheckboxes.forEach(checkbox => {
+            specificMaterials.push(checkbox.value);
+        });
         
-        // Ajouter le préfixe si du matériel est spécifié
-        if (materialContent && materialContent.trim()) {
-            formData.material_description = `Matériel requis: ${materialContent}`;
+        // Récupérer le contenu du champ matériel libre
+        const freeTextMaterial = document.getElementById('editMaterialDescription').value;
+        
+        // Pour selected_materials : inclure tous les matériaux (spécifiques + libres)
+        let allMaterials = [];
+        if (specificMaterials.length > 0) {
+            allMaterials.push(...specificMaterials);
+        }
+        if (freeTextMaterial && freeTextMaterial.trim()) {
+            allMaterials.push(freeTextMaterial.trim());
+        }
+        
+        formData.selected_materials = allMaterials.join('\n- ');
+        if (formData.selected_materials) {
+            formData.selected_materials = '- ' + formData.selected_materials; // Ajouter le premier tiret
+        }
+        
+        // Pour material_description : seulement le matériel libre (pas les équipements de salle)
+        if (freeTextMaterial && freeTextMaterial.trim()) {
+            formData.material_description = `Matériel requis: ${freeTextMaterial.trim()}`;
         } else {
             formData.material_description = 'Cours sans matériel spécifique';
         }
-        
-        // Garder selected_materials vide pour les demandes normales
-        formData.selected_materials = '';
     }
     
-    // Ajouter material_description au currentData pour la comparaison
+    // Ajouter material_description et selected_materials au currentData pour la comparaison
     currentData.material_description = formData.material_description;
+    currentData.selected_materials = formData.selected_materials;
     
     // Calculer les changements avant la sauvegarde
     const changes = calculateRequestChanges(requestId, currentData);

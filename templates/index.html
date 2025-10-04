@@ -566,13 +566,36 @@ document.addEventListener('DOMContentLoaded', function() {
             data.notes = '';
             data.quantity = '1';
         } else {
-            // Mode normal : récupération du matériel depuis la zone de texte
-            data.selected_materials = document.getElementById('selected_materials').value;
+            // Mode normal : récupération du matériel spécifique depuis les checkboxes
+            const specificMaterials = [];
+            const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
+            materialCheckboxes.forEach(checkbox => {
+                specificMaterials.push(checkbox.value);
+            });
+            
+            // Récupération du matériel libre depuis la zone de texte
+            const freeTextMaterial = document.getElementById('selected_materials').value;
+            
+            // Combinaison des matériaux spécifiques et du texte libre
+            let allMaterials = [];
+            if (specificMaterials.length > 0) {
+                allMaterials.push(...specificMaterials);
+            }
+            if (freeTextMaterial && freeTextMaterial.trim()) {
+                allMaterials.push(freeTextMaterial.trim());
+            }
+            
+            // Pour selected_materials : inclure tous les matériaux (spécifiques + libres)
+            data.selected_materials = allMaterials.join('\n- ');
+            if (data.selected_materials) {
+                data.selected_materials = '- ' + data.selected_materials; // Ajouter le premier tiret
+            }
+            
             data.computers_needed = document.getElementById('computers_needed').value;
             
-            // Génération automatique de la description basée sur le matériel saisi
-            if (data.selected_materials) {
-                data.material_description = `Matériel requis: ${data.selected_materials}`;
+            // Pour material_description : seulement le matériel libre (pas les équipements de salle)
+            if (freeTextMaterial && freeTextMaterial.trim()) {
+                data.material_description = `Matériel requis: ${freeTextMaterial.trim()}`;
             } else {
                 data.material_description = 'Cours sans matériel spécifique';
             }

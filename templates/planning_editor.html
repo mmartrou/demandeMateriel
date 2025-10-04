@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+
+{% block title %}Éditeur de Planning Interactive{% endblock %}
+
+{% block extra_css %}
+<style>
+    .planning-editor {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    
+    .room-column {
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        background-color: #f8f9fa;
+        min-height: 400px;
+    }
+    
+    .room-header {
+        background-color: #007bff;
+        color: white;
+        padding: 15px;
+        border-radius: 6px 6px 0 0;
+        font-weight: bold;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .room-content {
+        padding: 15px;
+        min-height: 350px;
+    }
+    
+    .time-slot-group {
+        margin-bottom: 15px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background-color: white;
+    }
+    
+    .time-slot-header {
+        background-color: #e9ecef;
+        padding: 8px 12px;
+        font-weight: bold;
+        color: #495057;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .time-slot-courses {
+        padding: 10px;
+        min-height: 60px;
+    }
+    
+    .course-card {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        border-radius: 8px;
+        padding: 6px;
+        margin: 2px;
+        cursor: move;
+        font-size: 0.85em;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        min-height: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .course-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .course-card.dragging {
+        opacity: 0.6;
+        transform: rotate(5deg);
+        z-index: 1000;
+    }
+    
+    .course-card .course-title {
+        font-weight: bold;
+        margin-bottom: 2px;
+    }
+    
+    .course-card .course-level {
+        font-size: 0.8em;
+        opacity: 0.9;
+    }
+    
+    .course-card .course-teacher {
+        font-size: 0.75em;
+        opacity: 0.8;
+        margin-top: 2px;
+    }
+    
+    .course-card.physics {
+        background: linear-gradient(135deg, #28a745, #1e7e34);
+    }
+    
+    .course-card.chemistry {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+    }
+    
+    .course-card.other {
+        background: linear-gradient(135deg, #ffc107, #e0a800);
+        color: #212529;
+    }
+    
+    .drop-zone {
+        min-height: 60px;
+        background-color: transparent;
+        border: 1px dashed #dee2e6;
+        border-radius: 4px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        padding: 5px;
+        transition: all 0.3s ease;
+    }
+    
+    .drop-zone.drag-over {
+        border-color: #007bff;
+        background-color: #e3f2fd;
+    }
+    
+    .drop-zone:empty::before {
+        content: "Glisser un cours ici";
+        color: #6c757d;
+        font-style: italic;
+        align-self: center;
+        width: 100%;
+        text-align: center;
+    }
+    
+    .stats-panel {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-item {
+        display: inline-block;
+        margin-right: 20px;
+        padding: 8px 12px;
+        background-color: white;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+    }
+    
+    .stat-item.warning {
+        border-left-color: #ffc107;
+    }
+    
+    .stat-item.error {
+        border-left-color: #dc3545;
+    }
+    
+    .controls-panel {
+        background-color: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .legend {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 10px;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+    }
+    
+    .legend-color.physics {
+        background: linear-gradient(135deg, #28a745, #1e7e34);
+    }
+    
+    .legend-color.chemistry {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+    }
+    
+    .legend-color.other {
+        background: linear-gradient(135deg, #ffc107, #e0a800);
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+    
+    @media (max-width: 768px) {
+        .planning-editor {
+            font-size: 0.8em;
+        }
+        
+        .planning-grid th,
+        .planning-grid td {
+            min-width: 80px;
+            padding: 4px;
+        }
+        
+        .course-card {
+            min-height: 40px;
+            font-size: 0.7em;
+        }
+        
+        .controls-panel {
+            padding: 10px;
+        }
+        
+        .stat-item {
+            display: block;
+            margin-right: 0;
+            margin-bottom: 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-calendar-alt"></i> Éditeur de Planning Interactive</h2>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" onclick="resetPlanning()">
+                        <i class="fas fa-undo"></i> Réinitialiser
+                    </button>
+                    <a href="/admin" class="btn btn-secondary me-2">
+                        <i class="fas fa-arrow-left"></i> Retour Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Panneau de contrôles -->
+    <div class="controls-panel">
+        <div class="row">
+            <div class="col-md-6">
+                <h5>Configuration du jour</h5>
+                <div class="row">
+                    <div class="col-6">
+                        <label for="target-date" class="form-label">Date du planning:</label>
+                        <input type="date" id="target-date" class="form-control" required>
+                    </div>
+                    <div class="col-6 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary" onclick="loadPlanningData()">
+                            <i class="fas fa-cogs"></i> Générer et Éditer le Planning
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted">Le planning sera généré automatiquement par OR-Tools puis affiché pour édition manuelle.</small>
+            </div>
+            <div class="col-md-6">
+                <h5>Actions</h5>
+                <button type="button" class="btn btn-success" onclick="generateFinalPlanning()" disabled id="generate-btn">
+                    <i class="fas fa-file-excel"></i> Générer Planning Excel Final
+                </button>
+                <div class="legend mt-2">
+                    <strong>Légende:</strong>
+                    <div class="legend-item">
+                        <div class="legend-color physics"></div>
+                        <span>Physique</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color chemistry"></div>
+                        <span>Chimie</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color other"></div>
+                        <span>Autre</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Panneau de statistiques -->
+    <div class="stats-panel" id="stats-panel" style="display: none;">
+        <h5>Statistiques du Planning</h5>
+        <div id="stats-content">
+            <!-- Les statistiques seront chargées ici -->
+        </div>
+    </div>
+    
+    <!-- Zone d'édition du planning par salle -->
+    <div class="planning-editor">
+        <div class="row" id="rooms-container">
+            <!-- Les salles seront générées dynamiquement -->
+        </div>
+    </div>
+    
+    <!-- Message quand aucun planning n'est chargé -->
+    <div id="no-planning-message" class="text-center py-5">
+        <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+        <h4 class="text-muted">Aucun planning chargé</h4>
+        <p class="text-muted">Sélectionnez une date et cliquez sur "Générer et Éditer le Planning" pour que OR-Tools optimise automatiquement les assignations de salles.</p>
+        <p class="text-muted">Vous pourrez ensuite modifier manuellement le planning avant l'export Excel.</p>
+    </div>
+</div>
+
+<!-- Overlay de chargement -->
+<div id="loading-overlay" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h5 class="mt-3">Chargement en cours...</h5>
+        <p class="text-muted mb-0" id="loading-message">Génération du planning initial...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let planningData = null;
+    let currentAssignments = {};
+    let currentRoomAssignments = {};
+    let draggedElement = null;
+    let originalPosition = null;
+    
+    // Initialiser la date par défaut (aujourd'hui)
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date();
+        document.getElementById('target-date').value = today.toISOString().split('T')[0];
+    });
+    
+    // Charger les données du planning
+    async function loadPlanningData() {
+        const targetDate = document.getElementById('target-date').value;
+        
+        if (!targetDate) {
+            showAlert('Veuillez sélectionner une date.', 'warning');
+            return;
+        }
+        
+        showLoading('Génération du planning optimisé par OR-Tools...');
+        
+        try {
+            const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                planningData = data;
+                currentAssignments = { ...data.assignments };
+                currentRoomAssignments = { ...data.room_assignments || {} };
+                renderPlanningGrid();
+                updateStats();
+                document.getElementById('generate-btn').disabled = false;
+                showAlert('Planning généré et prêt à éditer!', 'success');
+            } else {
+                throw new Error(data.error || 'Erreur lors de la génération');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
+        } finally {
+            hideLoading();
+        }
+    }
+    
+    // Afficher le planning organisé par salles
+    function renderPlanningGrid() {
+        if (!planningData) return;
+        
+        const container = document.getElementById('rooms-container');
+        container.innerHTML = '';
+        
+        const rooms = planningData.rooms;
+        const timeSlots = planningData.time_slots;
+        
+        // Créer une colonne pour chaque salle
+        rooms.forEach(room => {
+            const roomCol = document.createElement('div');
+            roomCol.className = 'col-md-4 col-lg-3 room-column';
+            
+            // En-tête de la salle
+            const roomHeader = document.createElement('div');
+            roomHeader.className = 'room-header';
+            roomHeader.textContent = room.name;
+            
+            // Contenu de la salle
+            const roomContent = document.createElement('div');
+            roomContent.className = 'room-content';
+            
+            // Créer les créneaux horaires pour cette salle
+            timeSlots.forEach(slot => {
+                const timeGroup = document.createElement('div');
+                timeGroup.className = 'time-slot-group';
+                
+                const timeHeader = document.createElement('div');
+                timeHeader.className = 'time-slot-header';
+                timeHeader.textContent = slot;
+                
+                const timeCourses = document.createElement('div');
+                timeCourses.className = 'time-slot-courses drop-zone';
+                timeCourses.dataset.room = room.name;
+                timeCourses.dataset.slot = slot;
+                
+                // Chercher les cours assignés à cette salle et ce créneau
+                const coursesInSlot = planningData.courses.filter(course => {
+                    return currentRoomAssignments[course.id] === room.name && course.time === slot;
+                });
+                
+                // Ajouter les cours trouvés
+                coursesInSlot.forEach(course => {
+                    const courseCard = createCourseCard(course);
+                    timeCourses.appendChild(courseCard);
+                });
+                
+                // Configurer les événements de drop
+                setupDropZone(timeCourses);
+                
+                timeGroup.appendChild(timeHeader);
+                timeGroup.appendChild(timeCourses);
+                roomContent.appendChild(timeGroup);
+            });
+            
+            roomCol.appendChild(roomHeader);
+            roomCol.appendChild(roomContent);
+            container.appendChild(roomCol);
+        });
+        
+        // Masquer le message "aucun planning"
+        document.getElementById('no-planning-message').style.display = 'none';
+        document.getElementById('stats-panel').style.display = 'block';
+    }
+    
+    // Créer une carte de cours
+    function createCourseCard(course) {
+        const card = document.createElement('div');
+        card.className = `course-card ${getCourseType(course.subject)}`;
+        card.draggable = true;
+        card.dataset.courseId = course.id;
+        
+        card.innerHTML = `
+            <div class="course-title">${course.subject}</div>
+            <div class="course-level">${course.level}</div>
+            <div class="course-teacher">${course.teacher}</div>
+            <div class="course-time">${course.time}</div>
+        `;
+        
+        // Ajouter les événements de drag
+        setupDragEvents(card);
+        
+        return card;
+    }
+    
+    // Obtenir le type de cours pour le style
+    function getCourseType(subject) {
+        const subjectLower = subject.toLowerCase();
+        if (subjectLower.includes('physique') || subjectLower.includes('physics')) {
+            return 'physics';
+        } else if (subjectLower.includes('chimie') || subjectLower.includes('chemistry')) {
+            return 'chemistry';
+        } else {
+            return 'other';
+        }
+    }
+    
+    // Formater l'en-tête des jours
+    function formatDayHeader(day) {
+        const date = new Date(day);
+        const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+        const dayName = dayNames[date.getDay()];
+        const dayNum = date.getDate();
+        const month = date.getMonth() + 1;
+        return `${dayName} ${dayNum}/${month}`;
+    }
+    
+    // Configurer les événements de drag pour les cours
+    function setupDragEvents(card) {
+        card.addEventListener('dragstart', function(e) {
+            draggedElement = this;
+            originalPosition = this.parentElement;
+            this.classList.add('dragging');
+            
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.outerHTML);
+        });
+        
+        card.addEventListener('dragend', function(e) {
+            this.classList.remove('dragging');
+            draggedElement = null;
+            originalPosition = null;
+        });
+    }
+    
+    // Configurer les zones de drop
+    function setupDropZone(cell) {
+        cell.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('drag-over');
+        });
+        
+        cell.addEventListener('dragleave', function(e) {
+            this.classList.remove('drag-over');
+        });
+        
+        cell.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            
+            if (draggedElement) {
+                const courseId = parseInt(draggedElement.dataset.courseId);
+                const newRoom = this.dataset.room;
+                const newSlot = this.dataset.slot;
+                
+                // Mettre à jour l'assignation de salle
+                if (newRoom) {
+                    currentRoomAssignments[courseId] = newRoom;
+                    
+                    // Mettre à jour le cours dans planningData
+                    const course = planningData.courses.find(c => c.id == courseId);
+                    if (course) {
+                        course.room = newRoom;
+                        course.time = newSlot;
+                    }
+                }
+                
+                // Re-rendre la grille
+                renderPlanningGrid();
+                updateStats();
+                
+                showAlert(`Cours déplacé vers ${newRoom} à ${newSlot}`, 'success');
+            }
+        });
+    }
+    
+    // Obtenir l'info de position à partir de la cellule
+    function getPositionFromCell(cell) {
+        if (!cell || !cell.dataset) return null;
+        return {
+            room: cell.dataset.room,
+            slot: cell.dataset.slot
+        };
+    }
+    
+    // Mettre à jour les statistiques
+    function updateStats() {
+        if (!planningData) return;
+        
+        const statsContent = document.getElementById('stats-content');
+        const totalCourses = planningData.courses.length;
+        
+        // Compter les cours assignés à des salles
+        const assignedCourses = planningData.courses.filter(c => 
+            currentRoomAssignments[c.id] && currentRoomAssignments[c.id] !== 'Non assigné'
+        ).length;
+        const unassignedCourses = totalCourses - assignedCourses;
+        
+        // Détecter les conflits (plusieurs cours même salle même heure)
+        const conflicts = new Map();
+        planningData.courses.forEach(course => {
+            const key = `${currentRoomAssignments[course.id]}_${course.time}`;
+            if (!conflicts.has(key)) {
+                conflicts.set(key, []);
+            }
+            conflicts.get(key).push(course.id);
+        });
+        
+        const conflictCount = Array.from(conflicts.values()).filter(courses => courses.length > 1).length;
+        
+        // Compter les salles utilisées
+        const usedRooms = new Set(Object.values(currentRoomAssignments).filter(room => room !== 'Non assigné')).size;
+        
+        statsContent.innerHTML = `
+            <div class="stat-item">
+                <strong>Cours total:</strong> ${totalCourses}
+            </div>
+            <div class="stat-item">
+                <strong>Cours assignés:</strong> ${assignedCourses}
+            </div>
+            <div class="stat-item ${unassignedCourses > 0 ? 'warning' : ''}">
+                <strong>Non assignés:</strong> ${unassignedCourses}
+            </div>
+            <div class="stat-item ${conflictCount > 0 ? 'error' : ''}">
+                <strong>Conflits salle/heure:</strong> ${conflictCount}
+            </div>
+            <div class="stat-item">
+                <strong>Salles utilisées:</strong> ${usedRooms}/${planningData.rooms.length}
+            </div>
+        `;
+    }
+    
+    // Réinitialiser le planning
+    function resetPlanning() {
+        if (planningData && confirm('Êtes-vous sûr de vouloir réinitialiser le planning aux assignations automatiques ?')) {
+            currentAssignments = { ...planningData.assignments };
+            renderPlanningGrid();
+            updateStats();
+            showAlert('Planning réinitialisé!', 'info');
+        }
+    }
+    
+    // Générer le planning Excel final
+    async function generateFinalPlanning() {
+        if (!planningData) {
+            showAlert('Aucun planning chargé.', 'warning');
+            return;
+        }
+        
+        const targetDate = document.getElementById('target-date').value;
+        
+        showLoading('Génération du fichier Excel...');
+        
+        try {
+            // Créer les assignments basés sur les positions actuelles des cours
+            const finalAssignments = {};
+            planningData.courses.forEach(course => {
+                const slotKey = `${planningData.days[0]}_${course.time}`;
+                if (!finalAssignments[slotKey]) {
+                    finalAssignments[slotKey] = [];
+                }
+                finalAssignments[slotKey].push(course.id);
+            });
+            
+            const response = await fetch('/api/planning-editor/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    assignments: finalAssignments,
+                    room_assignments: currentRoomAssignments,
+                    date: targetDate
+                })
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `planning_personnalise_${targetDate}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showAlert('Planning Excel généré avec succès!', 'success');
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Erreur lors de la génération');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
+        } finally {
+            hideLoading();
+        }
+    }
+    
+    // Afficher l'overlay de chargement
+    function showLoading(message = 'Chargement...') {
+        document.getElementById('loading-message').textContent = message;
+        document.getElementById('loading-overlay').style.display = 'flex';
+    }
+    
+    // Masquer l'overlay de chargement
+    function hideLoading() {
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+    
+    // Afficher une alerte
+    function showAlert(message, type = 'info') {
+        // Créer une alerte Bootstrap
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type} alert-dismissible fade show`;
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insérer au début du container
+        const container = document.querySelector('.container-fluid');
+        container.insertBefore(alert, container.firstChild);
+        
+        // Auto-supprimer après 5 secondes
+        setTimeout(() => {
+            if (alert && alert.parentElement) {
+                alert.remove();
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

@@ -644,7 +644,27 @@ def get_all_rooms():
     cursor.execute('SELECT * FROM rooms ORDER BY name')
     rooms = cursor.fetchall()
     conn.close()
-    return rooms
+    
+    # Convert rows to dictionaries
+    rooms_list = []
+    for room in rooms:
+        rooms_list.append({
+            'id': room[0],
+            'name': room[1],
+            'type': room[2],
+            'ordinateurs': room[3],
+            'chaises': room[4],
+            'eviers': room[5],
+            'hotte': room[6],
+            'bancs_optiques': room[7],
+            'oscilloscopes': room[8],
+            'becs_electriques': room[9],
+            'support_filtration': room[10],
+            'imprimante': room[11],
+            'examen': room[12]
+        })
+    
+    return rooms_list
 
 def update_room(room_id, room_data):
     """Update a room in the database"""
@@ -750,7 +770,18 @@ def get_all_student_numbers():
     cursor.execute('SELECT * FROM student_numbers ORDER BY teacher_name')
     students = cursor.fetchall()
     conn.close()
-    return students
+    
+    # Convert rows to dictionaries
+    students_list = []
+    for student in students:
+        students_list.append({
+            'id': student[0],
+            'teacher_name': student[1],
+            'student_count': student[2],
+            'level': student[3]
+        })
+    
+    return students_list
 
 def update_student_number(student_id, student_data):
     """Update student number in the database"""
