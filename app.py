@@ -13,7 +13,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_rooms, update_room, import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
-from planning_generator import generer_planning_excel, get_planning_data_for_editor, generer_planning_excel_with_assignments
+from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
 
 app = Flask(__name__)
 
@@ -974,8 +974,42 @@ def api_get_planning_data():
         if not target_date:
             return jsonify({'error': 'La date est requise'}), 400
             
-        planning_data = get_planning_data_for_editor(target_date)
-        return jsonify(planning_data)
+        # Utiliser la vraie génération avec optimisation OR-Tools
+        print(f"🔍 API: Génération OR-Tools pour {target_date}")
+        
+        try:
+            # Utiliser la version V2 qui fait l'optimisation OR-Tools
+            planning_data = get_planning_data_for_editor_v2(target_date)
+            
+            # Corriger l'ordre des salles pour correspondre au fichier Excel
+            if 'rooms' in planning_data and planning_data['rooms']:
+                # Ordre correct du fichier Excel
+                correct_order = ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']
+                
+                # Réorganiser les salles selon l'ordre correct
+                rooms_dict = {room['name']: room for room in planning_data['rooms']}
+                planning_data['rooms'] = [rooms_dict[name] for name in correct_order if name in rooms_dict]
+            
+            # Forcer l'utilisation de tous les créneaux horaires
+            full_time_slots = ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', 
+                              '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', 
+                              '17h15', '17h45', '18h15']
+            planning_data['time_slots'] = full_time_slots
+            
+            print(f"🔍 API: OR-Tools terminé - {len(planning_data.get('courses', []))} cours, {len(planning_data.get('rooms', []))} salles")
+            return jsonify(planning_data)
+            
+        except Exception as e:
+            print(f"❌ Erreur OR-Tools: {e}")
+            # En cas d'erreur, retourner une structure vide
+            return jsonify({
+                'courses': [],
+                'rooms': [{'name': name} for name in ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']],
+                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15', '17h45', '18h15'],
+                'room_assignments': {},
+                'days': [target_date],
+                'error': str(e)
+            })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -991,17 +1025,49 @@ def api_generate_planning_from_editor():
         if not target_date:
             return jsonify({'error': 'La date est requise'}), 400
         
-        # Générer le fichier Excel avec les assignations personnalisées
-        excel_file = generer_planning_excel_with_assignments(target_date, assignments, room_assignments)
+        print(f"🔍 Génération Excel avec room_assignments: {room_assignments}")
         
-        if excel_file:
-            # Créer une réponse avec le fichier Excel
-            response = make_response(excel_file.getvalue())
-            response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            response.headers['Content-Disposition'] = f'attachment; filename="planning_personnalise_{target_date}.xlsx"'
-            return response
+        # Utiliser exactement la même logique que /api/generate-planning mais avec assignations custom
+        success, result = generer_planning_excel(target_date, custom_room_assignments=room_assignments)
+        
+        if not success:
+            return jsonify({'error': result}), 500
+        
+        # Si result est un string (chemin de fichier), lire le fichier
+        if isinstance(result, str):
+            try:
+                with open(result, 'rb') as f:
+                    file_content = f.read()
+            except FileNotFoundError:
+                return jsonify({'error': f'Fichier généré non trouvé: {result}'}), 500
+                
+            # Nettoyer le fichier temporaire
+            import os
+            try:
+                os.remove(result)
+            except:
+                pass
+                
+            file_data = file_content
         else:
-            return jsonify({'error': 'Erreur lors de la génération du planning'}), 500
+            # Si result est un BytesIO (buffer mémoire)
+            file_data = result.getvalue()
+        
+        # Créer la réponse avec le même nommage que la page planning
+        from datetime import datetime
+        try:
+            date_obj = datetime.strptime(target_date, '%Y-%m-%d')
+            day_names = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+            day_name = day_names[date_obj.weekday()]
+            formatted_date = date_obj.strftime('%d-%m-%Y')
+            filename = f"planning{day_name.upper()}_{formatted_date}.xlsx"
+        except:
+            filename = f"planning_{target_date}.xlsx"
+        
+        response = make_response(file_data)
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
