@@ -9,12 +9,92 @@
         overflow-x: auto;
     }
     
+    /* Layout type Excel avec CSS Grid */
+    .planning-grid {
+        display: grid;
+        grid-template-columns: 80px repeat(9, minmax(100px, 1fr));
+        gap: 1px;
+        width: 100%;
+        font-size: 0.85em;
+        margin: 20px 0;
+        background-color: #dee2e6;
+        min-width: 800px;
+    }
+    
+    .grid-header {
+        display: contents;
+    }
+    
+    .time-header {
+        background: #6c757d;
+        color: white;
+        text-align: center;
+        padding: 12px 8px;
+        font-weight: bold;
+        border: 1px solid #dee2e6;
+        position: sticky;
+        left: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .room-header-cell {
+        background: #007bff;
+        color: white;
+        text-align: center;
+        padding: 12px 4px;
+        font-weight: bold;
+        border: 1px solid #dee2e6;
+        font-size: 0.9em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .grid-row {
+        display: contents;
+    }
+    
+    .time-cell {
+        background: #f8f9fa;
+        text-align: center;
+        padding: 8px;
+        font-weight: bold;
+        border: 1px solid #dee2e6;
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .room-cell {
+        border: 1px solid #dee2e6;
+        padding: 2px;
+        min-height: 80px;
+        background: #fff;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .room-cell > .course-card {
+        display: block !important;
+        margin-bottom: 2px;
+    }
+    
     .room-column {
         border: 2px solid #dee2e6;
         border-radius: 8px;
         margin-bottom: 20px;
         background-color: #f8f9fa;
         min-height: 400px;
+        display: none; /* Masquer l'ancien layout */
     }
     
     .room-header {
@@ -57,18 +137,21 @@
     .course-card {
         background: linear-gradient(135deg, #007bff, #0056b3);
         color: white;
-        border-radius: 8px;
-        padding: 6px;
-        margin: 2px;
+        border-radius: 4px;
+        padding: 3px 4px;
+        margin: 1px;
         cursor: move;
-        font-size: 0.85em;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        font-size: 0.75em;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
-        min-height: 60px;
+        min-height: 35px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         text-align: center;
+        line-height: 1.1;
+        width: 100%;
+        box-sizing: border-box;
     }
     
     .course-card:hover {
@@ -84,18 +167,22 @@
     
     .course-card .course-title {
         font-weight: bold;
-        margin-bottom: 2px;
+        margin-bottom: 1px;
+        font-size: 0.85em;
+        line-height: 1;
     }
     
     .course-card .course-level {
-        font-size: 0.8em;
+        font-size: 0.75em;
         opacity: 0.9;
+        line-height: 1;
     }
     
     .course-card .course-teacher {
-        font-size: 0.75em;
+        font-size: 0.7em;
         opacity: 0.8;
-        margin-top: 2px;
+        margin-top: 1px;
+        line-height: 1;
     }
     
     .course-card.physics {
@@ -121,6 +208,26 @@
         gap: 5px;
         padding: 5px;
         transition: all 0.3s ease;
+    }
+    
+    /* S'assurer que les cellules vides sont visibles */
+    .room-cell.drop-zone {
+        min-height: 80px !important;
+        border: 2px solid #007bff !important;
+        background-color: #e3f2fd !important;
+    }
+    
+
+    
+    /* Défilement horizontal pour les écrans étroits */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+    
+    .table-responsive .planning-grid {
+        margin-bottom: 0;
     }
     
     .drop-zone.drag-over {
@@ -375,15 +482,33 @@
         showLoading('Génération du planning optimisé par OR-Tools...');
         
         try {
+            console.log('🔄 Appel API avec date:', targetDate);
             const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
+            console.log('📡 Réponse API status:', response.status);
             const data = await response.json();
+            console.log('📋 Données reçues:', data);
             
             if (response.ok) {
                 planningData = data;
                 currentAssignments = { ...data.assignments };
                 currentRoomAssignments = { ...data.room_assignments || {} };
-                renderPlanningGrid();
-                updateStats();
+                
+                // Debug des données reçues
+        console.log('📊 DEBUG - Données reçues:', {
+            courses: data.courses?.length || 0,
+            room_assignments: Object.keys(data.room_assignments || {}).length,
+            rooms: data.rooms?.length || 0,
+            room_names: data.rooms?.map(r => r.name)
+        });
+        
+        // Debug complet des assignations
+        console.log('🔍 TOUTES les assignations:', data.room_assignments);
+        console.log('🔍 TOUS les cours avec temps:', data.courses.map(c => ({id: c.id, teacher: c.teacher, time: c.time, assignedRoom: data.room_assignments[c.id]})));
+        
+        // APPELER renderPlanningGrid() maintenant avec les données de test
+        console.log('🎨 Appel renderPlanningGrid()');
+        renderPlanningGrid();
+        updateStats();
                 document.getElementById('generate-btn').disabled = false;
                 showAlert('Planning généré et prêt à éditer!', 'success');
             } else {
@@ -397,71 +522,146 @@
         }
     }
     
-    // Afficher le planning organisé par salles
+    // Afficher le planning en grille type Excel
     function renderPlanningGrid() {
-        if (!planningData) return;
+        console.log('🎨 renderPlanningGrid() appelée, planningData:', planningData);
+        if (!planningData) {
+            console.log('❌ Pas de planningData, arrêt');
+            return;
+        }
         
         const container = document.getElementById('rooms-container');
+        console.log('📦 Container trouvé:', container);
+        
+        // IMPORTANT: Réinitialiser complètement le container pour éviter les cours fantômes
+        console.log('🧹 Nettoyage du container avant re-rendu');
         container.innerHTML = '';
+        container.className = 'table-responsive'; // Ajouter classe responsive pour défilement horizontal
         
         const rooms = planningData.rooms;
         const timeSlots = planningData.time_slots;
         
-        // Créer une colonne pour chaque salle
+        console.log('🏢 Salles disponibles:', rooms);
+        console.log('⏰ Créneaux horaires:', timeSlots);
+        
+        // Créer la grille principale
+        const grid = document.createElement('div');
+        grid.className = 'planning-grid';
+        console.log('📋 Grille créée:', grid);
+        
+        // En-tête avec les noms des salles
+        const headerRow = document.createElement('div');
+        headerRow.className = 'grid-header';
+        
+        // Cellule vide pour l'angle
+        const cornerCell = document.createElement('div');
+        cornerCell.className = 'time-header';
+        cornerCell.textContent = 'Horaire';
+        headerRow.appendChild(cornerCell);
+        
+        // En-têtes des salles
         rooms.forEach(room => {
-            const roomCol = document.createElement('div');
-            roomCol.className = 'col-md-4 col-lg-3 room-column';
+            const roomHeaderCell = document.createElement('div');
+            roomHeaderCell.className = 'room-header-cell';
+            roomHeaderCell.textContent = room.name;
+            headerRow.appendChild(roomHeaderCell);
+        });
+        
+        grid.appendChild(headerRow);
+        
+        // Debug des correspondances IDs
+        console.log('🔍 Premiers cours (IDs):', planningData.courses.slice(0, 3).map(c => ({id: c.id, teacher: c.teacher, subject: c.subject})));
+        console.log('🔍 Room assignments (clés):', Object.keys(currentRoomAssignments).slice(0, 5));
+        console.log('🔍 currentRoomAssignments complet:', currentRoomAssignments);
+        console.log('🔍 Correspondance ID cours 0:', {
+            courseId: planningData.courses[0]?.id,
+            assignment: currentRoomAssignments[planningData.courses[0]?.id]
+        });
+        
+        // Compteur de placement des cours
+        let totalCoursesPlaced = 0;
+        let placementByRoom = {};
+        rooms.forEach(room => placementByRoom[room.name] = 0);
+        
+        // Créer une ligne pour chaque créneau horaire
+        timeSlots.forEach(slot => {
+            const row = document.createElement('div');
+            row.className = 'grid-row';
             
-            // En-tête de la salle
-            const roomHeader = document.createElement('div');
-            roomHeader.className = 'room-header';
-            roomHeader.textContent = room.name;
+            // Cellule de l'horaire
+            const timeCell = document.createElement('div');
+            timeCell.className = 'time-cell';
+            timeCell.textContent = slot;
+            row.appendChild(timeCell);
             
-            // Contenu de la salle
-            const roomContent = document.createElement('div');
-            roomContent.className = 'room-content';
-            
-            // Créer les créneaux horaires pour cette salle
-            timeSlots.forEach(slot => {
-                const timeGroup = document.createElement('div');
-                timeGroup.className = 'time-slot-group';
+            // Cellule pour chaque salle
+            rooms.forEach(room => {
+                const roomCell = document.createElement('div');
+                roomCell.className = 'room-cell drop-zone';
+                roomCell.dataset.room = room.name;
+                roomCell.dataset.slot = slot;
                 
-                const timeHeader = document.createElement('div');
-                timeHeader.className = 'time-slot-header';
-                timeHeader.textContent = slot;
-                
-                const timeCourses = document.createElement('div');
-                timeCourses.className = 'time-slot-courses drop-zone';
-                timeCourses.dataset.room = room.name;
-                timeCourses.dataset.slot = slot;
+
                 
                 // Chercher les cours assignés à cette salle et ce créneau
                 const coursesInSlot = planningData.courses.filter(course => {
-                    return currentRoomAssignments[course.id] === room.name && course.time === slot;
+                    const assignedRoom = currentRoomAssignments[course.id];
+                    const matchRoom = assignedRoom === room.name;
+                    const matchTime = course.time === slot;
+                    
+                    // Debug pour le premier créneau et première salle seulement
+                    if (room.name === 'C21' && slot === '9h00' && course.id === planningData.courses[0]?.id) {
+                        console.log(`🔍 Debug match pour ${course.id}:`, {
+                            courseId: course.id,
+                            assignedRoom: assignedRoom,
+                            roomName: room.name,
+                            matchRoom: matchRoom,
+                            courseTime: course.time,
+                            slot: slot,
+                            matchTime: matchTime,
+                            match: matchRoom && matchTime
+                        });
+                    }
+                    
+                    return matchRoom && matchTime;
                 });
                 
                 // Ajouter les cours trouvés
                 coursesInSlot.forEach(course => {
                     const courseCard = createCourseCard(course);
-                    timeCourses.appendChild(courseCard);
+                    roomCell.appendChild(courseCard);
+                    totalCoursesPlaced++;
+                    placementByRoom[room.name]++;
                 });
                 
                 // Configurer les événements de drop
-                setupDropZone(timeCourses);
+                setupDropZone(roomCell);
                 
-                timeGroup.appendChild(timeHeader);
-                timeGroup.appendChild(timeCourses);
-                roomContent.appendChild(timeGroup);
+                row.appendChild(roomCell);
             });
             
-            roomCol.appendChild(roomHeader);
-            roomCol.appendChild(roomContent);
-            container.appendChild(roomCol);
+            grid.appendChild(row);
+        });
+        
+        container.appendChild(grid);
+        console.log('✅ Grille ajoutée au container');
+        
+        // Debug du placement final
+        console.log('📊 PLACEMENT FINAL:', {
+            totalCoursesPlaced: totalCoursesPlaced,
+            placementByRoom: placementByRoom,
+            totalCoursesExpected: planningData.courses.length
         });
         
         // Masquer le message "aucun planning"
-        document.getElementById('no-planning-message').style.display = 'none';
-        document.getElementById('stats-panel').style.display = 'block';
+        const noMsg = document.getElementById('no-planning-message');
+        const statsPanel = document.getElementById('stats-panel');
+        console.log('🎭 Masquage du message "aucun planning", éléments:', noMsg, statsPanel);
+        
+        if (noMsg) noMsg.style.display = 'none';
+        if (statsPanel) statsPanel.style.display = 'block';
+        
+        console.log('✅ renderPlanningGrid() terminé avec succès');
     }
     
     // Créer une carte de cours
@@ -540,19 +740,24 @@
             this.classList.remove('drag-over');
             
             if (draggedElement) {
-                const courseId = parseInt(draggedElement.dataset.courseId);
+                const courseId = draggedElement.dataset.courseId; // Ne pas convertir en int !
                 const newRoom = this.dataset.room;
                 const newSlot = this.dataset.slot;
                 
+                console.log(`🔄 Déplacement: ${courseId} vers ${newRoom} à ${newSlot}`);
+                
                 // Mettre à jour l'assignation de salle
-                if (newRoom) {
+                if (newRoom && courseId) {
                     currentRoomAssignments[courseId] = newRoom;
                     
                     // Mettre à jour le cours dans planningData
-                    const course = planningData.courses.find(c => c.id == courseId);
+                    const course = planningData.courses.find(c => c.id === courseId); // Comparaison stricte
                     if (course) {
                         course.room = newRoom;
                         course.time = newSlot;
+                        console.log(`✅ Cours mis à jour:`, course);
+                    } else {
+                        console.log(`❌ Cours non trouvé: ${courseId}`);
                     }
                 }
                 

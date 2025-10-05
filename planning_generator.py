@@ -273,9 +273,12 @@ def h_to_min(hstr):
     except:
         return 8 * 60  # Défaut 8h00
 
-def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_param=None):
+def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_param=None, custom_room_assignments=None):
     """Génération Excel optimisée avec le solveur CP - Style grille horaire."""
     try:
+        print(f"🔧 [Excel] Début génération Excel avec custom_room_assignments type: {type(custom_room_assignments)}")
+        print(f"🔧 [Excel] custom_room_assignments value: {custom_room_assignments}")
+        
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
         
@@ -374,10 +377,35 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for i, c in enumerate(cours):
             # Find assigned room
             salle_assignee = None
-            for s in salle_list:
-                if (i, s) in x and solver.Value(x[(i, s)]) == 1:
-                    salle_assignee = s
-                    break
+            
+            # Vérifier si on a une assignation personnalisée pour ce cours
+            course_id = c.get('id')
+            if custom_room_assignments and course_id:
+                try:
+                    # S'assurer que custom_room_assignments est un dictionnaire
+                    if isinstance(custom_room_assignments, str):
+                        import json
+                        custom_room_assignments = json.loads(custom_room_assignments)
+                    
+                    if isinstance(custom_room_assignments, dict):
+                        assigned_room_name = custom_room_assignments.get(str(course_id))
+                        if assigned_room_name:
+                            # Trouver la clé de la salle à partir du nom
+                            for room_key, room_data in salles.items():
+                                if room_data.get('nom') == assigned_room_name or room_key == assigned_room_name:
+                                    salle_assignee = room_key
+                                    print(f"🎯 Assignation personnalisée: cours {course_id} -> salle {room_key}")
+                                    break
+                except Exception as e:
+                    print(f"⚠️ Erreur traitement assignations personnalisées: {e}")
+                    # En cas d'erreur, continuer avec l'assignation normale
+            
+            # Si pas d'assignation personnalisée, utiliser l'assignation du solver
+            if not salle_assignee:
+                for s in salle_list:
+                    if (i, s) in x and solver.Value(x[(i, s)]) == 1:
+                        salle_assignee = s
+                        break
             
             if salle_assignee:
                 # Parse course time
@@ -757,18 +785,24 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         wb.save(filename)
         
         assigned_count = len(cours) - len(unassigned_courses)
-        return True, f"Planning généré: {filename} ({assigned_count}/{len(cours)} cours assignés)"
+        print(f"Planning généré: {filename} ({assigned_count}/{len(cours)} cours assignés)")
+        return True, filename
         
     except Exception as e:
         return False, f"Erreur lors de la génération Excel: {str(e)}"
 
-def generer_planning_excel(date, end_date=None, return_data_only=False):
+def generer_planning_excel(date, end_date=None, return_data_only=False, custom_room_assignments=None):
     """Generate planning Excel file for a specific date or date range"""
     try:
         # Get data from database  
         date_str = date if isinstance(date, str) else date.strftime('%Y-%m-%d')
         raw_requests = database.get_planning_data(date_str)
         raw_rooms = database.get_all_rooms()
+        
+        # Si on a des assignations personnalisées, modifier les données avant génération
+        if custom_room_assignments:
+            print(f"📝 Génération avec assignations personnalisées: {custom_room_assignments}")
+            # On va continuer la génération normale mais modifier les assignations à la fin
         
         # Récupérer les disponibilités C21
         c21_slots = database.get_c21_availability()
@@ -1013,6 +1047,8 @@ def generer_planning_excel(date, end_date=None, return_data_only=False):
 
         print(f"Statut de la résolution: {status}")
         print(f"Nombre de cours: {len(cours)}")
+        print(f"Nombre de salles disponibles: {len(salles)}")
+        print(f"Salles: {list(salles.keys())}")
         
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             # Count assignments
@@ -1039,27 +1075,40 @@ def generer_planning_excel(date, end_date=None, return_data_only=False):
                 # Retourner les données structurées pour l'éditeur
                 courses_data = []
                 assignments_data = {}
+                room_assignments = {}
                 
                 for i, course in enumerate(cours):
+                    course_id = course['id']  # Utiliser l'ID artificiel généré par la conversion 
                     courses_data.append({
-                        'id': course['request_id'],
+                        'id': course_id,
                         'subject': course['matiere'],
                         'level': course['niveau'],
                         'teacher': course['enseignant'],
-                        'date': course['date'],
+                        'date': date_str,  # Utiliser date_str de la fonction
                         'time': course['horaire'],
                         'duration': course['duree'],
-                        'students': course.get('nb_eleves', 20)
+                        'students': course.get('chaises', 20)  # Utiliser 'chaises' au lieu de 'nb_eleves'
                     })
                     
                     # Trouver l'assignation de salle
+                    assigned_room = None
                     for s in salles:
                         if (i, s) in x and solver.Value(x[(i, s)]) == 1:
-                            slot_key = f"{course['date']}_{course['horaire']}"
+                            assigned_room = s
+                            course_id = course['id']
+                            print(f"Cours {course_id} ({course['enseignant']} - {course['niveau']}) assigné à {s} ({salles[s]['nom']})")
+                            slot_key = f"{date_str}_{course['horaire']}"
                             if slot_key not in assignments_data:
                                 assignments_data[slot_key] = []
-                            assignments_data[slot_key].append(course['request_id'])
+                            assignments_data[slot_key].append(course_id)
                             break
+                    
+                    # Ajouter l'assignation de salle pour l'interface
+                    course_id = course['id']
+                    if assigned_room:
+                        room_assignments[course_id] = salles[assigned_room]['nom']
+                    else:
+                        room_assignments[course_id] = 'Non assigné'
                 
                 # Créer la liste des jours
                 if end_date:
@@ -1074,18 +1123,25 @@ def generer_planning_excel(date, end_date=None, return_data_only=False):
                 else:
                     days = [date if isinstance(date, str) else date.strftime('%Y-%m-%d')]
                 
-                # Créneaux horaires standards
-                time_slots = ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30']
+                # Créneaux horaires basés sur les cours réels
+                unique_times = list(set(course['time'] for course in courses_data))
+                time_slots = sorted(unique_times, key=h_to_min)
+                print(f"⏰ Time slots générés: {time_slots}")
+                
+                rooms_list = [{'id': s, 'name': salles[s]['nom']} for s in salles]
+                print(f"📍 Rooms list pour l'API: {rooms_list}")
+                print(f"📍 Room assignments: {dict(list(room_assignments.items())[:5])}")  # Premiers 5 pour debug
                 
                 return True, {
                     'courses': courses_data,
                     'days': days,
                     'time_slots': time_slots,
                     'assignments': assignments_data,
-                    'rooms': [{'id': s, 'name': salles[s]['nom']} for s in salles]
+                    'room_assignments': room_assignments,
+                    'rooms': rooms_list
                 }
             else:
-                return generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_str)
+                return generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_str, custom_room_assignments)
         
         elif status == cp_model.INFEASIBLE:
             return False, "ERREUR: Il y a plus de cours simultanés que de salles disponibles! Impossible de générer le planning."
@@ -1100,348 +1156,51 @@ def generer_planning_excel(date, end_date=None, return_data_only=False):
 
 def get_planning_data_for_editor(target_date):
     """
-    Récupère les données de planning optimisées par OR-Tools pour un jour donné,
-    formatées pour l'éditeur interactif
+    Appelle la nouvelle version qui fonctionne
+    """
+    return get_planning_data_for_editor_v2(target_date)
+
+
+def get_planning_data_for_editor_v2(target_date):
+    """
+    Version qui utilise directement la génération normale avec return_data_only=True
+    mais en corrigeant le problème de clés.
     """
     try:
-        # Utiliser la logique existante du générateur de planning
-        date_str = target_date if isinstance(target_date, str) else target_date.strftime('%Y-%m-%d')
-        raw_requests = database.get_planning_data(date_str)
-        raw_rooms = database.get_all_rooms()
+        print(f"🔧 [EDITOR] Début génération du planning - Date: {target_date}")
         
-        # Récupérer les disponibilités C21
-        c21_slots = database.get_c21_availability()
+        # Retourner à la méthode return_data_only=True mais avec les corrections
+        print(f"📞 [EDITOR] Appel de generer_planning_excel avec return_data_only=True")
+        success, result = generer_planning_excel(target_date, return_data_only=True)
+        print(f"📋 [EDITOR] Retour de generer_planning_excel: success={success}")
         
-        if not raw_requests:
+        if not success:
+            print(f"❌ Échec de la génération: {result}")
             return {
                 'courses': [],
-                'days': [date_str],
+                'days': [target_date],
                 'time_slots': ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30'],
                 'assignments': {},
-                'rooms': raw_rooms or []
+                'rooms': []
             }
         
-        if not raw_rooms:
-            raise Exception("Aucune salle trouvée dans la base de données")
+        print(f"✅ Planning avec assignations généré avec succès")
+        return result
         
-        # Exécuter l'optimisation OR-Tools (même logique que generer_planning_excel)
-        cours = []
-        for req in raw_requests:
-            # Convertir sqlite3.Row en dictionnaire pour un accès plus facile
-            req_dict = dict(req) if hasattr(req, 'keys') else req
-            
-            # Adapter les clés selon la structure de la base de données
-            teacher_name = req_dict.get('teacher_name', 'Unknown')
-            subject = req_dict.get('subject_name', req_dict.get('subject', 'Unknown'))
-            level = req_dict.get('class_name', req_dict.get('level', 'Unknown'))
-            time_slot = req_dict.get('horaire', '8h00')
-            request_date = req_dict.get('request_date', date_str)
-            materials = req_dict.get('selected_materials', '')
-            
-            cours.append({
-                "id": req_dict["id"],
-                "enseignant": teacher_name,
-                "matiere": subject,
-                "niveau": level,
-                "horaire": time_slot,
-                "duree": duree_par_niveau(level),
-                "date": request_date,
-                "eleves": eleves_par_niveau(level, teacher_name),
-                "materiel": materials,
-                "besoins": extract_material_needs(materials)
-            })
-        
-        # Préparer les salles avec leurs équipements
-        salles = []
-        for room in raw_rooms:
-            salles.append({
-                "nom": room["name"],
-                "type": room.get("type", "Salle standard"),
-                "equipements": {
-                    "ordinateurs": room.get("computers", 0),
-                    "eviers": room.get("sinks", 0),
-                    "hotte": 1 if room.get("fume_hood", False) else 0,
-                    "bancs_optiques": room.get("optical_benches", 0),
-                    "oscilloscopes": room.get("oscilloscopes", 0),
-                    "becs_electriques": room.get("electric_burners", 0),
-                    "support_filtration": room.get("support_filtration", 0),
-                    "imprimante": 1 if room.get("printer", False) else 0
-                }
-            })
-        
-        # Créer le modèle OR-Tools
-        model = cp_model.CpModel()
-        
-        # Variables : x[i][s] = 1 si le cours i est dans la salle s
-        x = {}
-        for i, c in enumerate(cours):
-            for j, s in enumerate(salles):
-                x[(i, j)] = model.NewBoolVar(f'cours_{i}_salle_{j}')
-        
-        # Contrainte : chaque cours doit être assigné à exactement une salle
-        for i in range(len(cours)):
-            model.Add(sum(x[(i, j)] for j in range(len(salles))) == 1)
-        
-        # Contrainte : pas plus d'un cours par salle et par créneau
-        intervals_par_salle = {}
-        for j in range(len(salles)):
-            intervals_par_salle[j] = []
-        
-        for i, c in enumerate(cours):
-            start_time, end_time = interval_cours(c)
-            for j in range(len(salles)):
-                interval_var = model.NewOptionalIntervalVar(
-                    start_time, end_time - start_time, end_time,
-                    x[(i, j)], f'interval_{i}_{j}'
-                )
-                intervals_par_salle[j].append(interval_var)
-        
-        for j in range(len(salles)):
-            model.AddNoOverlap(intervals_par_salle[j])
-        
-        # Ajouter les contraintes de compatibilité matériel avec poids
-        for i, c in enumerate(cours):
-            besoins = c["besoins"]
-            for j, s in enumerate(salles):
-                equipements = s["equipements"]
-                
-                # Calculer le score de compatibilité
-                score = calculer_score_salle(besoins, equipements, s["type"], c["matiere"])
-                
-                # Si score très faible, interdire cette assignation
-                if score < 0.3:
-                    model.Add(x[(i, j)] == 0)
-        
-        # Objectif : maximiser la compatibilité matériel
-        objective_terms = []
-        for i, c in enumerate(cours):
-            besoins = c["besoins"]
-            for j, s in enumerate(salles):
-                equipements = s["equipements"]
-                score = calculer_score_salle(besoins, equipements, s["type"], c["matiere"])
-                weight = int(score * 100)  # Convertir en entier pour OR-Tools
-                objective_terms.append(weight * x[(i, j)])
-        
-        if objective_terms:
-            model.Maximize(sum(objective_terms))
-        
-        # Résoudre
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = 30
-        status = solver.Solve(model)
-        
-        # Traiter les résultats
-        courses_data = []
-        assignments = {}
-        room_assignments = {}  # course_id -> room_name
-        
-        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            # Créer les assignations optimisées
-            for i, c in enumerate(cours):
-                assigned_room = None
-                for j, s in enumerate(salles):
-                    if solver.Value(x[(i, j)]) == 1:
-                        assigned_room = s["nom"]
-                        room_assignments[c["id"]] = assigned_room
-                        break
-                
-                course_data = {
-                    'id': c["id"],
-                    'subject': c["matiere"],
-                    'level': c["niveau"],
-                    'teacher': c["enseignant"],
-                    'date': c["date"],
-                    'time': c["horaire"],
-                    'duration': c["duree"],
-                    'students': c["eleves"],
-                    'room': assigned_room or 'Non assigné'
-                }
-                courses_data.append(course_data)
-                
-                # Créer les assignations pour l'éditeur
-                slot_key = f"{c['date']}_{c['horaire']}"
-                if slot_key not in assignments:
-                    assignments[slot_key] = []
-                assignments[slot_key].append(c["id"])
-        else:
-            # Si l'optimisation échoue, assignations basiques
-            for c in cours:
-                course_data = {
-                    'id': c["id"],
-                    'subject': c["matiere"],
-                    'level': c["niveau"],
-                    'teacher': c["enseignant"],
-                    'date': c["date"],
-                    'time': c["horaire"],
-                    'duration': c["duree"],
-                    'students': c["eleves"],
-                    'room': 'Non assigné'
-                }
-                courses_data.append(course_data)
-                
-                slot_key = f"{c['date']}_{c['horaire']}"
-                if slot_key not in assignments:
-                    assignments[slot_key] = []
-                assignments[slot_key].append(c["id"])
-        
-        # Créneaux horaires uniques du jour, triés chronologiquement
-        unique_times = list(set(c['horaire'] for c in cours))
-        time_slots = sorted(unique_times, key=lambda t: h_to_min(t))
-        if not time_slots:
-            time_slots = ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30']
-        
-        return {
-            'courses': courses_data,
-            'days': [date_str],
-            'time_slots': time_slots,
-            'assignments': assignments,
-            'rooms': raw_rooms,
-            'room_assignments': room_assignments
-        }
-            
     except Exception as e:
+        print(f"❌ Erreur dans get_planning_data_for_editor_v2: {str(e)}")
         import traceback
-        print(f"Erreur dans get_planning_data_for_editor: {str(e)}")
-        print(traceback.format_exc())
+        traceback.print_exc()
         return {
             'courses': [],
-            'days': [],
-            'time_slots': [],
+            'days': [target_date],
+            'time_slots': ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30'],
             'assignments': {},
             'rooms': []
         }
 
 
-def generer_planning_excel_with_assignments(target_date, custom_assignments, room_assignments):
-    """
-    Génère le planning Excel avec des assignations personnalisées de l'éditeur
-    """
-    try:
-        # Récupérer les demandes pour la date cible
-        raw_requests = database.get_planning_data(target_date)
-        
-        if not raw_requests:
-            return None
-        
-        # Créer les structures de données pour l'Excel
-        courses_data = []
-        
-        # Traiter les assignations personnalisées
-        for slot_key, course_ids in custom_assignments.items():
-            if isinstance(course_ids, list):
-                course_list = course_ids
-            else:
-                course_list = [course_ids]
-                
-            for course_id in course_list:
-                # Trouver la demande correspondante
-                req = next((r for r in raw_requests if r['id'] == course_id), None)
-                if req:
-                    # Extraire le jour et l'heure du slot_key
-                    day, time_slot = slot_key.split('_')
-                    
-                    # Utiliser l'assignation de salle personnalisée
-                    assigned_room = room_assignments.get(str(course_id), 'Non assigné')
-                    
-                    course_data = {
-                        'request_id': req['id'],
-                        'subject': req['subject'],
-                        'level': req['level'],
-                        'teacher': req['teacher'],
-                        'date': day,
-                        'time': time_slot,
-                        'room': assigned_room,
-                        'duration': duree_par_niveau(req['level']),
-                        'students': eleves_par_niveau(req['level'], req['teacher']),
-                        'materials': req.get('selected_materials', '')
-                    }
-                    courses_data.append(course_data)
-        
-        # Générer le fichier Excel avec ces données
-        import io
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-        
-        wb = openpyxl.Workbook()
-        
-        # Supprimer la feuille par défaut
-        wb.remove(wb.active)
-        
-        # Créer les feuilles Planning_Techniciens et Affichage
-        ws_tech = wb.create_sheet("Planning_Techniciens")
-        ws_display = wb.create_sheet("Affichage")
-        
-        # Styles
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
-        def create_planning_sheet(ws, sheet_type):
-            # En-têtes selon le type de feuille
-            if sheet_type == 'tech':
-                headers = ["Date", "Heure", "Matière", "Niveau", "Professeur", "Salle", "Équipements", "Nb élèves"]
-            else:  # display
-                headers = ["Date", "Heure", "Matière", "Niveau", "Professeur", "Salle", "Nb élèves"]
-            
-            # Créer les en-têtes
-            for col, header in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=col, value=header)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.border = thin_border
-                cell.alignment = Alignment(horizontal='center')
-            
-            # Ajouter les données des cours
-            for row_idx, course in enumerate(courses_data, 2):
-                ws.cell(row=row_idx, column=1, value=course['date']).border = thin_border
-                ws.cell(row=row_idx, column=2, value=course['time']).border = thin_border
-                ws.cell(row=row_idx, column=3, value=course['subject']).border = thin_border
-                ws.cell(row=row_idx, column=4, value=course['level']).border = thin_border
-                ws.cell(row=row_idx, column=5, value=course['teacher']).border = thin_border
-                ws.cell(row=row_idx, column=6, value=course['room']).border = thin_border
-                
-                if sheet_type == 'tech':
-                    # Ajouter les équipements pour la feuille techniciens
-                    equipment = course.get('materials', '')
-                    ws.cell(row=row_idx, column=7, value=equipment).border = thin_border
-                    ws.cell(row=row_idx, column=8, value=course['students']).border = thin_border
-                else:
-                    ws.cell(row=row_idx, column=7, value=course['students']).border = thin_border
-            
-            # Ajuster les largeurs des colonnes
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column].width = adjusted_width
-        
-        # Créer les deux feuilles
-        create_planning_sheet(ws_tech, 'tech')
-        create_planning_sheet(ws_display, 'display')
-        
-        # Sauvegarder dans un buffer mémoire
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        return output
-        
-    except Exception as e:
-        import traceback
-        print(f"Erreur dans generer_planning_excel_with_assignments: {str(e)}")
-        print(traceback.format_exc())
-        return None
+
 
 
 if __name__ == "__main__":
