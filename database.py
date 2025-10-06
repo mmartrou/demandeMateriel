@@ -433,6 +433,14 @@ def init_database():
             )
         ''')
     
+    # Add a new table for storing planning data
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS plannings (
+            date TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+    ''')
+    
     conn.commit()
     conn.close()
 

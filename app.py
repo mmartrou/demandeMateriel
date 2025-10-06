@@ -14,6 +14,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
+from database import get_db_connection
+import json
 
 app = Flask(__name__)
 
@@ -1071,6 +1073,79 @@ def api_generate_planning_from_editor():
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-planning', methods=['POST'])
+def save_planning():
+    """API endpoint to save planning data into the database"""
+    try:
+        data = request.get_json()
+        app.logger.info(f"Données reçues pour enregistrement: {data}")
+
+        if not data or 'date' not in data or 'data' not in data:
+            app.logger.error("Requête invalide: date ou données manquantes")
+            return jsonify({'error': 'Requête invalide: date ou données manquantes'}), 400
+
+        date = data['date']
+        planning_data = data['data']
+
+        # Connexion à la base de données
+        conn, _ = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
+        cursor = conn.cursor()
+
+        # Insertion ou mise à jour des données
+        import json  # Importer le module JSON pour la conversion
+        planning_data_json = json.dumps(planning_data)  # Convertir le dictionnaire en JSON
+
+        # Insertion ou mise à jour des données
+        cursor.execute(
+            """
+            INSERT INTO plannings (date, data)
+            VALUES (?, ?)
+            ON CONFLICT(date) DO UPDATE SET data=excluded.data
+            """,
+            (date, planning_data_json)
+        )
+        conn.commit()
+        conn.close()
+
+        app.logger.info(f"Planning enregistré avec succès pour la date: {date}")
+        return jsonify({'message': 'Planning enregistré avec succès'}), 200
+
+    except Exception as e:
+        app.logger.error(f"Erreur lors de l'enregistrement du planning: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get-planning', methods=['GET'])
+def get_planning():
+    """API endpoint to retrieve planning data from the database"""
+    try:
+        date = request.args.get('date')
+        app.logger.info(f"Requête reçue pour récupérer le planning de la date: {date}")
+
+        if not date:
+            app.logger.error("La date est manquante dans la requête.")
+            return jsonify({'error': 'La date est requise'}), 400
+
+        # Connexion à la base de données
+        conn, _ = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
+        cursor = conn.cursor()
+
+        # Récupérer les données du planning
+        cursor.execute("SELECT data FROM plannings WHERE date = ?", (date,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            app.logger.info(f"Planning trouvé pour la date {date}: {row[0]}")
+            return jsonify({'planning': row[0]}), 200
+        else:
+            app.logger.warning(f"Aucun planning trouvé pour la date {date}.")
+            return jsonify({'error': 'Aucun planning trouvé pour cette date'}), 404
+
+    except Exception as e:
+        app.logger.error(f"Erreur lors de la récupération du planning: {e}")
+        return jsonify({'error': str(e)}), 500
+
         
 if __name__ == '__main__':
     import os
