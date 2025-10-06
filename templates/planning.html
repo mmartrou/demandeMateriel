@@ -328,16 +328,16 @@ function generatePlanning() {
         showMessage('Veuillez sélectionner une date', 'warning');
         return;
     }
-    
+
     const spinner = document.getElementById('planningSpinner');
     const btn = document.getElementById('generatePlanningBtn');
     const originalBtnText = btn.innerHTML;
-    
+
     // Afficher le spinner et désactiver le bouton
     spinner.classList.remove('d-none');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
-    
+
     fetch('/api/generate-planning', {
         method: 'POST',
         headers: {
@@ -351,38 +351,28 @@ function generatePlanning() {
                 throw new Error(err.error || 'Erreur lors de la génération');
             });
         }
-        
-        // Créer un nom de fichier basé sur la date
-        const dateObj = new Date(date + 'T00:00:00'); // Forcer le fuseau horaire local
-        const dayNames = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-        const dayName = dayNames[dateObj.getDay()];
-        
-        // Formater la date manuellement en format français (jj-mm-aaaa)
-        const day = dateObj.getDate().toString().padStart(2, '0');
-        const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-        const year = dateObj.getFullYear();
-        const frenchDate = `${day}-${month}-${year}`;
-        
-        const filename = `planning${dayName.toUpperCase()}_${frenchDate}.xlsx`;
-        
-        // Télécharger le fichier
-        return response.blob().then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            showMessage(`Planning généré et téléchargé avec succès: ${filename}`, 'success');
+
+        // Appeler l'API pour sauvegarder le planning
+        return fetch('/api/save-planning', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({date: date, planning_data: {}}) // Remplacer {} par les données réelles si disponibles
         });
+    })
+    .then(saveResponse => {
+        if (!saveResponse.ok) {
+            return saveResponse.json().then(err => {
+                throw new Error(err.error || 'Erreur lors de la sauvegarde du planning');
+            });
+        }
+
+        showMessage('Planning généré et sauvegardé avec succès', 'success');
     })
     .catch(error => {
         console.error('Error:', error);
-        showMessage(error.message || 'Erreur lors de la génération du planning', 'danger');
+        showMessage(error.message || 'Erreur lors de la génération ou de la sauvegarde du planning', 'danger');
     })
     .finally(() => {
         // Restaurer le bouton

@@ -66,7 +66,7 @@
         position: sticky;
         left: 0;
         z-index: 25;
-        min-height: 27px;
+        height: 27px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -75,7 +75,7 @@
     .room-cell {
         border: 1px solid #dee2e6;
         padding: 2px;
-        min-height: 27px;
+        height: 27px;
         background: #fff;
         position: relative;
         display: flex;
@@ -412,6 +412,12 @@
                 <button type="button" class="btn btn-success" onclick="generateFinalPlanning()" disabled id="generate-btn">
                     <i class="fas fa-file-excel"></i> Générer Planning Excel Final
                 </button>
+                <button type="button" class="btn btn-info" onclick="reloadPlanning()">
+                    <i class="fas fa-sync"></i> Recharger le Planning
+                </button>
+                <button type="button" class="btn btn-warning" onclick="savePlanningData()">
+                    <i class="fas fa-save"></i> Enregistrer le Planning
+                </button>
                 <div class="legend mt-2">
                     <strong>Légende:</strong>
                     <div class="legend-item">
@@ -453,6 +459,12 @@
         <p class="text-muted">Sélectionnez une date et cliquez sur "Générer et Éditer le Planning" pour que OR-Tools optimise automatiquement les assignations de salles.</p>
         <p class="text-muted">Vous pourrez ensuite modifier manuellement le planning avant l'export Excel.</p>
     </div>
+
+    <!-- Conteneur pour le planning généré -->
+    <div id="planningContainer"></div>
+
+    <!-- Conteneur pour afficher l'état de chargement -->
+    <div id="loading-container"></div>
 </div>
 
 <!-- Overlay de chargement -->
@@ -463,6 +475,9 @@
         <p class="text-muted mb-0" id="loading-message">Génération du planning initial...</p>
     </div>
 </div>
+
+<!-- Conteneur pour les alertes -->
+<div id="alert-container" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 1050; width: 50%;"></div>
 {% endblock %}
 
 {% block extra_js %}
@@ -488,7 +503,7 @@
             return;
         }
         
-        showLoading('Génération du planning optimisé par OR-Tools...');
+        showLoading('loading-container');
         
         try {
             console.log('🔄 Appel API avec date:', targetDate);
@@ -527,7 +542,7 @@
             console.error('Erreur:', error);
             showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
         } finally {
-            hideLoading();
+            hideLoading('loading-container');
         }
     }
     
@@ -548,6 +563,10 @@
         container.className = 'table-responsive'; // Ajouter classe responsive pour défilement horizontal
         
         const rooms = planningData.rooms;
+        console.log('🔍 DEBUG: planningData structure:', Object.keys(planningData));
+        console.log('🔍 DEBUG: rooms variable:', rooms);
+        console.log('🔍 DEBUG: rooms type:', typeof rooms);
+        console.log('🔍 DEBUG: rooms is array?', Array.isArray(rooms));
         
         // Générer tous les créneaux de 15 minutes de 9h00 à 18h15 côté client
         const timeSlots = generateAllTimeSlots();
@@ -726,8 +745,8 @@
         // Calculer la durée en minutes
         const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
         
-        // Calculer la hauteur d'une cellule en pixels (réduite de 80px à 27px)
-        const cellHeight = 40; // Hauteur d'une cellule en pixels (réduite de 80px à 27px)
+        // Calculer dynamiquement la hauteur réelle d'une cellule
+        const cellHeight = getCellHeight();
         // Calculer la hauteur exacte strictement proportionnelle à la durée
         let exactHeight = (durationInMinutes / 15) * cellHeight;
 
@@ -741,7 +760,7 @@
         
         // Formatage de la durée pour affichage
         const durationText = course.duration ? formatDuration(course.duration) : '';
-        
+
         // Supprimer les mots "chimie", "physique" ou "mixte" du sujet
         const filteredSubject = course.subject.replace(/\b(chimie|physique|mixte)\b/gi, '').trim();
 
@@ -784,6 +803,59 @@
         return Math.round(calculatedHeight);
     }
     
+    // Mesurer dynamiquement la hauteur réelle des lignes de la grille
+    function getCellHeight() {
+        // Chercher une ligne de la grille (grid-row) existante pour mesurer sa hauteur réelle
+        const gridRow = document.querySelector('.grid-row .time-cell');
+        if (gridRow) {
+            const computedHeight = gridRow.getBoundingClientRect().height;
+            console.log(`📏 Hauteur ligne grille mesurée: ${computedHeight}px`);
+            return computedHeight;
+        }
+        
+        // Alternative: mesurer une cellule room-cell si time-cell n'est pas disponible
+        const roomCell = document.querySelector('.room-cell');
+        if (roomCell) {
+            const computedHeight = roomCell.getBoundingClientRect().height;
+            console.log(`📏 Hauteur cellule salle mesurée: ${computedHeight}px`);
+            return computedHeight;
+        }
+        
+        // Valeur de fallback si aucune cellule n'est trouvée
+        console.log('📏 Hauteur cellule fallback: 27px');
+        return 27; // Correspond au min-height du CSS
+    }
+
+    // Recalculer la hauteur des cours lors du redimensionnement
+    function updateCourseHeights() {
+        const courseCards = document.querySelectorAll('.course-card');
+        const newCellHeight = getCellHeight();
+        
+        courseCards.forEach(card => {
+            const courseId = card.dataset.courseId;
+            const course = planningData?.courses?.find(c => c.id === courseId);
+            if (course) {
+                const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+                const newHeight = (durationInMinutes / 15) * newCellHeight * 1.3;
+                card.style.height = `${newHeight}px`;
+                console.log(`🔄 Cours ${courseId}: nouvelle hauteur ${newHeight}px`);
+            }
+        });
+    }
+
+    // Événement de redimensionnement de la fenêtre
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        // Debounce pour éviter trop d'appels
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            if (planningData) {
+                console.log('🔄 Redimensionnement détecté, recalcul des hauteurs...');
+                updateCourseHeights();
+            }
+        }, 250);
+    });
+
     // Générer tous les créneaux de 15 minutes de 9h00 à 18h15
     function generateAllTimeSlots() {
         const timeSlots = [];
@@ -956,6 +1028,11 @@
                 if (newRoom && courseId) {
                     currentRoomAssignments[courseId] = newRoom;
                     
+                    // IMPORTANT: Mettre à jour aussi planningData.room_assignments pour la sauvegarde
+                    if (planningData && planningData.room_assignments) {
+                        planningData.room_assignments[courseId] = newRoom;
+                    }
+                    
                     // Mettre à jour le cours dans planningData
                     const course = planningData.courses.find(c => c.id === courseId); // Comparaison stricte
                     if (course) {
@@ -965,6 +1042,8 @@
                     } else {
                         console.log(`❌ Cours non trouvé: ${courseId}`);
                     }
+                    
+                    console.log(`💾 Assignations mises à jour pour sauvegarde:`, planningData.room_assignments[courseId]);
                 }
                 
                 // Re-rendre la grille
@@ -1051,7 +1130,7 @@
         
         const targetDate = document.getElementById('target-date').value;
         
-        showLoading('Génération du fichier Excel...');
+        showLoading('loading-container');
         
         try {
             // Créer les assignments basés sur les positions actuelles des cours
@@ -1096,55 +1175,112 @@
             console.error('Erreur:', error);
             showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
         } finally {
-            hideLoading();
+            hideLoading('loading-container');
         }
     }
     
-    // Afficher l'overlay de chargement
-    function showLoading(message = 'Chargement...') {
-        document.getElementById('loading-message').textContent = message;
-        document.getElementById('loading-overlay').style.display = 'flex';
-    }
-    
-    // Masquer l'overlay de chargement
-    function hideLoading() {
-        document.getElementById('loading-overlay').style.display = 'none';
-    }
-    
-    // Afficher une alerte
-    function showAlert(message, type = 'info') {
-        // Créer une alerte Bootstrap
-        const alert = document.createElement('div');
-        alert.className = `alert alert-${type} alert-dismissible fade show`;
-        alert.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
-        // Insérer au début du container
-        const container = document.querySelector('.container-fluid');
-        container.insertBefore(alert, container.firstChild);
-        
-        // Auto-supprimer après 5 secondes
-        setTimeout(() => {
-            if (alert && alert.parentElement) {
-                alert.remove();
+    // Enregistrer le planning dans la base de données
+    async function savePlanningData() {
+        if (!planningData) {
+            console.log('❌ Aucun planning à enregistrer.');
+            showAlert('Aucun planning à enregistrer.', 'warning');
+            return;
+        }
+
+        const targetDate = document.getElementById('target-date').value;
+        const payload = {
+            date: targetDate,
+            data: planningData
+        };
+
+        try {
+            console.log('🔄 Envoi des données à /api/save-planning:', payload);
+            const response = await fetch('/api/save-planning', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            console.log('📡 Réponse API status:', response.status);
+            if (response.ok) {
+                showAlert('Planning enregistré avec succès!', 'success');
+            } else {
+                const errorData = await response.json();
+                showAlert(`Erreur: ${errorData.error}`, 'danger');
             }
-        }, 5000);
-    }
-    
-    // Fonction pour convertir une durée au format "1h25" ou "55min" en minutes
-    function parseDurationToMinutes(duration) {
-        if (typeof duration === 'string') {
-            const hoursMatch = duration.match(/(\d+)h/);
-            const minutesMatch = duration.match(/(\d+)min/);
-
-            const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
-            const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
-
-            return hours * 60 + minutes;
+        } catch (error) {
+            console.error('Erreur lors de l\'enregistrement du planning:', error);
+            showAlert('Erreur lors de l\'enregistrement du planning.', 'danger');
         }
-        return typeof duration === 'number' ? duration : 0;
     }
+
+    // Appeler savePlanningData après la génération du planning
+    document.getElementById('generate-btn').addEventListener('click', savePlanningData);
+    
+    document.getElementById('target-date').addEventListener('change', function() {
+    const selectedDate = this.value;
+
+    // Utiliser reloadPlanning() pour charger automatiquement le planning dans la grille
+    if (selectedDate) {
+        reloadPlanning();
+    }
+});
+
+// Fonctions supprimées car on utilise maintenant reloadPlanning() automatiquement
+
+// Move the reloadPlanning function definition to global scope
+async function reloadPlanning() {
+    const targetDate = document.getElementById('target-date').value;
+
+    if (!targetDate) {
+        showAlert('Veuillez sélectionner une date.', 'warning');
+        return;
+    }
+
+    showLoading('loading-container');
+
+    try {
+        const response = await fetch(`/api/get-planning?date=${targetDate}`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('🔍 Raw API response:', data);
+            
+            // Parse the JSON string if needed
+            if (typeof data.planning === 'string') {
+                planningData = JSON.parse(data.planning);
+            } else {
+                planningData = data.planning || data;
+            }
+            
+            // Update currentRoomAssignments with loaded data
+            currentRoomAssignments = { ...planningData.room_assignments || {} };
+            
+            console.log('🔍 Assigned planningData:', planningData);
+            console.log('🔍 planningData.rooms:', planningData.rooms);
+            console.log('🔍 Updated currentRoomAssignments:', currentRoomAssignments);
+            renderPlanningGrid(); // Fonction existante pour afficher le planning
+            showAlert('Planning chargé avec succès!', 'success');
+        } else {
+            const errorData = await response.json();
+            showAlert(`Erreur: ${errorData.error}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement du planning:', error);
+        showAlert('Erreur lors du chargement du planning.', 'danger');
+    } finally {
+        hideLoading('loading-container');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Attach reloadPlanning to the window object to make it globally accessible
+    window.reloadPlanning = reloadPlanning;
+    console.log('reloadPlanning function attached to window:', window.reloadPlanning);
+    
+    // Attach savePlanningData to the window object to make it globally accessible
+    window.savePlanningData = savePlanningData;
+});
 </script>
 {% endblock %}

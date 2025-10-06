@@ -19,6 +19,31 @@ function showErrorToast(message) {
     bsToast.show();
 }
 
+// Alert messages
+function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    if (!alertContainer) {
+        console.error("Alert container not found in the DOM.");
+        return;
+    }
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.role = 'alert';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+
+    alertContainer.appendChild(alertDiv);
+
+    // Automatically remove the alert after 5 seconds
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        alertDiv.addEventListener('transitionend', () => alertDiv.remove());
+    }, 5000);
+}
+
 // Form validation helpers
 function validateRequired(elementId, message) {
     const element = document.getElementById(elementId);
@@ -147,6 +172,10 @@ function formatDateTime(dateTimeString) {
 // Loading states
 function showLoading(elementId) {
     const element = document.getElementById(elementId);
+    if (!element) {
+        console.error(`Element with ID '${elementId}' not found.`);
+        return;
+    }
     element.innerHTML = `
         <div class="text-center">
             <div class="spinner-border text-primary" role="status">
@@ -159,6 +188,10 @@ function showLoading(elementId) {
 
 function hideLoading(elementId) {
     const element = document.getElementById(elementId);
+    if (!element) {
+        console.error(`Element with ID '${elementId}' not found.`);
+        return;
+    }
     element.innerHTML = '';
 }
 
@@ -237,6 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Export functions for global use
 window.showSuccessToast = showSuccessToast;
 window.showErrorToast = showErrorToast;
+window.showAlert = showAlert;
 window.validateRequired = validateRequired;
 window.validateDate = validateDate;
 window.validateNumber = validateNumber;
