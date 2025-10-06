@@ -635,10 +635,35 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for i, c in enumerate(cours):
             # Find assigned room
             salle_assignee = None
-            for s in salle_list:
-                if (i, s) in x and solver.Value(x[(i, s)]) == 1:
-                    salle_assignee = s
-                    break
+            
+            # Vérifier si on a une assignation personnalisée pour ce cours (même logique que Planning_Techniciens)
+            course_id = c.get('id')
+            if custom_room_assignments and course_id:
+                try:
+                    # S'assurer que custom_room_assignments est un dictionnaire
+                    if isinstance(custom_room_assignments, str):
+                        import json
+                        custom_room_assignments = json.loads(custom_room_assignments)
+                    
+                    if isinstance(custom_room_assignments, dict):
+                        assigned_room_name = custom_room_assignments.get(str(course_id))
+                        if assigned_room_name:
+                            # Trouver la clé de la salle à partir du nom
+                            for room_key, room_data in salles.items():
+                                if room_data.get('nom') == assigned_room_name or room_key == assigned_room_name:
+                                    salle_assignee = room_key
+                                    print(f"🎯 [Affichage] Assignation personnalisée: cours {course_id} -> salle {room_key}")
+                                    break
+                except Exception as e:
+                    print(f"⚠️ [Affichage] Erreur traitement assignations personnalisées: {e}")
+                    # En cas d'erreur, continuer avec l'assignation normale
+            
+            # Si pas d'assignation personnalisée, utiliser l'assignation du solver
+            if not salle_assignee:
+                for s in salle_list:
+                    if (i, s) in x and solver.Value(x[(i, s)]) == 1:
+                        salle_assignee = s
+                        break
             
             if salle_assignee:
                 horaire_debut = c.get('horaire', '8:00')
@@ -1123,10 +1148,30 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 else:
                     days = [date if isinstance(date, str) else date.strftime('%Y-%m-%d')]
                 
-                # Créneaux horaires basés sur les cours réels
-                unique_times = list(set(course['time'] for course in courses_data))
-                time_slots = sorted(unique_times, key=h_to_min)
-                print(f"⏰ Time slots générés: {time_slots}")
+                # Grille complète de créneaux de 15 minutes de 9h00 à 18h15
+                time_slots = []
+                start_hour = 9
+                start_minute = 0
+                end_hour = 18
+                end_minute = 15
+                
+                current_hour = start_hour
+                current_minute = start_minute
+                
+                while current_hour < end_hour or (current_hour == end_hour and current_minute <= end_minute):
+                    time_slot = f"{current_hour}h{current_minute:02d}"
+                    time_slots.append(time_slot)
+                    
+                    # Incrémenter de 15 minutes
+                    current_minute += 15
+                    if current_minute >= 60:
+                        current_minute = 0
+                        current_hour += 1
+                
+                print(f"⏰ Grille complète (15min) 9h00-18h15 - Total: {len(time_slots)} créneaux")
+                print(f"📝 Créneaux 9h: {[slot for slot in time_slots if slot.startswith('9h')]}")
+                print(f"📝 Créneaux 10h: {[slot for slot in time_slots if slot.startswith('10h')]}")
+                print(f"📝 Tous les créneaux: {time_slots}")
                 
                 rooms_list = [{'id': s, 'name': salles[s]['nom']} for s in salles]
                 print(f"📍 Rooms list pour l'API: {rooms_list}")

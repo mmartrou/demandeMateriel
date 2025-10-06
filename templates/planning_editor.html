@@ -34,7 +34,7 @@
         border: 1px solid #dee2e6;
         position: sticky;
         left: 0;
-        z-index: 10;
+        z-index: 30;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -47,7 +47,7 @@
         padding: 12px 4px;
         font-weight: bold;
         border: 1px solid #dee2e6;
-        font-size: 0.9em;
+        font-size: 1.1em;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -65,8 +65,8 @@
         border: 1px solid #dee2e6;
         position: sticky;
         left: 0;
-        z-index: 5;
-        min-height: 80px;
+        z-index: 25;
+        min-height: 27px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -75,12 +75,14 @@
     .room-cell {
         border: 1px solid #dee2e6;
         padding: 2px;
-        min-height: 80px;
+        min-height: 27px;
         background: #fff;
         position: relative;
         display: flex;
         flex-direction: column;
         gap: 2px;
+        /* Permettre aux cours de déborder avec position absolute */
+        overflow: visible;
     }
     
     .room-cell > .course-card {
@@ -138,16 +140,23 @@
         background: linear-gradient(135deg, #007bff, #0056b3);
         color: white;
         border-radius: 4px;
-        padding: 3px 4px;
+        padding: 4px 6px;
         margin: 1px;
         cursor: move;
-        font-size: 0.75em;
+        font-size: 1.35em;
         box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
-        min-height: 35px;
         display: flex;
         flex-direction: column;
         justify-content: center;
+        border: 2px solid rgba(255,255,255,0.3);
+        /* Positionné par CSS Grid pour s'étaler précisément selon la durée */
+        align-self: stretch;
+        width: calc(100% - 6px);
+        overflow: hidden;
+        z-index: 10;
+        /* Empêcher le débordement sur les autres colonnes */
+        justify-self: stretch;
         text-align: center;
         line-height: 1.1;
         width: 100%;
@@ -212,7 +221,7 @@
     
     /* S'assurer que les cellules vides sont visibles */
     .room-cell.drop-zone {
-        min-height: 80px !important;
+        min-height: 27px !important;
         border: 2px solid #007bff !important;
         background-color: #e3f2fd !important;
     }
@@ -539,10 +548,13 @@
         container.className = 'table-responsive'; // Ajouter classe responsive pour défilement horizontal
         
         const rooms = planningData.rooms;
-        const timeSlots = planningData.time_slots;
+        
+        // Générer tous les créneaux de 15 minutes de 9h00 à 18h15 côté client
+        const timeSlots = generateAllTimeSlots();
         
         console.log('🏢 Salles disponibles:', rooms);
-        console.log('⏰ Créneaux horaires:', timeSlots);
+        console.log('⏰ Créneaux horaires complets (15min):', timeSlots);
+        console.log('📊 Total créneaux:', timeSlots.length);
         
         // Créer la grille principale
         const grid = document.createElement('div');
@@ -583,8 +595,8 @@
         let placementByRoom = {};
         rooms.forEach(room => placementByRoom[room.name] = 0);
         
-        // Créer une ligne pour chaque créneau horaire
-        timeSlots.forEach(slot => {
+        // Créer une ligne pour chaque créneau horaire (cellules vides pour la grille)
+        timeSlots.forEach((slot, slotIndex) => {
             const row = document.createElement('div');
             row.className = 'grid-row';
             
@@ -594,45 +606,14 @@
             timeCell.textContent = slot;
             row.appendChild(timeCell);
             
-            // Cellule pour chaque salle
-            rooms.forEach(room => {
+            // Cellules vides pour chaque salle (les cours seront positionnés par CSS Grid)
+            rooms.forEach((room, roomIndex) => {
                 const roomCell = document.createElement('div');
                 roomCell.className = 'room-cell drop-zone';
                 roomCell.dataset.room = room.name;
                 roomCell.dataset.slot = slot;
-                
-
-                
-                // Chercher les cours assignés à cette salle et ce créneau
-                const coursesInSlot = planningData.courses.filter(course => {
-                    const assignedRoom = currentRoomAssignments[course.id];
-                    const matchRoom = assignedRoom === room.name;
-                    const matchTime = course.time === slot;
-                    
-                    // Debug pour le premier créneau et première salle seulement
-                    if (room.name === 'C21' && slot === '9h00' && course.id === planningData.courses[0]?.id) {
-                        console.log(`🔍 Debug match pour ${course.id}:`, {
-                            courseId: course.id,
-                            assignedRoom: assignedRoom,
-                            roomName: room.name,
-                            matchRoom: matchRoom,
-                            courseTime: course.time,
-                            slot: slot,
-                            matchTime: matchTime,
-                            match: matchRoom && matchTime
-                        });
-                    }
-                    
-                    return matchRoom && matchTime;
-                });
-                
-                // Ajouter les cours trouvés
-                coursesInSlot.forEach(course => {
-                    const courseCard = createCourseCard(course);
-                    roomCell.appendChild(courseCard);
-                    totalCoursesPlaced++;
-                    placementByRoom[room.name]++;
-                });
+                roomCell.dataset.slotIndex = slotIndex;
+                roomCell.dataset.roomIndex = roomIndex;
                 
                 // Configurer les événements de drop
                 setupDropZone(roomCell);
@@ -641,6 +622,39 @@
             });
             
             grid.appendChild(row);
+        });
+
+        // Placer les cours dans leurs cellules de début avec débordement contrôlé
+        planningData.courses.forEach(course => {
+            const assignedRoom = currentRoomAssignments[course.id];
+            if (!assignedRoom) return;
+            
+            // Trouver l'index du créneau de début
+            const startSlotIndex = timeSlots.findIndex(slot => slot === course.time);
+            if (startSlotIndex === -1) {
+                console.warn(`⚠️ Créneau introuvable pour ${course.time}`, timeSlots);
+                return;
+            }
+            
+            // Trouver l'index de la salle
+            const roomIndex = rooms.findIndex(room => room.name === assignedRoom);
+            if (roomIndex === -1) return;
+            
+            // Trouver la cellule de départ
+            const startCell = grid.querySelector(`[data-slot="${course.time}"][data-room="${assignedRoom}"]`);
+            if (!startCell) {
+                console.warn(`⚠️ Cellule introuvable pour ${course.time} - ${assignedRoom}`);
+                return;
+            }
+            
+            // Créer le cours avec débordement sur plusieurs cellules
+            const courseCard = createCourseCardWithOverflow(course, startSlotIndex, timeSlots);
+            
+            // L'ajouter à la cellule de départ
+            startCell.appendChild(courseCard);
+            
+            totalCoursesPlaced++;
+            placementByRoom[assignedRoom]++;
         });
         
         container.appendChild(grid);
@@ -665,18 +679,80 @@
     }
     
     // Créer une carte de cours
-    function createCourseCard(course) {
+    function createCourseCard(course, startSlotIndex, timeSlots) {
         const card = document.createElement('div');
         card.className = `course-card ${getCourseType(course.subject)}`;
         card.draggable = true;
         card.dataset.courseId = course.id;
         
+        // Calculer la position de fin précise du cours
+        const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+        const endSlotPosition = calculateEndSlotPosition(startSlotIndex, durationInMinutes);
+        
+        // Utiliser CSS Grid pour positionner et étendre le cours
+        // +2 car nous avons une ligne d'en-tête (index 1), les créneaux commencent à l'index 2
+        const gridRowStart = startSlotIndex + 2;
+        const gridRowEnd = endSlotPosition + 2;
+        
+        card.style.gridRowStart = gridRowStart;
+        card.style.gridRowEnd = gridRowEnd;
+        card.style.zIndex = '10';
+        
+        // Formatage de la durée pour affichage
+        const durationText = course.duration ? formatDuration(course.duration) : '';
+        
         card.innerHTML = `
             <div class="course-title">${course.subject}</div>
             <div class="course-level">${course.level}</div>
             <div class="course-teacher">${course.teacher}</div>
-            <div class="course-time">${course.time}</div>
+            <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
         `;
+        
+        console.log(`📅 Cours ${course.subject} - Grid: lignes ${gridRowStart} à ${gridRowEnd} (${durationInMinutes}min)`);
+        
+        // Ajouter les événements de drag
+        setupDragEvents(card);
+        
+        return card;
+    }
+
+    // Créer une carte de cours avec débordement contrôlé
+    function createCourseCardWithOverflow(course, startSlotIndex, timeSlots) {
+        const card = document.createElement('div');
+        card.className = `course-card ${getCourseType(course.subject)}`;
+        card.draggable = true;
+        card.dataset.courseId = course.id;
+        
+        // Calculer la durée en minutes
+        const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+        
+        // Calculer la hauteur d'une cellule en pixels (réduite de 80px à 27px)
+        const cellHeight = 40; // Hauteur d'une cellule en pixels (réduite de 80px à 27px)
+        // Calculer la hauteur exacte strictement proportionnelle à la durée
+        let exactHeight = (durationInMinutes / 15) * cellHeight;
+
+        // Utiliser position absolute pour déborder sur les cellules suivantes
+        card.style.position = 'absolute';
+        card.style.top = '1px';
+        card.style.left = '1px';
+        card.style.right = '1px';
+        card.style.height = `${exactHeight}px`;
+        card.style.zIndex = '10';
+        
+        // Formatage de la durée pour affichage
+        const durationText = course.duration ? formatDuration(course.duration) : '';
+        
+        // Supprimer les mots "chimie", "physique" ou "mixte" du sujet
+        const filteredSubject = course.subject.replace(/\b(chimie|physique|mixte)\b/gi, '').trim();
+
+        card.innerHTML = `
+            <div class="course-title">${filteredSubject}</div>
+            <div class="course-level">${course.level}</div>
+            <div class="course-teacher">${course.teacher}</div>
+            <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
+        `;
+        
+        console.log(`📅 Cours ${course.subject} - Hauteur: ${exactHeight}px (${durationInMinutes}min)`);
         
         // Ajouter les événements de drag
         setupDragEvents(card);
@@ -684,6 +760,136 @@
         return card;
     }
     
+    // Calculer la hauteur d'un cours basée sur sa durée
+    function calculateCourseHeight(duration) {
+        // Système de hauteur proportionnelle à la durée réelle
+        // Base : 40px pour 55min (cours le plus court)
+        // Échelle : 55min=40px, 85min=60px, 110min=80px
+        const baseHeight = 40; // pixels pour 55 minutes (cours le plus court)
+        const baseDuration = 55; // minutes (cours le plus court)
+        
+        // Convertir la durée en minutes si nécessaire
+        let durationInMinutes = duration;
+        if (typeof duration === 'string') {
+            // Parser la durée si c'est une chaîne (ex: "1h30", "90min", "1.5h")
+            durationInMinutes = parseDurationToMinutes(duration);
+        }
+        
+        // Calculer la hauteur proportionnelle avec un facteur d'échelle légèrement réduit
+        const scaleFactor = 0.7; // Pour éviter des cours trop hauts
+        const rawHeight = (durationInMinutes / baseDuration) * baseHeight;
+        const calculatedHeight = Math.max(35, Math.min(120, rawHeight * scaleFactor));
+        
+        console.log(`📏 Durée: ${duration} (${durationInMinutes}min) -> Hauteur: ${Math.round(calculatedHeight)}px`);
+        return Math.round(calculatedHeight);
+    }
+    
+    // Générer tous les créneaux de 15 minutes de 9h00 à 18h15
+    function generateAllTimeSlots() {
+        const timeSlots = [];
+        const startHour = 9;
+        const startMinute = 0;
+        const endHour = 18;
+        const endMinute = 15;
+        
+        let currentHour = startHour;
+        let currentMinute = startMinute;
+        
+        while (currentHour < endHour || (currentHour === endHour && currentMinute <= endMinute)) {
+            const timeSlot = `${currentHour}h${currentMinute.toString().padStart(2, '0')}`;
+            timeSlots.push(timeSlot);
+            
+            // Incrémenter de 15 minutes
+            currentMinute += 15;
+            if (currentMinute >= 60) {
+                currentMinute = 0;
+                currentHour += 1;
+            }
+        }
+        
+        console.log(`📅 Créneaux générés côté client: ${timeSlots.length} créneaux`);
+        console.log(`📅 Premiers: ${timeSlots.slice(0, 8)}`);
+        console.log(`📅 Derniers: ${timeSlots.slice(-4)}`);
+        
+        return timeSlots;
+    }
+
+    // Calculer la position de fin exacte d'un cours selon sa durée
+    function calculateEndSlotPosition(startSlotIndex, durationInMinutes) {
+        // Chaque créneau = 15 minutes
+        // Position de fin = position de début + (durée / 15)
+        // Utilisation de nombres décimaux pour CSS Grid (ex: 5.5 pour s'arrêter au milieu du 6ème créneau)
+        const exactEndPosition = startSlotIndex + (durationInMinutes / 15);
+        
+        console.log(`📐 Position: début=${startSlotIndex}, durée=${durationInMinutes}min, fin=${exactEndPosition}`);
+        
+        return exactEndPosition;
+    }
+
+    // Calculer combien de créneaux de 15min un cours doit occuper (fonction de compatibilité)
+    function calculateSlotsNeeded(duration) {
+        const durationInMinutes = typeof duration === 'number' ? duration : parseDurationToMinutes(duration);
+        const slotsNeeded = Math.ceil(durationInMinutes / 15);
+        console.log(`📐 Durée ${duration} (${durationInMinutes}min) = ${slotsNeeded} créneaux de 15min`);
+        return slotsNeeded;
+    }
+
+    // Parser une durée en string vers des minutes
+    function parseDurationToMinutes(durationStr) {
+        if (typeof durationStr === 'number') return durationStr;
+        if (!durationStr) return 60; // Durée par défaut
+        
+        const str = durationStr.toString().toLowerCase();
+        
+        // Format "XhY" ou "Xh Y" (ex: "1h30", "2h 15")
+        const hoursMinutesMatch = str.match(/(\d+)h\s*(\d*)/);
+        if (hoursMinutesMatch) {
+            const hours = parseInt(hoursMinutesMatch[1]) || 0;
+            const minutes = parseInt(hoursMinutesMatch[2]) || 0;
+            return hours * 60 + minutes;
+        }
+        
+        // Format "X.Yh" (ex: "1.5h")
+        const decimalHoursMatch = str.match(/(\d+\.?\d*)h/);
+        if (decimalHoursMatch) {
+            const hours = parseFloat(decimalHoursMatch[1]);
+            return Math.round(hours * 60);
+        }
+        
+        // Format "Xmin" (ex: "90min")
+        const minutesMatch = str.match(/(\d+)min/);
+        if (minutesMatch) {
+            return parseInt(minutesMatch[1]);
+        }
+        
+        // Format numérique simple (assumé en minutes)
+        const numberMatch = str.match(/^(\d+)$/);
+        if (numberMatch) {
+            return parseInt(numberMatch[1]);
+        }
+        
+        // Par défaut, retourner 60 minutes
+        console.warn(`⚠️ Impossible de parser la durée "${durationStr}", utilisation de 60min par défaut`);
+        return 60;
+    }
+
+    // Formater une durée en minutes vers une chaîne lisible
+    function formatDuration(duration) {
+        const minutes = typeof duration === 'number' ? duration : parseDurationToMinutes(duration);
+        
+        if (minutes < 60) {
+            return `${minutes}min`;
+        } else {
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            if (remainingMinutes === 0) {
+                return `${hours}h`;
+            } else {
+                return `${hours}h${remainingMinutes.toString().padStart(2, '0')}`;
+            }
+        }
+    }
+
     // Obtenir le type de cours pour le style
     function getCourseType(subject) {
         const subjectLower = subject.toLowerCase();
@@ -925,6 +1131,20 @@
                 alert.remove();
             }
         }, 5000);
+    }
+    
+    // Fonction pour convertir une durée au format "1h25" ou "55min" en minutes
+    function parseDurationToMinutes(duration) {
+        if (typeof duration === 'string') {
+            const hoursMatch = duration.match(/(\d+)h/);
+            const minutesMatch = duration.match(/(\d+)min/);
+
+            const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+            const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+            return hours * 60 + minutes;
+        }
+        return typeof duration === 'number' ? duration : 0;
     }
 </script>
 {% endblock %}
