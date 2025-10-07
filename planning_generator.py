@@ -1,3 +1,35 @@
+def to_dict_request(req):
+    # Compatibilité tuple/dict/sqlite3.Row pour les demandes
+    if isinstance(req, dict):
+        return req
+    elif hasattr(req, '_fields'):
+        return req._asdict()
+    elif hasattr(req, 'keys'):
+        return dict(req)
+    else:
+        # Ordre des colonnes : adapter selon la structure de la table
+        return {
+            'id': req[0],
+            'teacher_id': req[1],
+            'request_date': req[2],
+            'horaire': req[3],
+            'class_name': req[4],
+            'material_description': req[5],
+            'quantity': req[6],
+            'selected_materials': req[7] if len(req) > 7 and req[7] else '',
+            'computers_needed': req[8] if len(req) > 8 and req[8] else 0,
+            'notes': req[9] if len(req) > 9 else '',
+            'prepared': req[10] if len(req) > 10 and req[10] else False,
+            'modified': req[11] if len(req) > 11 and req[11] else False,
+            'group_count': req[12] if len(req) > 12 else 1,
+            'material_prof': req[13] if len(req) > 13 else '',
+            'request_name': req[14] if len(req) > 14 else '',
+            'room_type': req[15] if len(req) > 15 and req[15] else 'Mixte',
+            'image_url': req[16] if len(req) > 16 else None,
+            'exam': req[17] if len(req) > 17 else False,
+            'created_at': req[18] if len(req) > 18 else None,
+            'teacher_name': req[-1] if len(req) > 0 else ''
+        }
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -875,56 +907,35 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         # Convert requests to course format
         cours = []
         for i, raw_req in enumerate(raw_requests):
-            # Convert sqlite3.Row to dict
-            req = dict(raw_req) if hasattr(raw_req, 'keys') else raw_req
-            
-            # Extract material needs
+            req = to_dict_request(raw_req)
             material_needs = extract_material_needs(req.get('selected_materials', ''))
-            
-            # Determine subject based on room_type and materials
-            matiere = "mixte"  # default
-            
-            # First, check explicit room_type
+            matiere = "mixte"
             if req.get('room_type') == 'Physique':
                 matiere = "physique"
             elif req.get('room_type') == 'Chimie':
                 matiere = "chimie"
             elif req.get('room_type') == 'Mixte':
-                # For mixed room type, try to infer from materials
                 materials_text = str(req.get('selected_materials', '')).lower()
                 description_text = str(req.get('material_description', '')).lower()
                 combined_text = f"{materials_text} {description_text}"
-                
-                # Physics keywords
-                physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 
-                                  'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
-                
-                # Chemistry keywords  
-                chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 
-                                    'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction',
-                                    'molécule', 'ion', 'ph']
-                
+                physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
+                chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction', 'molécule', 'ion', 'ph']
                 physics_score = sum(1 for kw in physics_keywords if kw in combined_text)
                 chemistry_score = sum(1 for kw in chemistry_keywords if kw in combined_text)
-                
                 if physics_score > chemistry_score and physics_score > 0:
                     matiere = "physique"
                 elif chemistry_score > physics_score and chemistry_score > 0:
                     matiere = "chimie"
-                # If no clear indication or equal scores, keep "mixte"
-            
-            # Add computers needed from database
             computers_needed = req.get('computers_needed', 0)
             if computers_needed and computers_needed > 0:
                 material_needs["ordinateurs"] = max(material_needs["ordinateurs"], computers_needed)
-            
             cours.append({
                 "id": f"{req.get('teacher_name', 'Unknown')}_{i}",
                 "enseignant": req.get('teacher_name', 'Unknown'),
                 "horaire": req.get('horaire', '9h00') or '9h00',
                 "niveau": req.get('class_name', ''),
                 "matiere": matiere,
-                "jour": jour_planning,  # Ajout du jour de la semaine
+                "jour": jour_planning,
                 "ordinateurs": material_needs["ordinateurs"],
                 "eviers": material_needs["eviers"],
                 "hotte": material_needs["hotte"],
