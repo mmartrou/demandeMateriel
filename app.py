@@ -352,19 +352,47 @@ def export_csv():
     
     # Write data
     for req in requests:
+        # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
+        if isinstance(req, dict):
+            r = req
+        elif hasattr(req, '_fields'):
+            r = req._asdict()
+        else:
+            r = {
+                'id': req[0],
+                'teacher_id': req[1],
+                'request_date': req[2],
+                'horaire': req[3],
+                'class_name': req[4],
+                'material_description': req[5],
+                'quantity': req[6],
+                'selected_materials': req[7] if req[7] else '',
+                'computers_needed': req[8] if req[8] else 0,
+                'notes': req[9],
+                'prepared': req[10] if req[10] else False,
+                'modified': req[11] if req[11] else False,
+                'group_count': req[12] if len(req) > 12 else 1,
+                'material_prof': req[13] if len(req) > 13 else '',
+                'request_name': req[14] if len(req) > 14 else '',
+                'room_type': req[15] if len(req) > 15 and req[15] else 'Mixte',
+                'image_url': req[16] if len(req) > 16 else None,
+                'exam': req[17] if len(req) > 17 else False,
+                'created_at': req[18] if len(req) > 18 else None,
+                'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
+            }
         writer.writerow([
-            req['id'],
-            req['teacher_name'],
-            req['request_date'],
-            req['horaire'] if req['horaire'] else '',
-            req['class_name'],
-            req['selected_materials'] if req['selected_materials'] else '',
-            req['computers_needed'] if req['computers_needed'] else 0,
-            req['material_description'],
-            req['quantity'],
-            req['room_type'] if req['room_type'] else 'Mixte',
-            req['notes'] if req['notes'] else '',
-            req['created_at']
+            r['id'],
+            r['teacher_name'],
+            r['request_date'],
+            r['horaire'] if r['horaire'] else '',
+            r['class_name'],
+            r['selected_materials'] if r['selected_materials'] else '',
+            r['computers_needed'] if r['computers_needed'] else 0,
+            r['material_description'],
+            r['quantity'],
+            r['room_type'] if r['room_type'] else 'Mixte',
+            r['notes'] if r['notes'] else '',
+            r['created_at']
         ])
     
     # Create response
@@ -387,29 +415,37 @@ def api_get_request_by_id(request_id):
     request_data = get_material_request_by_id(request_id)
     if not request_data:
         return jsonify({'error': 'Demande non trouvée'}), 404
-    
-    # Convert to dictionary for JSON serialization
-    request_dict = {
-        'id': request_data['id'],
-        'teacher_id': request_data['teacher_id'],
-        'teacher_name': request_data['teacher_name'],
-        'request_date': request_data['request_date'],
-        'horaire': request_data['horaire'],
-        'class_name': request_data['class_name'],
-        'material_description': request_data['material_description'],
-        'quantity': request_data['quantity'],
-        'selected_materials': request_data['selected_materials'] if request_data['selected_materials'] else '',
-        'computers_needed': request_data['computers_needed'] if request_data['computers_needed'] else 0,
-        'notes': request_data['notes'],
-        'prepared': request_data['prepared'] if request_data['prepared'] else False,
-        'modified': request_data['modified'] if request_data['modified'] else False,
-        'room_type': request_data['room_type'] if request_data['room_type'] else 'Mixte',
-        'request_name': request_data['request_name'] if request_data['request_name'] else '',
-        'created_at': request_data['created_at'],
-        'image_url': request_data['image_url'] if 'image_url' in request_data.keys() else None
-    }
-    
-    return jsonify(request_dict)
+
+    # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
+    if isinstance(request_data, dict):
+        r = request_data
+    elif hasattr(request_data, '_fields'):
+        r = request_data._asdict()
+    else:
+        # tuple (ordre des colonnes comme dans SELECT)
+        r = {
+            'id': request_data[0],
+            'teacher_id': request_data[1],
+            'request_date': request_data[2],
+            'horaire': request_data[3],
+            'class_name': request_data[4],
+            'material_description': request_data[5],
+            'quantity': request_data[6],
+            'selected_materials': request_data[7] if request_data[7] else '',
+            'computers_needed': request_data[8] if request_data[8] else 0,
+            'notes': request_data[9],
+            'prepared': request_data[10] if request_data[10] else False,
+            'modified': request_data[11] if request_data[11] else False,
+            'group_count': request_data[12] if len(request_data) > 12 else 1,
+            'material_prof': request_data[13] if len(request_data) > 13 else '',
+            'request_name': request_data[14] if len(request_data) > 14 else '',
+            'room_type': request_data[15] if len(request_data) > 15 and request_data[15] else 'Mixte',
+            'image_url': request_data[16] if len(request_data) > 16 else None,
+            'exam': request_data[17] if len(request_data) > 17 else False,
+            'created_at': request_data[18] if len(request_data) > 18 else None,
+            'teacher_name': request_data[-1]  # dernière colonne
+        }
+    return jsonify(r)
 
 @app.route('/api/requests/<int:request_id>', methods=['PUT'])
 def api_update_request(request_id):
@@ -906,10 +942,30 @@ def api_export_rooms_csv():
         
         # Données
         for room in rooms:
+            # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
+            if isinstance(room, dict):
+                r = room
+            elif hasattr(room, '_fields'):
+                r = room._asdict()
+            else:
+                r = {
+                    'name': room[0],
+                    'type': room[1],
+                    'ordinateurs': room[2],
+                    'chaises': room[3],
+                    'eviers': room[4],
+                    'hotte': room[5],
+                    'bancs_optiques': room[6],
+                    'oscilloscopes': room[7],
+                    'becs_electriques': room[8],
+                    'support_filtration': room[9],
+                    'imprimante': room[10],
+                    'examen': room[11]
+                }
             writer.writerow([
-                room['name'], room['type'], room['ordinateurs'], room['chaises'],
-                room['eviers'], room['hotte'], room['bancs_optiques'], room['oscilloscopes'],
-                room['becs_electriques'], room['support_filtration'], room['imprimante'], room['examen']
+                r['name'], r['type'], r['ordinateurs'], r['chaises'],
+                r['eviers'], r['hotte'], r['bancs_optiques'], r['oscilloscopes'],
+                r['becs_electriques'], r['support_filtration'], r['imprimante'], r['examen']
             ])
         
         # Préparer la réponse
