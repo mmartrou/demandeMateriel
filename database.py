@@ -35,40 +35,50 @@ def get_db_connection():
 
 def init_database():
     """Initialize the database with required tables"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
+    # Adapter la syntaxe selon le type de base de données
+    if db_type == 'postgresql':
+        auto_increment = 'SERIAL PRIMARY KEY'
+        text_type = 'TEXT'
+        timestamp_default = 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    else:  # SQLite
+        auto_increment = 'INTEGER PRIMARY KEY AUTOINCREMENT'
+        text_type = 'TEXT'
+        timestamp_default = 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+    
     # Create teachers table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS teachers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id {auto_increment},
+            name {text_type} NOT NULL UNIQUE,
+            created_at {timestamp_default}
         )
     ''')
     
     # Create material requests table with all columns
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS material_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {auto_increment},
             teacher_id INTEGER NOT NULL,
             request_date DATE NOT NULL,
-            horaire TEXT,
-            class_name TEXT NOT NULL,
-            material_description TEXT NOT NULL,
+            horaire {text_type},
+            class_name {text_type} NOT NULL,
+            material_description {text_type} NOT NULL,
             quantity INTEGER DEFAULT 1,
-            selected_materials TEXT,
+            selected_materials {text_type},
             computers_needed INTEGER DEFAULT 0,
-            notes TEXT,
+            notes {text_type},
             prepared BOOLEAN DEFAULT FALSE,
             modified BOOLEAN DEFAULT FALSE,
             group_count INTEGER DEFAULT 1,
-            material_prof TEXT,
-            request_name TEXT,
-            room_type TEXT DEFAULT 'Mixte',
-            image_url TEXT,
+            material_prof {text_type},
+            request_name {text_type},
+            room_type {text_type} DEFAULT 'Mixte',
+            image_url {text_type},
             exam BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at {timestamp_default},
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
     ''')
@@ -96,11 +106,11 @@ def init_database():
     
     
     # Create rooms table for planning
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS rooms (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            type TEXT NOT NULL,
+            id {auto_increment},
+            name {text_type} NOT NULL UNIQUE,
+            type {text_type} NOT NULL,
             ordinateurs INTEGER DEFAULT 0,
             chaises INTEGER DEFAULT 0,
             eviers INTEGER DEFAULT 0,
@@ -111,64 +121,64 @@ def init_database():
             support_filtration INTEGER DEFAULT 0,
             imprimante INTEGER DEFAULT 0,
             examen INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at {timestamp_default}
         )
     ''')
     
     # Create student numbers table for 2nd level classes
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS student_numbers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            teacher_name TEXT NOT NULL UNIQUE,
+            id {auto_increment},
+            teacher_name {text_type} NOT NULL UNIQUE,
             student_count INTEGER NOT NULL DEFAULT 20,
-            level TEXT DEFAULT '2nde',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            level {text_type} DEFAULT '2nde',
+            created_at {timestamp_default}
         )
     ''')
     
     # Create working days configuration table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS working_days_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {auto_increment},
             date DATE NOT NULL UNIQUE,
             is_working_day BOOLEAN NOT NULL DEFAULT 1,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            description {text_type},
+            created_at {timestamp_default},
+            updated_at {timestamp_default}
         )
     ''')
 
     # Create C21 availability table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS c21_availability (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            jour TEXT NOT NULL,
-            heure_debut TEXT NOT NULL,
-            heure_fin TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            id {auto_increment},
+            jour {text_type} NOT NULL,
+            heure_debut {text_type} NOT NULL,
+            heure_fin {text_type} NOT NULL,
+            created_at {timestamp_default},
             UNIQUE(jour, heure_debut, heure_fin)
         )
     ''')
 
     # Create pending modifications table for tracking changes before validation
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS pending_modifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {auto_increment},
             request_id INTEGER NOT NULL,
-            field_name TEXT NOT NULL,
-            original_value TEXT,
-            new_value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            modified_by TEXT,
+            field_name {text_type} NOT NULL,
+            original_value {text_type},
+            new_value {text_type},
+            created_at {timestamp_default},
+            modified_by {text_type},
             FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
         )
     ''')
     
     # Add a new table for storing planning data
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS plannings (
-            date TEXT PRIMARY KEY,
-            data TEXT NOT NULL
+            date {text_type} PRIMARY KEY,
+            data {text_type} NOT NULL
         );
     ''')
     
