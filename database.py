@@ -101,7 +101,7 @@ def init_database():
     for column_name, column_type in columns_to_add:
         try:
             cursor.execute(f'ALTER TABLE material_requests ADD COLUMN {column_name} {column_type}')
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, psycopg2.errors.DuplicateColumn):
             pass  # Column already exists
     
     
