@@ -99,6 +99,15 @@ def init_database():
     ]
     
     for column_name, column_type in columns_to_add:
+        # Vérification préalable pour PostgreSQL
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='material_requests' AND column_name=%s
+            """, (column_name,))
+            exists = cursor.fetchone() is not None
+            if exists:
+                continue
         try:
             cursor.execute(f'ALTER TABLE material_requests ADD COLUMN {column_name} {column_type}')
         except (sqlite3.OperationalError, psycopg2.errors.DuplicateColumn):
