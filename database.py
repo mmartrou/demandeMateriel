@@ -2,253 +2,85 @@ import sqlite3
 import os
 import logging
 from datetime import datetime
-from urllib.parse import urlparse, urlunparse
 
 # Configuration des logs
 logger = logging.getLogger(__name__)
 
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    POSTGRES_AVAILABLE = True
-    logger.info("PostgreSQL disponible")
-except ImportError:
-    POSTGRES_AVAILABLE = False
-    logger.info("PostgreSQL non disponible, utilisation de SQLite")
-
-DATABASE_PATH = 'material_requests.db'
+# Base de données SQLite dans un sous-dossier du dossier Google Drive
+DATABASE_PATH = os.path.join('imagesDemandesMateriel', 'base', 'material_requests.db')
 
 def get_db_connection():
-    """Get database connection - PostgreSQL in production, SQLite locally"""
+    """Get database connection - SQLite dans le dossier Google Drive"""
     
-    # Option 1: Variables PostgreSQL séparées (plus fiable)
-    pg_host = os.getenv('PGHOST')
-    pg_user = os.getenv('PGUSER') 
-    pg_password = os.getenv('PGPASSWORD')
-    pg_database = os.getenv('PGDATABASE')
-    pg_port = os.getenv('PGPORT', '5432')
+    # S'assurer que le dossier existe
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     
-    # Option 2: URL complète (fallback)
-    database_url = os.getenv('DATABASE_URL')
-    
-    if POSTGRES_AVAILABLE and (pg_host or database_url):
-        # Production: PostgreSQL sur Railway
-        
-        # Approche 1: Variables séparées (plus fiable, évite les problèmes d'encodage)
-        if pg_host and pg_user and pg_password and pg_database:
-            try:
-                logger.info(f"Connexion PostgreSQL avec variables séparées: {pg_host}:{pg_port}")
-                conn = psycopg2.connect(
-                    host=pg_host,
-                    port=pg_port,
-                    user=pg_user,
-                    password=pg_password,
-                    database=pg_database,
-                    cursor_factory=RealDictCursor,
-                    connect_timeout=10,
-                    client_encoding='utf8'
-                )
-                logger.info("✅ Connexion PostgreSQL (variables séparées) réussie")
-                return conn, 'postgresql'
-                
-            except Exception as e:
-                logger.error(f"Erreur PostgreSQL (variables séparées): {e}")
-                
-        # Approche 2: URL complète (fallback)
-        elif database_url:
-            try:
-                logger.info("Tentative avec URL PostgreSQL...")
-                
-                # Essayer l'URL directement d'abord
-                try:
-                    logger.info(f"Connexion directe: {database_url[:50]}...")
-                    conn = psycopg2.connect(
-                        database_url, 
-                        cursor_factory=RealDictCursor,
-                        connect_timeout=10,
-                        client_encoding='utf8'
-                    )
-                    logger.info("✅ Connexion PostgreSQL (URL) réussie")
-                    return conn, 'postgresql'
-                    
-                except UnicodeDecodeError as ude:
-                    logger.debug(f"Encodage URL PostgreSQL: utilisation du fallback SQLite")
-                    # Pas de log d'erreur - c'est normal en mode développement
-                    
-            except Exception as e:
-                logger.error(f"Erreur PostgreSQL (URL): {e}")
-        
-        logger.info("Fallback vers SQLite après échec PostgreSQL")
-    
-    # Local: SQLite
-    logger.info("Utilisation de SQLite")
+    logger.info(f"Utilisation de SQLite: {DATABASE_PATH}")
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn, 'sqlite'
 
 def init_database():
     """Initialize the database with required tables"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    if db_type == 'postgresql':
-        # PostgreSQL schemas
-        # Create teachers table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS teachers (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create material requests table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS material_requests (
-                id SERIAL PRIMARY KEY,
-                teacher_id INTEGER NOT NULL,
-                request_date DATE NOT NULL,
-                horaire VARCHAR(10),
-                class_name VARCHAR(100) NOT NULL,
-                material_description TEXT NOT NULL,
-                quantity INTEGER DEFAULT 1,
-                selected_materials TEXT,
-                computers_needed INTEGER DEFAULT 0,
-                notes TEXT,
-                prepared BOOLEAN DEFAULT FALSE,
-                modified BOOLEAN DEFAULT FALSE,
-                group_count INTEGER,
-                material_prof TEXT,
-                request_name TEXT,
-                room_type VARCHAR(20) DEFAULT 'Mixte',
-                image_url TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
-            )
-        ''')
-        
-        # Create rooms table for planning (PostgreSQL)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS rooms (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(50) NOT NULL UNIQUE,
-                type VARCHAR(20) NOT NULL,
-                ordinateurs INTEGER DEFAULT 0,
-                chaises INTEGER DEFAULT 0,
-                eviers INTEGER DEFAULT 0,
-                hotte INTEGER DEFAULT 0,
-                bancs_optiques INTEGER DEFAULT 0,
-                oscilloscopes INTEGER DEFAULT 0,
-                becs_electriques INTEGER DEFAULT 0,
-                support_filtration INTEGER DEFAULT 0,
-                imprimante INTEGER DEFAULT 0,
-                examen INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create student numbers table (PostgreSQL)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS student_numbers (
-                id SERIAL PRIMARY KEY,
-                teacher_name VARCHAR(100) NOT NULL UNIQUE,
-                student_count INTEGER NOT NULL DEFAULT 20,
-                level VARCHAR(20) DEFAULT '2nde',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-    else:
-        # SQLite schemas (code existant)
-        # Create teachers table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS teachers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create material requests table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS material_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                teacher_id INTEGER NOT NULL,
-                request_date DATE NOT NULL,
-                horaire TEXT,
-                class_name TEXT NOT NULL,
-                material_description TEXT NOT NULL,
-                quantity INTEGER DEFAULT 1,
-                selected_materials TEXT,
-                computers_needed INTEGER DEFAULT 0,
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
-            )
-        ''')
-    # Ajout du champ horaire si absent
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN horaire TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Create teachers table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS teachers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
-    # Add new columns to existing table if they don't exist
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN selected_materials TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Create material requests table with all columns
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS material_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            teacher_id INTEGER NOT NULL,
+            request_date DATE NOT NULL,
+            horaire TEXT,
+            class_name TEXT NOT NULL,
+            material_description TEXT NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            selected_materials TEXT,
+            computers_needed INTEGER DEFAULT 0,
+            notes TEXT,
+            prepared BOOLEAN DEFAULT FALSE,
+            modified BOOLEAN DEFAULT FALSE,
+            group_count INTEGER DEFAULT 1,
+            material_prof TEXT,
+            request_name TEXT,
+            room_type TEXT DEFAULT 'Mixte',
+            image_url TEXT,
+            exam BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+        )
+    ''')
     
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN computers_needed INTEGER DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Ajout des colonnes manquantes si elles n'existent pas (pour migration)
+    columns_to_add = [
+        ('horaire', 'TEXT'),
+        ('selected_materials', 'TEXT'),
+        ('computers_needed', 'INTEGER DEFAULT 0'),
+        ('prepared', 'BOOLEAN DEFAULT FALSE'),
+        ('modified', 'BOOLEAN DEFAULT FALSE'),
+        ('room_type', 'TEXT DEFAULT "Mixte"'),
+        ('exam', 'BOOLEAN DEFAULT FALSE'),
+        ('group_count', 'INTEGER DEFAULT 1'),
+        ('material_prof', 'TEXT'),
+        ('request_name', 'TEXT'),
+        ('image_url', 'TEXT')
+    ]
     
-    # Add status columns for prepared and modified states
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN prepared BOOLEAN DEFAULT FALSE')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    for column_name, column_type in columns_to_add:
+        try:
+            cursor.execute(f'ALTER TABLE material_requests ADD COLUMN {column_name} {column_type}')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN modified BOOLEAN DEFAULT FALSE')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add room type column with default value "Mixte"
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN room_type TEXT DEFAULT "Mixte"')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add exam column to track exam mode
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN exam BOOLEAN DEFAULT FALSE')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add group_count column
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN group_count INTEGER DEFAULT 1')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add material_prof column for teacher materials
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN material_prof TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add request_name column for named requests
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN request_name TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    # Add image_url column for Google Drive images
-    try:
-        cursor.execute('ALTER TABLE material_requests ADD COLUMN image_url TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
     
     # Create rooms table for planning
     cursor.execute('''
@@ -281,7 +113,53 @@ def init_database():
         )
     ''')
     
-    # Insert sample rooms if table is empty
+    # Create working days configuration table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS working_days_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATE NOT NULL UNIQUE,
+            is_working_day BOOLEAN NOT NULL DEFAULT 1,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Create C21 availability table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS c21_availability (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            jour TEXT NOT NULL,
+            heure_debut TEXT NOT NULL,
+            heure_fin TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(jour, heure_debut, heure_fin)
+        )
+    ''')
+
+    # Create pending modifications table for tracking changes before validation
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pending_modifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            field_name TEXT NOT NULL,
+            original_value TEXT,
+            new_value TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            modified_by TEXT,
+            FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Add a new table for storing planning data
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS plannings (
+            date TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+    ''')
+    
+    # Insert sample data if tables are empty
     cursor.execute('SELECT COUNT(*) FROM rooms')
     if cursor.fetchone()[0] == 0:
         sample_rooms = [
@@ -299,15 +177,11 @@ def init_database():
             ('C21', 'mixte', 0, 40, 0, 0, 0, 0, 0, 0, 0, 1),
         ]
         
-        # Utilise les bons placeholders selon la base de données
-        placeholder = '%s' if db_type == 'postgresql' else '?'
-        placeholders = ', '.join([placeholder] * 12)
-        
-        cursor.executemany(f'''
+        cursor.executemany('''
             INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
                              bancs_optiques, oscilloscopes, becs_electriques, 
                              support_filtration, imprimante, examen) 
-            VALUES ({placeholders})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', sample_rooms)
     
     # Insert sample student numbers if table is empty
@@ -326,10 +200,9 @@ def init_database():
             ('Richard', 29, '2nde'),
             ('Vila', 30, '2nde'),
         ]
-        student_placeholders = ', '.join([placeholder] * 3)
-        cursor.executemany(f'''
+        cursor.executemany('''
             INSERT INTO student_numbers (teacher_name, student_count, level) 
-            VALUES ({student_placeholders})
+            VALUES (?, ?, ?)
         ''', sample_students)
     
     # Insert sample teachers if table is empty
@@ -355,100 +228,16 @@ def init_database():
             ('Vernudachi',),
             ('Vila Gisbert',),
         ]
-        cursor.executemany(f'INSERT INTO teachers (name) VALUES ({placeholder})', sample_teachers)
-
-    # Create working days configuration table
-    if db_type == 'postgresql':
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS working_days_config (
-                id SERIAL PRIMARY KEY,
-                date DATE NOT NULL UNIQUE,
-                is_working_day BOOLEAN NOT NULL DEFAULT TRUE,
-                description VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-    else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS working_days_config (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL UNIQUE,
-                is_working_day BOOLEAN NOT NULL DEFAULT 1,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
-    # Create C21 availability table
-    if db_type == 'postgresql':
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS c21_availability (
-                id SERIAL PRIMARY KEY,
-                jour VARCHAR(10) NOT NULL,
-                heure_debut TIME NOT NULL,
-                heure_fin TIME NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(jour, heure_debut, heure_fin)
-            )
-        ''')
-    else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS c21_availability (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                jour TEXT NOT NULL,
-                heure_debut TEXT NOT NULL,
-                heure_fin TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(jour, heure_debut, heure_fin)
-            )
-        ''')
-
-    # Create pending modifications table for tracking changes before validation
-    if db_type == 'postgresql':
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS pending_modifications (
-                id SERIAL PRIMARY KEY,
-                request_id INTEGER NOT NULL,
-                field_name VARCHAR(50) NOT NULL,
-                original_value TEXT,
-                new_value TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                modified_by VARCHAR(100),
-                FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
-            )
-        ''')
-    else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS pending_modifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER NOT NULL,
-                field_name TEXT NOT NULL,
-                original_value TEXT,
-                new_value TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                modified_by TEXT,
-                FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
-            )
-        ''')
-    
-    # Add a new table for storing planning data
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS plannings (
-            date TEXT PRIMARY KEY,
-            data TEXT NOT NULL
-        );
-    ''')
+        cursor.executemany('INSERT INTO teachers (name) VALUES (?)', sample_teachers)
     
     conn.commit()
     conn.close()
 
-# Ancienne fonction supprimée - remplacée par la nouvelle get_db_connection() qui supporte PostgreSQL
+# Fonctions de base de données SQLite
 
 def get_all_teachers():
     """Get all teachers from the database"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM teachers ORDER BY name')
     teachers = cursor.fetchall()
@@ -459,17 +248,14 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                         notes='', exam=False, group_count=1, material_prof='', request_name='', image_url=''):
     """Add a new material request"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    placeholders = ', '.join([placeholder] * 14)
-    
-    cursor.execute(f'''
+    cursor.execute('''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url)
-        VALUES ({placeholders})
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url))
     conn.commit()
@@ -479,10 +265,8 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
 
 def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     """Get material requests with optional filters"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
     
     query = '''
         SELECT mr.*, t.name as teacher_name
@@ -493,15 +277,15 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     params = []
     
     if start_date:
-        query += f' AND mr.request_date >= {placeholder}'
+        query += ' AND mr.request_date >= ?'
         params.append(start_date)
     
     if end_date:
-        query += f' AND mr.request_date <= {placeholder}'
+        query += ' AND mr.request_date <= ?'
         params.append(end_date)
     
     if teacher_id:
-        query += f' AND mr.teacher_id = {placeholder}'
+        query += ' AND mr.teacher_id = ?'
         params.append(teacher_id)
     
     query += ' ORDER BY mr.request_date, mr.created_at'
@@ -513,7 +297,7 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
 
 def get_requests_for_calendar():
     """Get all requests formatted for calendar display"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT mr.id, mr.request_date, mr.class_name, mr.material_description, 
@@ -528,16 +312,14 @@ def get_requests_for_calendar():
 
 def get_material_request_by_id(request_id):
     """Get a specific material request by ID"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    
-    cursor.execute(f'''
+    cursor.execute('''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
-        WHERE mr.id = {placeholder}
+        WHERE mr.id = ?
     ''', (request_id,))
     request = cursor.fetchone()
     conn.close()
@@ -547,21 +329,16 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
                            horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                            notes='', group_count=1, material_prof='', request_name=''):
     """Update an existing material request and mark it as modified"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    placeholders = ', '.join([placeholder] * 12)
-    false_val = 'FALSE' if db_type == 'postgresql' else '0'
-    true_val = 'TRUE' if db_type == 'postgresql' else '1'
-    
-    cursor.execute(f'''
+    cursor.execute('''
         UPDATE material_requests 
-        SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
-            class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
-            selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
-            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared={false_val}, modified={true_val}
-        WHERE id={placeholder}
+        SET teacher_id=?, request_date=?, horaire=?, 
+            class_name=?, material_description=?, quantity=?, 
+            selected_materials=?, computers_needed=?, notes=?, 
+            group_count=?, material_prof=?, request_name=?, prepared=0, modified=1
+        WHERE id=?
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, group_count, material_prof, request_name, request_id))
     conn.commit()
@@ -570,15 +347,11 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
 
 def toggle_prepared_status(request_id):
     """Toggle the prepared status of a request"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    true_val = 'TRUE' if db_type == 'postgresql' else '1'
-    false_val = 'FALSE' if db_type == 'postgresql' else '0'
-    
     # Get current status
-    cursor.execute(f'SELECT prepared FROM material_requests WHERE id = {placeholder}', (request_id,))
+    cursor.execute('SELECT prepared FROM material_requests WHERE id = ?', (request_id,))
     current = cursor.fetchone()
     if not current:
         conn.close()
@@ -588,9 +361,9 @@ def toggle_prepared_status(request_id):
     # When marking as prepared, remove modified flag
     # When unmarking prepared, keep modified flag as is
     if new_prepared:
-        cursor.execute(f'UPDATE material_requests SET prepared={true_val}, modified={false_val} WHERE id={placeholder}', (request_id,))
+        cursor.execute('UPDATE material_requests SET prepared=1, modified=0 WHERE id=?', (request_id,))
     else:
-        cursor.execute(f'UPDATE material_requests SET prepared={false_val} WHERE id={placeholder}', (request_id,))
+        cursor.execute('UPDATE material_requests SET prepared=0 WHERE id=?', (request_id,))
     
     conn.commit()
     conn.close()
@@ -598,11 +371,10 @@ def toggle_prepared_status(request_id):
 
 def delete_material_request(request_id):
     """Delete a material request"""
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    cursor.execute(f'DELETE FROM material_requests WHERE id = {placeholder}', (request_id,))
+    cursor.execute('DELETE FROM material_requests WHERE id = ?', (request_id,))
     conn.commit()
     deleted = cursor.rowcount > 0
     conn.close()
@@ -613,7 +385,7 @@ def get_grouped_requests_by_name(teacher_id, request_name):
     if not request_name or not request_name.strip():
         return []
         
-    conn, db_type = get_db_connection()
+    conn, _ = get_db_connection()
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
