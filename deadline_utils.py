@@ -160,6 +160,11 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     if current_datetime is None:
         current_datetime = datetime.now()
     
+    # Utilise UTC pour le calcul du délai (important pour Railway)
+    import sys
+    if current_datetime is None:
+        current_datetime = datetime.utcnow()
+
     # Essayer d'abord le format ISO (anglais), puis le format français
     try:
         request_date = datetime.strptime(request_date_str, '%Y-%m-%d')
@@ -169,6 +174,7 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
             logger.warning(f"Date reçue au format français: {request_date_str} → {request_date.strftime('%Y-%m-%d')}")
         except ValueError as e2:
             logger.error(f"Erreur parsing date (formats attendus YYYY-MM-DD ou DD-MM-YYYY): {request_date_str} | {e2}")
+            print(f"[DEBUG deadline_utils] Erreur parsing date: {request_date_str} | {e2}", file=sys.stderr)
             return {
                 'valid': False,
                 'working_days': 0,
@@ -178,8 +184,14 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
 
     request_datetime = request_date.replace(hour=8, minute=0, second=0)
 
+    # Log de diagnostic détaillé
+    print(f"[DEBUG deadline_utils] Calcul délai: now(UTC)={current_datetime.isoformat()} | demande={request_date_str} → {request_datetime.isoformat()}", file=sys.stderr)
+
     # Compter les jours ouvrés entre maintenant et la date du cours
     working_days = count_working_days_between(current_datetime, request_datetime)
+
+    # Log du nombre de jours ouvrés
+    print(f"[DEBUG deadline_utils] Jours ouvrés calculés: {working_days}", file=sys.stderr)
 
     # Vérifier si on a au moins 2 jours ouvrés complets
     is_valid = working_days >= 2
@@ -190,6 +202,9 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     else:
         missing = 2 - working_days
         message = f"❌ Délai insuffisant - manque {missing} jour(s) ouvré(s)"
+
+    # Log du résultat final
+    print(f"[DEBUG deadline_utils] Résultat: valid={is_valid} | message={message}", file=sys.stderr)
 
     return {
         'valid': is_valid,
