@@ -137,11 +137,12 @@ def init_database():
     ''')
     
     # Create working days configuration table
+    default_working_day = 'TRUE' if db_type == 'postgresql' else '1'
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS working_days_config (
             id {auto_increment},
             date DATE NOT NULL UNIQUE,
-            is_working_day BOOLEAN NOT NULL DEFAULT 1,
+            is_working_day BOOLEAN NOT NULL DEFAULT {default_working_day},
             description {text_type},
             created_at {timestamp_default},
             updated_at {timestamp_default}
