@@ -1,4 +1,6 @@
 import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 import logging
 from datetime import datetime
@@ -6,16 +8,27 @@ from datetime import datetime
 # Configuration des logs
 logger = logging.getLogger(__name__)
 
-# Base de données SQLite dans un sous-dossier du dossier Google Drive
+# Base de données SQLite dans un sous-dossier du dossier Google Drive (fallback local)
 DATABASE_PATH = os.path.join('imagesDemandesMateriel', 'base', 'material_requests.db')
 
 def get_db_connection():
-    """Get database connection - SQLite dans le dossier Google Drive"""
+    """Get database connection - PostgreSQL en priorité, SQLite en fallback"""
     
-    # S'assurer que le dossier existe
+    # Essayer PostgreSQL d'abord
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        try:
+            logger.info("Tentative de connexion PostgreSQL")
+            conn = psycopg2.connect(database_url)
+            conn.autocommit = True
+            logger.info("Connexion PostgreSQL réussie")
+            return conn, 'postgresql'
+        except Exception as e:
+            logger.warning(f"Échec PostgreSQL: {e}")
+    
+    # Fallback vers SQLite dans Google Drive
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-    
-    logger.info(f"Utilisation de SQLite: {DATABASE_PATH}")
+    logger.info(f"Fallback vers SQLite: {DATABASE_PATH}")
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn, 'sqlite'
@@ -385,7 +398,7 @@ def get_grouped_requests_by_name(teacher_id, request_name):
     if not request_name or not request_name.strip():
         return []
         
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
