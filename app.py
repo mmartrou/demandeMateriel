@@ -2,8 +2,12 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, m
 import csv
 import io
 import logging
+import os
 from datetime import datetime, timedelta
 import openpyxl
+# Charger les variables d'environnement depuis .env
+from dotenv import load_dotenv
+load_dotenv()
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from database import (init_database, get_all_teachers, add_material_request, get_material_requests, 
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
