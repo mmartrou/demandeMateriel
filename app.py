@@ -173,30 +173,39 @@ def api_get_requests():
     teacher_id = request.args.get('teacher_id')
     
     requests = get_material_requests(start_date, end_date, teacher_id)
-    
-    # Convert to list of dictionaries for JSON serialization
+    # Compatibilité PostgreSQL/SQLite : transformer en liste de dicts
     requests_list = []
     for req in requests:
-            requests_list.append({
-                'id': req['id'],
-                'teacher_id': req['teacher_id'],
-                'teacher_name': req['teacher_name'],
-                'request_date': req['request_date'],
-                'horaire': req['horaire'],
-                'class_name': req['class_name'],
-                'material_description': req['material_description'],
-                'quantity': req['quantity'],
-                'selected_materials': req['selected_materials'] if req['selected_materials'] else '',
-                'computers_needed': req['computers_needed'] if req['computers_needed'] else 0,
-                'notes': req['notes'],
-                'prepared': req['prepared'] if req['prepared'] else False,
-                'modified': req['modified'] if req['modified'] else False,
-                'room_type': req['room_type'] if req['room_type'] else 'Mixte',
-                'request_name': req['request_name'] if req['request_name'] else '',
-                'created_at': req['created_at'],
-                'image_url': req['image_url'] if 'image_url' in req.keys() else None
-            })
-    
+        if isinstance(req, dict):
+            r = req
+        elif hasattr(req, '_fields'):  # namedtuple (rare)
+            r = req._asdict()
+        else:
+            # tuple (PostgreSQL sans row_factory)
+            # Ordre des colonnes : voir la requête SELECT
+            r = {
+                'id': req[0],
+                'teacher_id': req[1],
+                'request_date': req[2],
+                'horaire': req[3],
+                'class_name': req[4],
+                'material_description': req[5],
+                'quantity': req[6],
+                'selected_materials': req[7] if req[7] else '',
+                'computers_needed': req[8] if req[8] else 0,
+                'notes': req[9],
+                'prepared': req[10] if req[10] else False,
+                'modified': req[11] if req[11] else False,
+                'group_count': req[12] if len(req) > 12 else 1,
+                'material_prof': req[13] if len(req) > 13 else '',
+                'request_name': req[14] if len(req) > 14 else '',
+                'room_type': req[15] if len(req) > 15 and req[15] else 'Mixte',
+                'image_url': req[16] if len(req) > 16 else None,
+                'exam': req[17] if len(req) > 17 else False,
+                'created_at': req[18] if len(req) > 18 else None,
+                'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
+            }
+        requests_list.append(r)
     return jsonify(requests_list)
 
 @app.route('/api/calendar-events', methods=['GET'])
