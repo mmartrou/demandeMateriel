@@ -293,9 +293,10 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
 
 def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     """Get material requests with optional filters"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
+    placeholder = '%s' if db_type == 'postgresql' else '?'
     query = '''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
@@ -305,15 +306,15 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     params = []
     
     if start_date:
-        query += ' AND mr.request_date >= ?'
+        query += f' AND mr.request_date >= {placeholder}'
         params.append(start_date)
     
     if end_date:
-        query += ' AND mr.request_date <= ?'
+        query += f' AND mr.request_date <= {placeholder}'
         params.append(end_date)
     
     if teacher_id:
-        query += ' AND mr.teacher_id = ?'
+        query += f' AND mr.teacher_id = {placeholder}'
         params.append(teacher_id)
     
     query += ' ORDER BY mr.request_date, mr.created_at'
@@ -340,14 +341,15 @@ def get_requests_for_calendar():
 
 def get_material_request_by_id(request_id):
     """Get a specific material request by ID"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'''
         SELECT mr.*, t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
-        WHERE mr.id = ?
+        WHERE mr.id = {placeholder}
     ''', (request_id,))
     request = cursor.fetchone()
     conn.close()
@@ -376,11 +378,12 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
 
 def toggle_prepared_status(request_id):
     """Toggle the prepared status of a request"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
+    placeholder = '%s' if db_type == 'postgresql' else '?'
     # Get current status
-    cursor.execute('SELECT prepared FROM material_requests WHERE id = ?', (request_id,))
+    cursor.execute(f'SELECT prepared FROM material_requests WHERE id = {placeholder}', (request_id,))
     current = cursor.fetchone()
     if not current:
         conn.close()
@@ -390,9 +393,9 @@ def toggle_prepared_status(request_id):
     # When marking as prepared, remove modified flag
     # When unmarking prepared, keep modified flag as is
     if new_prepared:
-        cursor.execute('UPDATE material_requests SET prepared=1, modified=0 WHERE id=?', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared=1, modified=0 WHERE id={placeholder}', (request_id,))
     else:
-        cursor.execute('UPDATE material_requests SET prepared=0 WHERE id=?', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared=0 WHERE id={placeholder}', (request_id,))
     
     conn.commit()
     conn.close()
@@ -400,10 +403,11 @@ def toggle_prepared_status(request_id):
 
 def delete_material_request(request_id):
     """Delete a material request"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('DELETE FROM material_requests WHERE id = ?', (request_id,))
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM material_requests WHERE id = {placeholder}', (request_id,))
     conn.commit()
     deleted = cursor.rowcount > 0
     conn.close()

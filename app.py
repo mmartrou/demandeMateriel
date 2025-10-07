@@ -1093,7 +1093,7 @@ def save_planning():
         planning_data = data['data']
 
         # Connexion à la base de données
-        conn, _ = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
+        conn, db_type = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
         cursor = conn.cursor()
 
         # Insertion ou mise à jour des données
@@ -1101,14 +1101,18 @@ def save_planning():
         planning_data_json = json.dumps(planning_data)  # Convertir le dictionnaire en JSON
 
         # Insertion ou mise à jour des données
-        cursor.execute(
-            """
-            INSERT INTO plannings (date, data)
-            VALUES (?, ?)
-            ON CONFLICT(date) DO UPDATE SET data=excluded.data
-            """,
-            (date, planning_data_json)
-        )
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        if db_type == 'postgresql':
+            cursor.execute(f'''
+                INSERT INTO plannings (date, data)
+                VALUES ({placeholder}, {placeholder})
+                ON CONFLICT(date) DO UPDATE SET data=EXCLUDED.data
+            ''', (date, planning_data_json))
+        else:
+            cursor.execute(f'''
+                INSERT OR REPLACE INTO plannings (date, data)
+                VALUES ({placeholder}, {placeholder})
+            ''', (date, planning_data_json))
         conn.commit()
         conn.close()
 
@@ -1131,11 +1135,12 @@ def get_planning():
             return jsonify({'error': 'La date est requise'}), 400
 
         # Connexion à la base de données
-        conn, _ = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
+        conn, db_type = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
         cursor = conn.cursor()
 
         # Récupérer les données du planning
-        cursor.execute("SELECT data FROM plannings WHERE date = ?", (date,))
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f"SELECT data FROM plannings WHERE date = {placeholder}", (date,))
         row = cursor.fetchone()
         conn.close()
 
