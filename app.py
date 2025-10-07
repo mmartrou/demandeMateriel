@@ -475,6 +475,11 @@ def api_get_request_by_id(request_id):
             'created_at': request_data[18] if len(request_data) > 18 else None,
             'teacher_name': request_data[-1]  # dernière colonne
         }
+
+    # Calcul du délai (jours ouvrés)
+    from deadline_utils import is_request_deadline_respected
+    deadline_info = is_request_deadline_respected(r['request_date'])
+    r['deadline'] = deadline_info
     return jsonify(r)
 
 @app.route('/api/requests/<int:request_id>', methods=['PUT'])
