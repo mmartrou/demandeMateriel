@@ -277,6 +277,7 @@ def get_all_teachers():
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM teachers ORDER BY name')
     teachers = cursor.fetchall()
+    print("DEBUG teachers:", teachers)
     conn.close()
     return teachers
 
