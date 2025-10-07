@@ -160,39 +160,43 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     if current_datetime is None:
         current_datetime = datetime.now()
     
+    # Essayer d'abord le format ISO (anglais), puis le format français
     try:
-        # Parser la date de demande (cours à 8h00)
         request_date = datetime.strptime(request_date_str, '%Y-%m-%d')
-        request_datetime = request_date.replace(hour=8, minute=0, second=0)
-        
-        # Compter les jours ouvrés entre maintenant et la date du cours
-        working_days = count_working_days_between(current_datetime, request_datetime)
-        
-        # Vérifier si on a au moins 2 jours ouvrés complets
-        is_valid = working_days >= 2
-        
-        # Message informatif
-        if is_valid:
-            message = f"✅ Demande acceptée - {working_days} jour(s) ouvré(s) d'avance"
-        else:
-            missing = 2 - working_days
-            message = f"❌ Délai insuffisant - manque {missing} jour(s) ouvré(s)"
-        
-        return {
-            'valid': is_valid,
-            'working_days': working_days,
-            'message': message,
-            'request_datetime': request_datetime
-        }
-        
-    except ValueError as e:
-        logger.error(f"Erreur parsing date: {e}")
-        return {
-            'valid': False,
-            'working_days': 0,
-            'message': f"❌ Format de date invalide: {request_date_str}",
-            'request_datetime': None
-        }
+    except ValueError:
+        try:
+            request_date = datetime.strptime(request_date_str, '%d-%m-%Y')
+            logger.warning(f"Date reçue au format français: {request_date_str} → {request_date.strftime('%Y-%m-%d')}")
+        except ValueError as e2:
+            logger.error(f"Erreur parsing date (formats attendus YYYY-MM-DD ou DD-MM-YYYY): {request_date_str} | {e2}")
+            return {
+                'valid': False,
+                'working_days': 0,
+                'message': f"❌ Format de date invalide: {request_date_str}",
+                'request_datetime': None
+            }
+
+    request_datetime = request_date.replace(hour=8, minute=0, second=0)
+
+    # Compter les jours ouvrés entre maintenant et la date du cours
+    working_days = count_working_days_between(current_datetime, request_datetime)
+
+    # Vérifier si on a au moins 2 jours ouvrés complets
+    is_valid = working_days >= 2
+
+    # Message informatif
+    if is_valid:
+        message = f"✅ Demande acceptée - {working_days} jour(s) ouvré(s) d'avance"
+    else:
+        missing = 2 - working_days
+        message = f"❌ Délai insuffisant - manque {missing} jour(s) ouvré(s)"
+
+    return {
+        'valid': is_valid,
+        'working_days': working_days,
+        'message': message,
+        'request_datetime': request_datetime
+    }
 
 def get_earliest_valid_date(current_datetime=None):
     """
