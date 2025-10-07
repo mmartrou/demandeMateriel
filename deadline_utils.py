@@ -166,26 +166,33 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
         current_datetime = datetime.utcnow()
 
 
-    # Essayer plusieurs formats de date
-    parsed = False
-    for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%a, %d %b %Y %H:%M:%S GMT'):
-        try:
-            request_date = datetime.strptime(request_date_str, fmt)
-            if fmt == '%d-%m-%Y':
-                logger.warning(f"Date reçue au format français: {request_date_str} → {request_date.strftime('%Y-%m-%d')}")
-            parsed = True
-            break
-        except ValueError:
-            continue
-    if not parsed:
-        logger.error(f"Erreur parsing date (formats attendus YYYY-MM-DD, DD-MM-YYYY ou RFC1123): {request_date_str}")
-        print(f"[DEBUG deadline_utils] Erreur parsing date: {request_date_str}", file=sys.stderr)
-        return {
-            'valid': False,
-            'working_days': 0,
-            'message': f"❌ Format de date invalide: {request_date_str}",
-            'request_datetime': None
-        }
+    # Si déjà un objet date ou datetime, utiliser directement
+    from datetime import date, datetime as dt
+    if isinstance(request_date_str, dt):
+        request_date = request_date_str
+    elif isinstance(request_date_str, date):
+        request_date = dt.combine(request_date_str, dt.min.time())
+    else:
+        # Essayer plusieurs formats de date
+        parsed = False
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%a, %d %b %Y %H:%M:%S GMT'):
+            try:
+                request_date = dt.strptime(request_date_str, fmt)
+                if fmt == '%d-%m-%Y':
+                    logger.warning(f"Date reçue au format français: {request_date_str} → {request_date.strftime('%Y-%m-%d')}")
+                parsed = True
+                break
+            except ValueError:
+                continue
+        if not parsed:
+            logger.error(f"Erreur parsing date (formats attendus YYYY-MM-DD, DD-MM-YYYY ou RFC1123): {request_date_str}")
+            print(f"[DEBUG deadline_utils] Erreur parsing date: {request_date_str}", file=sys.stderr)
+            return {
+                'valid': False,
+                'working_days': 0,
+                'message': f"❌ Format de date invalide: {request_date_str}",
+                'request_datetime': None
+            }
 
     request_datetime = request_date.replace(hour=8, minute=0, second=0)
 
