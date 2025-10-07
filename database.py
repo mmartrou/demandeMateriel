@@ -273,10 +273,19 @@ def init_database():
 
 def get_all_teachers():
     """Get all teachers from the database"""
-    conn, _ = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM teachers ORDER BY name')
-    teachers = cursor.fetchall()
+    conn, db_type = get_db_connection()
+    if db_type == 'postgresql':
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name FROM teachers ORDER BY name')
+        rows = cursor.fetchall()
+        # rows is a list of tuples (id, name)
+        teachers = [{'id': row[0], 'name': row[1]} for row in rows]
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name FROM teachers ORDER BY name')
+        rows = cursor.fetchall()
+        # rows is a list of sqlite3.Row or tuples
+        teachers = [{'id': row['id'], 'name': row['name']} if isinstance(row, sqlite3.Row) else {'id': row[0], 'name': row[1]} for row in rows]
     print("DEBUG teachers:", teachers)
     conn.close()
     return teachers
