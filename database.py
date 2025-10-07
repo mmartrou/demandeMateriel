@@ -225,9 +225,10 @@ def init_database():
             ('Richard', 29, '2nde'),
             ('Vila', 30, '2nde'),
         ]
-        cursor.executemany('''
+        student_placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 3)
+        cursor.executemany(f'''
             INSERT INTO student_numbers (teacher_name, student_count, level) 
-            VALUES (?, ?, ?)
+            VALUES ({student_placeholders})
         ''', sample_students)
     
     # Insert sample teachers if table is empty
@@ -274,14 +275,15 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                         notes='', exam=False, group_count=1, material_prof='', request_name='', image_url=''):
     """Add a new material request"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
+    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 14)
+    cursor.execute(f'''
         INSERT INTO material_requests 
         (teacher_id, request_date, horaire, class_name, material_description, quantity, 
          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url))
     conn.commit()
@@ -355,16 +357,17 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
                            horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                            notes='', group_count=1, material_prof='', request_name=''):
     """Update an existing material request and mark it as modified"""
-    conn, _ = get_db_connection()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'''
         UPDATE material_requests 
-        SET teacher_id=?, request_date=?, horaire=?, 
-            class_name=?, material_description=?, quantity=?, 
-            selected_materials=?, computers_needed=?, notes=?, 
-            group_count=?, material_prof=?, request_name=?, prepared=0, modified=1
-        WHERE id=?
+        SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
+            class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
+            selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
+            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared=0, modified=1
+        WHERE id={placeholder}
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, group_count, material_prof, request_name, request_id))
     conn.commit()
