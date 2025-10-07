@@ -217,14 +217,45 @@ def api_calendar_events():
     
     # Get all requests with optional teacher filter
     requests = get_material_requests(teacher_id=teacher_id)
-    
+
+    # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
+    def to_dict(req):
+        if isinstance(req, dict):
+            return req
+        elif hasattr(req, '_fields'):
+            return req._asdict()
+        else:
+            return {
+                'id': req[0],
+                'teacher_id': req[1],
+                'request_date': req[2],
+                'horaire': req[3],
+                'class_name': req[4],
+                'material_description': req[5],
+                'quantity': req[6],
+                'selected_materials': req[7] if req[7] else '',
+                'computers_needed': req[8] if req[8] else 0,
+                'notes': req[9],
+                'prepared': req[10] if req[10] else False,
+                'modified': req[11] if req[11] else False,
+                'group_count': req[12] if len(req) > 12 else 1,
+                'material_prof': req[13] if len(req) > 13 else '',
+                'request_name': req[14] if len(req) > 14 else '',
+                'room_type': req[15] if len(req) > 15 and req[15] else 'Mixte',
+                'image_url': req[16] if len(req) > 16 else None,
+                'exam': req[17] if len(req) > 17 else False,
+                'created_at': req[18] if len(req) > 18 else None,
+                'teacher_name': req[-1]
+            }
+
+    requests = [to_dict(req) for req in requests]
+
     # Filter by status if needed
     if status_filter:
         filtered_requests = []
         for req in requests:
             prepared = req.get('prepared', False)
             modified = req.get('modified', False)
-            
             if status_filter == 'prepared' and prepared:
                 filtered_requests.append(req)
             elif status_filter == 'not-prepared' and not prepared:
@@ -232,14 +263,13 @@ def api_calendar_events():
             elif status_filter == 'modified' and modified:
                 filtered_requests.append(req)
         requests = filtered_requests
-    
+
     # Filter by type if needed
     if type_filter:
         filtered_requests = []
         for req in requests:
             selected_materials = req.get('selected_materials', '')
             material_description = req.get('material_description', '')
-            
             if type_filter == 'absent' and selected_materials == 'Absent':
                 filtered_requests.append(req)
             elif type_filter == 'no-material' and selected_materials == 'Pas besoin de matériel':
@@ -247,12 +277,12 @@ def api_calendar_events():
             elif type_filter == 'normal' and selected_materials not in ['Absent', 'Pas besoin de matériel']:
                 filtered_requests.append(req)
         requests = filtered_requests
-    
+
     events = []
     for req in requests:
         # Choose color based on status and type
         bg_color = '#007bff'  # Default blue
-        
+
         if req['selected_materials'] == 'Absent':
             bg_color = '#dc3545'  # Red for absent
         elif req['selected_materials'] == 'Pas besoin de matériel':
@@ -261,7 +291,7 @@ def api_calendar_events():
             bg_color = '#28a745'  # Green for prepared
         elif req['modified']:
             bg_color = '#ffc107'  # Yellow for modified
-        
+
         events.append({
             'id': req['id'],
             'title': f"{req['teacher_name']} - {req['class_name']}",
@@ -271,7 +301,7 @@ def api_calendar_events():
             'borderColor': bg_color,
             'textColor': '#ffffff'
         })
-    
+
     return jsonify(events)
 
 @app.route('/api/requests', methods=['POST'])
