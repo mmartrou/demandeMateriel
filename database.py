@@ -201,11 +201,12 @@ def init_database():
             ('C21', 'mixte', 0, 40, 0, 0, 0, 0, 0, 0, 0, 1),
         ]
         
-        cursor.executemany('''
+        placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 12)
+        cursor.executemany(f'''
             INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
                              bancs_optiques, oscilloscopes, becs_electriques, 
                              support_filtration, imprimante, examen) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({placeholders})
         ''', sample_rooms)
     
     # Insert sample student numbers if table is empty
@@ -252,7 +253,8 @@ def init_database():
             ('Vernudachi',),
             ('Vila Gisbert',),
         ]
-        cursor.executemany('INSERT INTO teachers (name) VALUES (?)', sample_teachers)
+        teacher_placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.executemany(f'INSERT INTO teachers (name) VALUES ({teacher_placeholder})', sample_teachers)
     
     conn.commit()
     conn.close()
