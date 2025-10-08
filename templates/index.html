@@ -673,6 +673,35 @@ document.addEventListener('DOMContentLoaded', function() {
         uploadStatus.innerHTML = `<small class="${className}">${message}</small>`;
     }
 
+    // Variables globales pour la protection de navigation
+    let isUploading = false;
+
+    // Protéger contre la navigation pendant l'upload
+    window.addEventListener('beforeunload', function(e) {
+        if (isUploading) {
+            e.preventDefault();
+            e.returnValue = 'Un upload est en cours. Si vous quittez maintenant, l\'image ne sera pas sauvegardée.';
+            return e.returnValue;
+        }
+    });
+
+    // Désactiver/réactiver la navigation
+    function setNavigationLock(locked) {
+        isUploading = locked;
+        const navLinks = document.querySelectorAll('a.nav-link, .navbar-brand');
+        navLinks.forEach(link => {
+            if (locked) {
+                link.style.pointerEvents = 'none';
+                link.style.opacity = '0.5';
+                link.title = 'Upload en cours... Veuillez patienter';
+            } else {
+                link.style.pointerEvents = '';
+                link.style.opacity = '';
+                link.title = '';
+            }
+        });
+    }
+
     function showImagePreview(file) {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -783,9 +812,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('image', selectedFile);
 
+        // Activer la protection de navigation
+        setNavigationLock(true);
+        
         uploadImageBtn.disabled = true;
         uploadImageBtn.innerHTML = '⏳ Upload en cours...';
-        updateUploadStatus('📤 Upload vers Google Drive...', 'info');
+        updateUploadStatus('📤 Upload vers Google Drive... <strong>Ne quittez pas la page</strong>', 'info');
 
         fetch('/api/upload-image', {
             method: 'POST',
@@ -817,6 +849,9 @@ document.addEventListener('DOMContentLoaded', function() {
             updateUploadStatus('❌ Erreur de connexion', 'error');
         })
         .finally(() => {
+            // Désactiver la protection de navigation
+            setNavigationLock(false);
+            
             uploadImageBtn.disabled = false;
             uploadImageBtn.innerHTML = '⬆️ Uploader vers Drive';
         });
