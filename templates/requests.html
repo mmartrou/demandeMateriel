@@ -866,15 +866,26 @@ function canEditRequest(request) {
         }
         
         const now = new Date();
-        now.setHours(0, 0, 0, 0);
+        const currentHour = now.getHours();
         
-        let workingDaysCount = 0;
+        // Déterminer le point de départ pour le comptage
+        // Si avant 17h, on commence à compter dès demain
+        // Si après 17h, on considère le lendemain comme "perdu" et on commence après-demain
         let checkDate = new Date(now);
-        checkDate.setDate(checkDate.getDate() + 1); // Commencer par demain
         checkDate.setHours(0, 0, 0, 0);
+        
+        if (currentHour >= 17) {
+            // Après 17h : on compte à partir d'après-demain
+            checkDate.setDate(checkDate.getDate() + 2);
+        } else {
+            // Avant 17h : on compte à partir de demain
+            checkDate.setDate(checkDate.getDate() + 1);
+        }
         
         const requestDateOnly = new Date(requestDate);
         requestDateOnly.setHours(0, 0, 0, 0);
+        
+        let workingDaysCount = 0;
         
         while (checkDate < requestDateOnly) {
             const dayOfWeek = checkDate.getDay();
