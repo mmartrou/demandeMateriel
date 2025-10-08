@@ -1630,7 +1630,7 @@ function validateModifications() {
             
             // Mettre à jour l'objet de la demande pour refléter que modified = false
             const requestInList = window.allRequests.find(r => r.id === req.id);
-            if requestInList) {
+            if (requestInList) {
                 requestInList.modified = false;
             }
         });
