@@ -825,38 +825,58 @@ function getValidationButton(request) {
 }
 
 function canEditRequest(request) {
-    // Calculer si on a au moins 2 jours ouvrés avant la date de la demande
-    const requestDate = new Date(request.request_date + 'T00:00:00'); // Date du cours
-    const now = new Date();
-    now.setHours(0, 0, 0, 0); // Réinitialiser l'heure pour comparer uniquement les dates
-    
-    let workingDaysCount = 0;
-    let checkDate = new Date(now);
-    checkDate.setDate(checkDate.getDate() + 1); // Commencer par demain
-    checkDate.setHours(0, 0, 0, 0);
-    
-    const requestDateOnly = new Date(requestDate);
-    requestDateOnly.setHours(0, 0, 0, 0);
-    
-    console.log(`🔍 DEBUG canEditRequest pour demande #${request.id}:`);
-    console.log(`   - Date demande: ${request.request_date}`);
-    console.log(`   - requestDateOnly: ${requestDateOnly.toISOString()}`);
-    console.log(`   - now: ${now.toISOString()}`);
-    console.log(`   - checkDate (début): ${checkDate.toISOString()}`);
-    
-    while (checkDate < requestDateOnly) {
-        const dayOfWeek = checkDate.getDay();
-        console.log(`   - Checking ${checkDate.toISOString().split('T')[0]}, jour ${dayOfWeek}`);
-        // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
-        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-            workingDaysCount++;
-            console.log(`     ✅ Jour ouvré, count = ${workingDaysCount}`);
-        }
-        checkDate.setDate(checkDate.getDate() + 1);
+    // Vérifier que la date existe
+    if (!request.request_date) {
+        console.warn('⚠️ request_date manquante pour la demande #' + request.id);
+        return true; // Par défaut, autoriser l'édition si pas de date
     }
     
-    console.log(`   - Total jours ouvrés: ${workingDaysCount}, canEdit: ${workingDaysCount >= 2}`);
-    return workingDaysCount >= 2;
+    try {
+        // Normaliser le format de la date (gérer YYYY-MM-DD et DD/MM/YYYY)
+        let dateStr = request.request_date;
+        
+        // Si la date est au format DD/MM/YYYY, la convertir en YYYY-MM-DD
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+        
+        // Créer la date de la demande
+        const requestDate = new Date(dateStr + 'T00:00:00');
+        
+        // Vérifier que la date est valide
+        if (isNaN(requestDate.getTime())) {
+            console.error('❌ Date invalide:', request.request_date);
+            return true; // Par défaut, autoriser l'édition si date invalide
+        }
+        
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        
+        let workingDaysCount = 0;
+        let checkDate = new Date(now);
+        checkDate.setDate(checkDate.getDate() + 1); // Commencer par demain
+        checkDate.setHours(0, 0, 0, 0);
+        
+        const requestDateOnly = new Date(requestDate);
+        requestDateOnly.setHours(0, 0, 0, 0);
+        
+        while (checkDate < requestDateOnly) {
+            const dayOfWeek = checkDate.getDay();
+            // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                workingDaysCount++;
+            }
+            checkDate.setDate(checkDate.getDate() + 1);
+        }
+        
+        return workingDaysCount >= 2;
+    } catch (error) {
+        console.error('❌ Erreur dans canEditRequest:', error, 'pour request_date:', request.request_date);
+        return true; // Par défaut, autoriser l'édition en cas d'erreur
+    }
 }
 
 function showRequestInReadOnlyMode(request) {
