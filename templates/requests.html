@@ -834,23 +834,29 @@ function canEditRequest(request) {
     try {
         let requestDate;
         
-        // Si c'est déjà un objet Date ou une string GMT
-        if (request.request_date instanceof Date || typeof request.request_date === 'object') {
+        // Si c'est déjà un objet Date
+        if (request.request_date instanceof Date) {
             requestDate = new Date(request.request_date);
         } else {
-            // C'est une string, normaliser le format (gérer YYYY-MM-DD et DD/MM/YYYY)
+            // C'est une string
             let dateStr = request.request_date.toString();
             
+            // Si c'est une date GMT string (ex: "Tue, 14 Oct 2025 00:00:00 GMT")
+            if (dateStr.includes('GMT') || dateStr.includes(',')) {
+                requestDate = new Date(dateStr);
+            }
             // Si la date est au format DD/MM/YYYY, la convertir en YYYY-MM-DD
-            if (dateStr.includes('/')) {
+            else if (dateStr.includes('/')) {
                 const parts = dateStr.split('/');
                 if (parts.length === 3) {
                     dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
                 }
+                requestDate = new Date(dateStr + 'T00:00:00');
             }
-            
-            // Créer la date de la demande
-            requestDate = new Date(dateStr + 'T00:00:00');
+            // Sinon, c'est probablement YYYY-MM-DD
+            else {
+                requestDate = new Date(dateStr + 'T00:00:00');
+            }
         }
         
         // Vérifier que la date est valide
