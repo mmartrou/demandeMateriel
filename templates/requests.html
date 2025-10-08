@@ -386,6 +386,14 @@ function getCookie(name) {
     return null;
 }
 
+// Formate une date en yyyy-MM-dd
+function formatDateToYMD(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date)) return '';
+    return date.toISOString().slice(0, 10);
+}
+
 // Fonction pour comparer deux textes et générer un affichage avec les modifications
 function generateDiffDisplay(originalText, newText) {
     if (originalText === newText) {
@@ -900,7 +908,7 @@ function populateEditForm(request) {
     if (editRequestId) editRequestId.value = request.id;
     if (editTeacher) editTeacher.value = request.teacher_id;
     if (editRequestName) editRequestName.value = request.request_name || '';
-    if (editDate) editDate.value = request.request_date;
+    if (editDate) editDate.value = formatDateToYMD(request.request_date);
     if (editHoraire) editHoraire.value = request.horaire || '';
     if (editClassName) editClassName.value = request.class_name;
     if (editAbsent) editAbsent.checked = isAbsent;
@@ -1622,7 +1630,7 @@ function validateModifications() {
             
             // Mettre à jour l'objet de la demande pour refléter que modified = false
             const requestInList = window.allRequests.find(r => r.id === req.id);
-            if (requestInList) {
+            if requestInList) {
                 requestInList.modified = false;
             }
         });
@@ -1773,7 +1781,7 @@ function togglePrepared(requestId) {
         loadRequests();
         showSuccessToast('Statut mis à jour avec succès');
     })
-    .catch(error => {
+       .catch(error => {
         console.error('Error:', error);
         showErrorToast('Erreur lors de la mise à jour du statut');
     });
