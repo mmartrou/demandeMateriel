@@ -233,7 +233,31 @@ document.getElementById('planningDate').addEventListener('change', function() {
                 teacherHeader.textContent = teacherName;
                 teacherGroup.appendChild(teacherHeader);
                 
-                requestsByTeacher[teacherName].forEach(request => {
+                // Trier les demandes par horaire avant affichage
+                const sortedRequests = requestsByTeacher[teacherName].sort((a, b) => {
+                    const timeA = a.horaire || '';
+                    const timeB = b.horaire || '';
+                    
+                    // Si pas d'horaire, mettre à la fin
+                    if (!timeA && !timeB) return 0;
+                    if (!timeA) return 1;
+                    if (!timeB) return -1;
+                    
+                    // Convertir les horaires en minutes pour comparaison
+                    const parseTime = (time) => {
+                        const match = time.match(/(\d+)h(\d*)/);
+                        if (match) {
+                            const hours = parseInt(match[1]);
+                            const minutes = match[2] ? parseInt(match[2]) : 0;
+                            return hours * 60 + minutes;
+                        }
+                        return 0;
+                    };
+                    
+                    return parseTime(timeA) - parseTime(timeB);
+                });
+                
+                sortedRequests.forEach(request => {
                     const requestElement = createPlanningRequestElement(request);
                     teacherGroup.appendChild(requestElement);
                 });
