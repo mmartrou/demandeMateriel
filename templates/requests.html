@@ -832,19 +832,26 @@ function canEditRequest(request) {
     }
     
     try {
-        // Normaliser le format de la date (gérer YYYY-MM-DD et DD/MM/YYYY)
-        let dateStr = request.request_date;
+        let requestDate;
         
-        // Si la date est au format DD/MM/YYYY, la convertir en YYYY-MM-DD
-        if (dateStr.includes('/')) {
-            const parts = dateStr.split('/');
-            if (parts.length === 3) {
-                dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        // Si c'est déjà un objet Date ou une string GMT
+        if (request.request_date instanceof Date || typeof request.request_date === 'object') {
+            requestDate = new Date(request.request_date);
+        } else {
+            // C'est une string, normaliser le format (gérer YYYY-MM-DD et DD/MM/YYYY)
+            let dateStr = request.request_date.toString();
+            
+            // Si la date est au format DD/MM/YYYY, la convertir en YYYY-MM-DD
+            if (dateStr.includes('/')) {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
             }
+            
+            // Créer la date de la demande
+            requestDate = new Date(dateStr + 'T00:00:00');
         }
-        
-        // Créer la date de la demande
-        const requestDate = new Date(dateStr + 'T00:00:00');
         
         // Vérifier que la date est valide
         if (isNaN(requestDate.getTime())) {
