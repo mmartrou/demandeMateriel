@@ -826,14 +826,19 @@ function getValidationButton(request) {
 
 function canEditRequest(request) {
     // Calculer si on a au moins 2 jours ouvrés avant la date de la demande
-    const requestDate = new Date(request.request_date + 'T08:00:00'); // Cours à 8h
+    const requestDate = new Date(request.request_date + 'T00:00:00'); // Date du cours
     const now = new Date();
+    now.setHours(0, 0, 0, 0); // Réinitialiser l'heure pour comparer uniquement les dates
     
     let workingDaysCount = 0;
     let checkDate = new Date(now);
-    checkDate.setDate(now.getDate() + 1); // Commencer par demain
+    checkDate.setDate(checkDate.getDate() + 1); // Commencer par demain
+    checkDate.setHours(0, 0, 0, 0);
     
-    while (checkDate < requestDate) {
+    const requestDateOnly = new Date(requestDate);
+    requestDateOnly.setHours(0, 0, 0, 0);
+    
+    while (checkDate < requestDateOnly) {
         const dayOfWeek = checkDate.getDay();
         // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
         if (dayOfWeek >= 1 && dayOfWeek <= 5) {
