@@ -838,15 +838,24 @@ function canEditRequest(request) {
     const requestDateOnly = new Date(requestDate);
     requestDateOnly.setHours(0, 0, 0, 0);
     
+    console.log(`🔍 DEBUG canEditRequest pour demande #${request.id}:`);
+    console.log(`   - Date demande: ${request.request_date}`);
+    console.log(`   - requestDateOnly: ${requestDateOnly.toISOString()}`);
+    console.log(`   - now: ${now.toISOString()}`);
+    console.log(`   - checkDate (début): ${checkDate.toISOString()}`);
+    
     while (checkDate < requestDateOnly) {
         const dayOfWeek = checkDate.getDay();
+        console.log(`   - Checking ${checkDate.toISOString().split('T')[0]}, jour ${dayOfWeek}`);
         // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
         if (dayOfWeek >= 1 && dayOfWeek <= 5) {
             workingDaysCount++;
+            console.log(`     ✅ Jour ouvré, count = ${workingDaysCount}`);
         }
         checkDate.setDate(checkDate.getDate() + 1);
     }
     
+    console.log(`   - Total jours ouvrés: ${workingDaysCount}, canEdit: ${workingDaysCount >= 2}`);
     return workingDaysCount >= 2;
 }
 
