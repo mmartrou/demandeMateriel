@@ -1113,7 +1113,14 @@ function editRequest(requestId) {
             
             // Utiliser la fonction centralisée pour remplir le formulaire
             populateEditForm(request);
-            
+
+            // S'assurer que le bouton de sauvegarde est bien activé
+            const saveButton = document.querySelector('#editRequestModal .btn-primary');
+            if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.style.display = '';
+            }
+
             // Stocker les valeurs originales pour la mise à jour groupée
             const editRequestId = document.getElementById('editRequestId');
             if (editRequestId) {
