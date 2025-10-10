@@ -1693,10 +1693,11 @@ function validateModifications() {
             allPendingModifications.delete(req.id);
             requestsWithPendingModifications.delete(req.id);
             
-            // Mettre à jour l'objet de la demande pour refléter que modified = false
+            // Mettre à jour l'objet de la demande pour refléter que modified = false et prepared = false
             const requestInList = window.allRequests.find(r => r.id === req.id);
             if (requestInList) {
                 requestInList.modified = false;
+                requestInList.prepared = false; // La demande doit être re-préparée après validation
             }
         });
         
