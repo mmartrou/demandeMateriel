@@ -551,6 +551,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data.material_description = 'Enseignant absent';
             data.notes = '';
             data.quantity = '1';
+            data.group_count = '1';
         } else if (isNoMaterial) {
             // En mode pas besoin de matériel
             data.selected_materials = 'Pas besoin de matériel';
@@ -558,6 +559,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data.material_description = 'Cours théorique sans matériel';
             data.notes = '';
             data.quantity = '1';
+            data.group_count = '1';
         } else if (isExamMode) {
             // En mode examen
             data.selected_materials = 'Examen';
@@ -565,6 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data.material_description = 'Surveillance d\'examen';
             data.notes = '';
             data.quantity = '1';
+            data.group_count = '1';
         } else {
             // Mode normal : récupération du matériel spécifique depuis les checkboxes
             const specificMaterials = [];

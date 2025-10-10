@@ -181,6 +181,17 @@ def api_get_requests():
         elif hasattr(req, '_fields'):  # namedtuple (rare)
             r = req._asdict()
         else:
+            # sqlite3.Row peut être converti en dict avec dict()
+            try:
+                r = dict(req)
+                # Ajouter teacher_name si manquant (dernière colonne)
+                if 'teacher_name' not in r and len(req.keys()) > 0:
+                    r['teacher_name'] = req[list(req.keys())[-1]]
+                print(f"🔍 SQLite Row converti: id={r.get('id')}, group_count={r.get('group_count')}, quantity={r.get('quantity')}")
+                requests_list.append(r)
+                continue
+            except (TypeError, AttributeError):
+                pass
             # tuple (PostgreSQL sans row_factory)
             # Ordre des colonnes : voir la requête SELECT
             r = {
@@ -205,6 +216,9 @@ def api_get_requests():
                 'created_at': req[18] if len(req) > 18 else None,
                 'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
             }
+            # Debug log
+            if req[12] != 1:
+                print(f"🔍 Backend: Request #{req[0]} has group_count={req[12]} (type={type(req[12])})")
         requests_list.append(r)
     return jsonify(requests_list)
 
@@ -350,6 +364,7 @@ def api_add_request():
                     selected_materials=data.get('selected_materials', ''),
                     computers_needed=data.get('computers_needed', 0),
                     notes=data.get('notes', ''),
+                    group_count=data.get('group_count', data.get('quantity', 1)),
                     request_name=data.get('request_name', ''),
                     image_url=data.get('image_url', '')
                 )
@@ -529,6 +544,8 @@ def api_update_request(request_id):
             data.get('selected_materials', ''),
             data.get('computers_needed', 0),
             data.get('notes', ''),
+            group_count=data.get('group_count', 1),
+            material_prof=data.get('material_prof', ''),
             request_name=data.get('request_name', '')
         )
         
