@@ -1344,13 +1344,19 @@ async function savePendingModifications(requestId, changes) {
     const pendingPromises = [];
     
     for (const [fieldName, change] of Object.entries(changes)) {
+        // Convertir les valeurs en string pour l'API (qui attend des TEXT)
+        const originalValue = change.original !== undefined && change.original !== null ? String(change.original) : '';
+        const newValue = change.new !== undefined && change.new !== null ? String(change.new) : '';
+        
         const pendingModification = {
             request_id: requestId,
             field_name: fieldName,
-            original_value: change.original,
-            new_value: change.new,
+            original_value: originalValue,
+            new_value: newValue,
             modified_by: 'User' // Peut être personnalisé plus tard
         };
+        
+        console.log(`💾 Sauvegarde modification: field=${fieldName}, original="${originalValue}", new="${newValue}"`);
         
         const promise = fetch('/api/pending-modifications', {
             method: 'POST',
@@ -1358,6 +1364,15 @@ async function savePendingModifications(requestId, changes) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(pendingModification)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    console.error(`❌ Erreur ${response.status} pour ${fieldName}:`, err);
+                    throw new Error(err.error || 'Erreur serveur');
+                });
+            }
+            return response.json();
         });
         
         pendingPromises.push(promise);
