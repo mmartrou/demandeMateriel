@@ -616,39 +616,59 @@ def planning_editor():
 def api_pending_modifications():
     """API endpoint to get all pending modifications or add a new one"""
     if request.method == 'GET':
-        request_id = request.args.get('request_id')
-        
-        if request_id:
-            modifications = get_pending_modifications(int(request_id))
-        else:
-            modifications = get_pending_modifications()
-        
-        # Convert to list of dicts for JSON serialization
-        modifications_list = []
-        for mod in modifications:
-            try:
-                teacher_name = mod['teacher_name']
-            except (KeyError, IndexError):
-                teacher_name = ''
+        try:
+            request_id = request.args.get('request_id')
             
-            try:
-                request_name = mod['request_name']
-            except (KeyError, IndexError):
-                request_name = ''
-                
-            modifications_list.append({
-                'id': mod['id'],
-                'request_id': mod['request_id'],
-                'field_name': mod['field_name'],
-                'original_value': mod['original_value'],
-                'new_value': mod['new_value'],
-                'created_at': mod['created_at'],
-                'modified_by': mod['modified_by'],
-                'teacher_name': teacher_name,
-                'request_name': request_name
-            })
+            if request_id:
+                modifications = get_pending_modifications(int(request_id))
+            else:
+                modifications = get_pending_modifications()
+            
+            # Fonction helper pour normaliser les résultats (dict ou tuple)
+            def to_dict(mod):
+                if isinstance(mod, dict):
+                    return mod
+                elif hasattr(mod, '_asdict'):
+                    # NamedTuple
+                    return mod._asdict()
+                else:
+                    # Tuple classique - ordre des colonnes dans la requête SQL :
+                    # pm.id, pm.request_id, pm.field_name, pm.original_value, pm.new_value,
+                    # pm.created_at, pm.modified_by, mr.teacher_id, t.name as teacher_name, mr.request_name
+                    return {
+                        'id': mod[0],
+                        'request_id': mod[1],
+                        'field_name': mod[2],
+                        'original_value': mod[3],
+                        'new_value': mod[4],
+                        'created_at': mod[5],
+                        'modified_by': mod[6],
+                        'teacher_id': mod[7] if len(mod) > 7 else None,
+                        'teacher_name': mod[8] if len(mod) > 8 else '',
+                        'request_name': mod[9] if len(mod) > 9 else ''
+                    }
+            
+            # Convert to list of dicts for JSON serialization
+            modifications_list = []
+            for mod in modifications:
+                mod_dict = to_dict(mod)
+                modifications_list.append({
+                    'id': mod_dict.get('id'),
+                    'request_id': mod_dict.get('request_id'),
+                    'field_name': mod_dict.get('field_name'),
+                    'original_value': mod_dict.get('original_value'),
+                    'new_value': mod_dict.get('new_value'),
+                    'created_at': mod_dict.get('created_at'),
+                    'modified_by': mod_dict.get('modified_by'),
+                    'teacher_name': mod_dict.get('teacher_name', ''),
+                    'request_name': mod_dict.get('request_name', '')
+                })
+            
+            return jsonify(modifications_list)
         
-        return jsonify(modifications_list)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des modifications: {str(e)}")
+            return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
     
     elif request.method == 'POST':
         try:

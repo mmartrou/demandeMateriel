@@ -1056,7 +1056,8 @@ def get_pending_modifications(request_id=None):
     try:
         if request_id:
             cursor.execute(f'''
-                SELECT pm.*, mr.teacher_id, t.name as teacher_name, mr.request_name
+                SELECT pm.id, pm.request_id, pm.field_name, pm.original_value, pm.new_value,
+                       pm.created_at, pm.modified_by, mr.teacher_id, t.name as teacher_name, mr.request_name
                 FROM pending_modifications pm
                 JOIN material_requests mr ON pm.request_id = mr.id
                 JOIN teachers t ON mr.teacher_id = t.id
@@ -1065,7 +1066,8 @@ def get_pending_modifications(request_id=None):
             ''', (request_id,))
         else:
             cursor.execute('''
-                SELECT pm.*, mr.teacher_id, t.name as teacher_name, mr.request_name
+                SELECT pm.id, pm.request_id, pm.field_name, pm.original_value, pm.new_value,
+                       pm.created_at, pm.modified_by, mr.teacher_id, t.name as teacher_name, mr.request_name
                 FROM pending_modifications pm
                 JOIN material_requests mr ON pm.request_id = mr.id
                 JOIN teachers t ON mr.teacher_id = t.id
