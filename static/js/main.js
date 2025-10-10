@@ -96,16 +96,29 @@ function validateDate(elementId, message) {
 
 function getMinimumValidDate() {
     const now = new Date();
-    let candidate = new Date(now);
-    candidate.setDate(now.getDate() + 1);  // Commencer par demain
+    const currentHour = now.getHours();
+    
+    // Appliquer la règle de 17h
+    let startCountingFrom = new Date(now);
+    if (currentHour >= 17) {
+        // Après 17h : on commence à compter à partir de J+2
+        startCountingFrom.setDate(now.getDate() + 2);
+    } else {
+        // Avant 17h : on commence à compter à partir de J+1
+        startCountingFrom.setDate(now.getDate() + 1);
+    }
+    startCountingFrom.setHours(0, 0, 0, 0);
+    
+    // Commencer la recherche à partir du jour suivant le point de départ
+    let candidate = new Date(startCountingFrom);
+    candidate.setDate(startCountingFrom.getDate() + 1);
     
     // Chercher la première date avec au moins 2 jours ouvrés
     while (true) {
         let workingDaysCount = 0;
         
-        // Compter les jours ouvrés entre maintenant et la date candidate (exclus)
-        let checkDate = new Date(now);
-        checkDate.setDate(now.getDate() + 1);  // Commencer par demain
+        // Compter les jours ouvrés entre le point de départ et la date candidate (exclus)
+        let checkDate = new Date(startCountingFrom);
         
         while (checkDate < candidate) {
             const dayOfWeek = checkDate.getDay();
