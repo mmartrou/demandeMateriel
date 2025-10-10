@@ -720,11 +720,28 @@
         // Formatage de la durée pour affichage
         const durationText = course.duration ? formatDuration(course.duration) : '';
         
+        // Construire la liste des équipements spécifiques
+        const equipments = [];
+        if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
+        if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
+        if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
+        if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
+        if (course.oscilloscopes > 0) equipments.push(`📊 Oscillo.`);
+        if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
+        if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
+        if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
+        if (course.examen > 0) equipments.push(`📝 Examen`);
+        
+        const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
+        const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
+        
         card.innerHTML = `
             <div class="course-title">${course.subject}</div>
             <div class="course-level">${course.level}</div>
             <div class="course-teacher">${course.teacher}</div>
             <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
+            ${requestNameLine}
+            ${equipmentLine}
         `;
         
         console.log(`📅 Cours ${course.subject} - Grid: lignes ${gridRowStart} à ${gridRowEnd} (${durationInMinutes}min)`);
@@ -764,11 +781,28 @@
         // Supprimer les mots "chimie", "physique" ou "mixte" du sujet
         const filteredSubject = course.subject.replace(/\b(chimie|physique|mixte)\b/gi, '').trim();
 
+        // Construire la liste des équipements spécifiques
+        const equipments = [];
+        if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
+        if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
+        if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
+        if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
+        if (course.oscilloscopes > 0) equipments.push(`📊 Oscillo.`);
+        if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
+        if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
+        if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
+        if (course.examen > 0) equipments.push(`📝 Examen`);
+        
+        const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
+        const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
+
         card.innerHTML = `
             <div class="course-title">${filteredSubject}</div>
             <div class="course-level">${course.level}</div>
             <div class="course-teacher">${course.teacher}</div>
             <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
+            ${requestNameLine}
+            ${equipmentLine}
         `;
         
         console.log(`📅 Cours ${course.subject} - Hauteur: ${exactHeight}px (${durationInMinutes}min)`);
