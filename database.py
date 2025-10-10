@@ -365,14 +365,50 @@ def get_material_request_by_id(request_id):
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
     cursor.execute(f'''
-        SELECT mr.*, t.name as teacher_name
+        SELECT mr.id, mr.teacher_id, mr.request_date, mr.horaire, mr.class_name,
+               mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
+               mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
+               mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
+               t.name as teacher_name
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.id = {placeholder}
     ''', (request_id,))
     request = cursor.fetchone()
     conn.close()
-    return request
+    
+    if not request:
+        return None
+    
+    # Normaliser en dictionnaire pour compatibilité PostgreSQL/SQLite
+    if isinstance(request, dict):
+        return request
+    elif hasattr(request, '_asdict'):
+        return request._asdict()
+    else:
+        # Tuple classique - mapping manuel selon l'ordre des colonnes SELECT
+        return {
+            'id': request[0],
+            'teacher_id': request[1],
+            'request_date': request[2],
+            'horaire': request[3],
+            'class_name': request[4],
+            'material_description': request[5],
+            'quantity': request[6],
+            'selected_materials': request[7],
+            'computers_needed': request[8],
+            'notes': request[9],
+            'prepared': request[10],
+            'modified': request[11],
+            'group_count': request[12],
+            'material_prof': request[13],
+            'request_name': request[14],
+            'room_type': request[15],
+            'image_url': request[16],
+            'exam': request[17],
+            'created_at': request[18],
+            'teacher_name': request[19]
+        }
 
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description, 
                            horaire=None, quantity=1, selected_materials='', computers_needed=0, 
@@ -1126,7 +1162,20 @@ def validate_pending_modifications(request_id):
             return False
         
         # Apply each modification to the material_requests table
-        for field_name, new_value in modifications:
+        for mod in modifications:
+            # Gérer tuple ou dict
+            if isinstance(mod, dict):
+                field_name = mod['field_name']
+                new_value = mod['new_value']
+            elif hasattr(mod, '_asdict'):
+                mod_dict = mod._asdict()
+                field_name = mod_dict['field_name']
+                new_value = mod_dict['new_value']
+            else:
+                # Tuple classique [field_name, new_value]
+                field_name = mod[0]
+                new_value = mod[1]
+            
             cursor.execute(f'''
                 UPDATE material_requests 
                 SET {field_name} = {placeholder} 
