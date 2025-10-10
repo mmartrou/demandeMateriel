@@ -297,12 +297,54 @@ function loadCalendar() {
     fetch(`/api/calendar-events?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
+            console.log('Calendar events reçus:', data);
+            // Afficher le format de la première date si disponible
+            if (data.length > 0) {
+                console.log('Format de date exemple:', data[0].start, 'Type:', typeof data[0].start);
+            }
             events = data;
             renderWeekView();
         })
         .catch(error => {
             console.error('Error loading events:', error);
         });
+}
+
+// Fonction pour normaliser les dates en format YYYY-MM-DD
+function normalizeDateToYMD(dateValue) {
+    if (!dateValue) return null;
+    
+    let date;
+    
+    // Si c'est déjà une chaîne au format YYYY-MM-DD
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+        return dateValue;
+    }
+    
+    // Si c'est une chaîne de date GMT ou autre format
+    if (typeof dateValue === 'string') {
+        date = new Date(dateValue);
+    } 
+    // Si c'est déjà un objet Date
+    else if (dateValue instanceof Date) {
+        date = dateValue;
+    }
+    // Sinon, essayer de le convertir
+    else {
+        date = new Date(dateValue);
+    }
+    
+    // Vérifier si la date est valide
+    if (isNaN(date.getTime())) {
+        console.error('Date invalide:', dateValue);
+        return null;
+    }
+    
+    // Retourner au format YYYY-MM-DD
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function renderWeekView() {
@@ -341,9 +383,12 @@ function renderWeekView() {
         const dayEventsContainer = document.createElement('div');
         dayEventsContainer.className = 'week-day-events';
         
-        // Get events for this day
+        // Get events for this day - normaliser les dates pour la comparaison
         const dayDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        const dayEvents = events.filter(event => event.start === dayDate);
+        const dayEvents = events.filter(event => {
+            const eventDate = normalizeDateToYMD(event.start);
+            return eventDate === dayDate;
+        });
         
         if (dayEvents.length === 0) {
             const noEvents = document.createElement('div');
@@ -477,10 +522,11 @@ function showEventDetails(event) {
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
+    // Utiliser la normalisation pour gérer tous les formats
+    const normalizedDate = normalizeDateToYMD(dateString);
+    if (!normalizedDate) return 'Date invalide';
+    
+    const [year, month, day] = normalizedDate.split('-');
     return `${day}/${month}/${year}`;
 }
 
