@@ -641,6 +641,11 @@ function loadRequestsWithPendingModifications() {
             filteredRequests.forEach(request => {
                 const row = document.createElement('tr');
                 
+                // Debug pour voir les valeurs reçues
+                if (request.group_count !== undefined && request.group_count !== 1) {
+                    console.log(`Request #${request.id}: group_count=${request.group_count}, quantity=${request.quantity}`);
+                }
+                
                 // Vérifier si l'édition est possible (délai 2 jours ouvrés)
                 const canEdit = canEditRequest(request);
                 row.style.cursor = canEdit ? 'pointer' : 'not-allowed';
@@ -686,8 +691,10 @@ function loadRequestsWithPendingModifications() {
                 const displayClassName = enhanceRequestDisplay(request, 'class_name', 
                     `<span class="badge bg-info">${request.class_name}</span>`);
                 
-                const displayQuantity = enhanceRequestDisplay(request, 'quantity', 
-                    `<span class="badge bg-secondary">${request.group_count || request.quantity || 1}</span>`);
+                // Afficher group_count (nombre de groupes), pas quantity
+                const groupCountValue = request.group_count !== undefined && request.group_count !== null ? request.group_count : 1;
+                const displayQuantity = enhanceRequestDisplay(request, 'group_count', 
+                    `<span class="badge bg-secondary">${groupCountValue}</span>`);
                 
                 const displayComputersNeeded = enhanceRequestDisplay(request, 'computers_needed', 
                     `<span class="badge bg-warning">${request.computers_needed || 0}</span>`);
