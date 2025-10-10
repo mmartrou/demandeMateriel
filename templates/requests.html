@@ -1313,11 +1313,11 @@ function calculateRequestChanges(requestId, newData) {
     }
     
     // Comparer les champs numériques
-    if (originalRequestData.quantity !== newData.quantity) {
-        changes.quantity = {
-            original: originalRequestData.quantity,
-            new: newData.quantity,
-            diff: `${originalRequestData.quantity} → ${newData.quantity}`
+    if (originalRequestData.group_count !== newData.group_count) {
+        changes.group_count = {
+            original: originalRequestData.group_count || 1,
+            new: newData.group_count || 1,
+            diff: `${originalRequestData.group_count || 1} → ${newData.group_count || 1}`
         };
     }
     
