@@ -100,6 +100,9 @@ def count_working_days_between(start_datetime, end_date):
     Utilise la configuration personnalisée des jours ouvrés
     Exclut le jour de départ et le jour d'arrivée
     
+    RÈGLE SPÉCIALE : Si l'heure actuelle est >= 17h, on considère que le lendemain
+    est "perdu" et on commence à compter à partir de J+2
+    
     Args:
         start_datetime (datetime): Date/heure de début
         end_date (datetime): Date de fin (à 8h00)
@@ -113,7 +116,15 @@ def count_working_days_between(start_datetime, end_date):
     except ImportError:
         # Fallback vers la logique par défaut si la base n'est pas disponible
         logger.warning("Base de données non disponible, utilisation logique par défaut")
-        current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Appliquer la règle de 17h
+        if start_datetime.hour >= 17:
+            # Après 17h, on commence à compter à partir de J+2
+            current = (start_datetime + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            # Avant 17h, on commence à compter à partir de J+1
+            current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
         end = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
         
         working_days = 0
@@ -124,8 +135,14 @@ def count_working_days_between(start_datetime, end_date):
         
         return working_days
     
-    # Commencer au jour suivant après start_datetime
-    current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Appliquer la règle de 17h
+    if start_datetime.hour >= 17:
+        # Après 17h, on commence à compter à partir de J+2
+        current = (start_datetime + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        # Avant 17h, on commence à compter à partir de J+1
+        current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    
     end = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
     
     working_days = 0
@@ -143,8 +160,12 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     Vérifie si une demande respecte le délai de 2 jours ouvrés
     
     Règles:
-    - Lundi 18h: plus possible pour mercredi 18h, mais OK pour jeudi 9h
-    - Vendredi 18h: plus possible pour mardi 18h, mais OK pour mercredi 9h
+    - Avant 17h : peut demander pour J+3 minimum (2 jours ouvrés entre J+1 et date demandée)
+    - Après 17h : peut demander pour J+4 minimum (2 jours ouvrés entre J+2 et date demandée)
+    
+    Exemples:
+    - Vendredi 16h → Mardi OK (lundi et mardi = 2 jours ouvrés entre samedi et mercredi)
+    - Vendredi 18h → Mercredi OK (lundi et mardi = 2 jours ouvrés entre dimanche et mercredi)
     
     Args:
         request_date_str (str): Date de la demande au format YYYY-MM-DD
@@ -228,6 +249,7 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
 def get_earliest_valid_date(current_datetime=None):
     """
     Retourne la première date valide pour une nouvelle demande (2 jours ouvrés)
+    Prend en compte la règle de 17h : après 17h, le lendemain est considéré comme "perdu"
     
     Args:
         current_datetime (datetime, optional): Date/heure actuelle
@@ -238,8 +260,13 @@ def get_earliest_valid_date(current_datetime=None):
     if current_datetime is None:
         current_datetime = datetime.now()
     
-    # Commencer par demain
-    candidate_date = current_datetime + timedelta(days=1)
+    # Appliquer la règle de 17h pour déterminer le point de départ
+    if current_datetime.hour >= 17:
+        # Après 17h, commencer à chercher à partir de J+2
+        candidate_date = current_datetime + timedelta(days=2)
+    else:
+        # Avant 17h, commencer à chercher à partir de J+1
+        candidate_date = current_datetime + timedelta(days=1)
     
     # Chercher la première date avec au moins 2 jours ouvrés
     while True:
