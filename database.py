@@ -1108,6 +1108,8 @@ def validate_pending_modifications(request_id):
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
+    # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
     
     try:
         # Get all pending modifications for this request
@@ -1131,10 +1133,11 @@ def validate_pending_modifications(request_id):
                 WHERE id = {placeholder}
             ''', (new_value, request_id))
         
-        # Reset modified flag to FALSE since modifications are now validated
+        # Reset both modified and prepared flags to FALSE since modifications are now applied
+        # Une demande modifiée doit être re-préparée
         cursor.execute(f'''
             UPDATE material_requests 
-            SET modified = FALSE 
+            SET modified = {false_val}, prepared = {false_val}
             WHERE id = {placeholder}
         ''', (request_id,))
         
