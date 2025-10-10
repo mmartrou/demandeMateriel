@@ -382,12 +382,16 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     cursor = conn.cursor()
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
+    # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    
     cursor.execute(f'''
         UPDATE material_requests 
         SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
-            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared=0, modified=1
+            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared={false_val}, modified={true_val}
         WHERE id={placeholder}
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
           selected_materials, computers_needed, notes, group_count, material_prof, request_name, request_id))
@@ -408,13 +412,24 @@ def toggle_prepared_status(request_id):
         conn.close()
         return False
     
-    new_prepared = not current['prepared']
+    # Gérer l'accès selon le type de retour (tuple ou dict)
+    if isinstance(current, dict):
+        current_prepared = current['prepared']
+    else:
+        current_prepared = current[0]
+    
+    new_prepared = not current_prepared
+    
+    # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+    
     # When marking as prepared, remove modified flag
     # When unmarking prepared, keep modified flag as is
     if new_prepared:
-        cursor.execute(f'UPDATE material_requests SET prepared=1, modified=0 WHERE id={placeholder}', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared={true_val}, modified={false_val} WHERE id={placeholder}', (request_id,))
     else:
-        cursor.execute(f'UPDATE material_requests SET prepared=0 WHERE id={placeholder}', (request_id,))
+        cursor.execute(f'UPDATE material_requests SET prepared={false_val} WHERE id={placeholder}', (request_id,))
     
     conn.commit()
     conn.close()
