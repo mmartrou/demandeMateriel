@@ -691,10 +691,14 @@ def api_pending_modifications():
         try:
             data = request.get_json()
             
+            # Log pour debug
+            logger.info(f"📥 Pending modification reçue: {data}")
+            
             # Validation des champs requis
             required_fields = ['request_id', 'field_name', 'original_value', 'new_value']
             for field in required_fields:
                 if field not in data:
+                    logger.error(f"❌ Champ manquant: {field}")
                     return jsonify({'error': f'Champ manquant: {field}'}), 400
             
             # Validation du délai de 2 jours ouvrés si la modification concerne la date
