@@ -616,6 +616,13 @@ function loadRequestsWithPendingModifications() {
         .then(requests => {
             loadingIndicator.classList.add('d-none');
             
+            // Debug: afficher les valeurs group_count reçues
+            console.log(`📦 Nombre total de demandes reçues: ${requests.length}`);
+            const nonOneGroupCount = requests.filter(r => r.group_count && r.group_count !== 1);
+            if (nonOneGroupCount.length > 0) {
+                console.log(`📊 Demandes avec group_count ≠ 1:`, nonOneGroupCount.map(r => ({ id: r.id, group_count: r.group_count, quantity: r.quantity })));
+            }
+            
             // Stocker toutes les demandes pour pouvoir trouver les demandes liées
             window.allRequests = requests;
             
@@ -693,6 +700,12 @@ function loadRequestsWithPendingModifications() {
                 
                 // Afficher group_count (nombre de groupes), pas quantity
                 const groupCountValue = request.group_count !== undefined && request.group_count !== null ? request.group_count : 1;
+                
+                // Debug: log si group_count != 1
+                if (groupCountValue !== 1) {
+                    console.log(`🔍 Affichage demande #${request.id}: group_count=${request.group_count}, groupCountValue=${groupCountValue}, quantity=${request.quantity}`);
+                }
+                
                 const displayQuantity = enhanceRequestDisplay(request, 'group_count', 
                     `<span class="badge bg-secondary">${groupCountValue}</span>`);
                 
@@ -985,7 +998,11 @@ function populateEditForm(request) {
     const editMaterialProf = document.getElementById('editMaterialProf');
     const editNotes = document.getElementById('editNotes');
     
-    if (editQuantity) editQuantity.value = request.group_count || request.quantity || 1;
+    // Utiliser group_count uniquement, sans fallback vers quantity
+    if (editQuantity) {
+        const groupCountValue = request.group_count !== undefined && request.group_count !== null ? request.group_count : 1;
+        editQuantity.value = groupCountValue;
+    }
     if (editComputersNeeded) editComputersNeeded.value = request.computers_needed || 0;
     if (editMaterialProf) editMaterialProf.value = request.material_prof || '';
     if (editNotes) editNotes.value = request.notes || '';
@@ -1366,7 +1383,7 @@ function saveRequestChanges() {
         request_name: document.getElementById('editRequestName').value,
         horaire: document.getElementById('editHoraire').value,
         class_name: document.getElementById('editClassName').value,
-        quantity: parseInt(document.getElementById('editQuantity').value) || 1,
+        group_count: parseInt(document.getElementById('editQuantity').value) || 1,
         computers_needed: parseInt(document.getElementById('editComputersNeeded').value) || 0,
         material_prof: document.getElementById('editMaterialProf').value,
         notes: document.getElementById('editNotes').value
@@ -1378,8 +1395,7 @@ function saveRequestChanges() {
         request_date: document.getElementById('editDate').value,
         horaire: currentData.horaire,
         class_name: currentData.class_name,
-        quantity: currentData.quantity,
-        group_count: currentData.quantity,
+        group_count: currentData.group_count,
         computers_needed: currentData.computers_needed,
         material_prof: currentData.material_prof,
         notes: currentData.notes
