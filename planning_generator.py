@@ -491,7 +491,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                 # Ajouter le titre du TP (request_name) s'il existe
                 titre_tp = c.get('request_name', '')
                 if titre_tp and titre_tp.strip():
-                    besoins_txt_techniciens.append(f"TP: {titre_tp.strip()}")
+                    besoins_txt_techniciens.append(titre_tp.strip())
                 
                 content_techniciens = f"{c.get('enseignant', '')}\n{c.get('niveau', '')}"
                 if besoins_txt_techniciens:
@@ -1123,7 +1123,18 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                         'date': date_str,  # Utiliser date_str de la fonction
                         'time': course['horaire'],
                         'duration': course['duree'],
-                        'students': course.get('chaises', 20)  # Utiliser 'chaises' au lieu de 'nb_eleves'
+                        'students': course.get('chaises', 20),  # Utiliser 'chaises' au lieu de 'nb_eleves'
+                        'request_name': course.get('request_name', ''),
+                        'material_description': course.get('materiel_demande', ''),
+                        'ordinateurs': course.get('ordinateurs', 0),
+                        'eviers': course.get('eviers', 0),
+                        'hotte': course.get('hotte', 0),
+                        'bancs_optiques': course.get('bancs_optiques', 0),
+                        'oscilloscopes': course.get('oscilloscopes', 0),
+                        'becs_electriques': course.get('becs_electriques', 0),
+                        'support_filtration': course.get('support_filtration', 0),
+                        'imprimante': course.get('imprimante', 0),
+                        'examen': course.get('examen', 0)
                     })
                     
                     # Trouver l'assignation de salle
