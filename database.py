@@ -296,6 +296,13 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
     """Add a new material request"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
+    # Coerce group_count to an integer with a safe default
+    try:
+        group_count = int(group_count) if group_count is not None else 1
+        if group_count < 1:
+            group_count = 1
+    except Exception:
+        group_count = 1
     
     placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 14)
     cursor.execute(f'''
@@ -420,6 +427,13 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     """Update an existing material request and mark it as modified"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
+    # Coerce group_count to an integer with a safe default
+    try:
+        group_count = int(group_count) if group_count is not None else 1
+        if group_count < 1:
+            group_count = 1
+    except Exception:
+        group_count = 1
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
     # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
