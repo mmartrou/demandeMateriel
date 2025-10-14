@@ -1000,9 +1000,13 @@ function populateEditForm(request) {
     
     // Utiliser group_count uniquement, sans fallback vers quantity
     if (editQuantity) {
-        const groupCountValue = request.group_count !== undefined && request.group_count !== null ? request.group_count : request.quantity ?? 1;
-        // Forcer en chaîne pour éviter des comportements inattendus dans certains navigateurs
-        editQuantity.value = String(Number(groupCountValue) || 0);
+        // Récupérer la valeur brute (préférence group_count, fallback quantity, fallback 1)
+        const raw = request.group_count ?? request.quantity ?? 1;
+        // Convertir en nombre puis normaliser : entier >= 1
+        const asNumber = Number(raw);
+        const normalized = (Number.isFinite(asNumber) && asNumber >= 1) ? Math.trunc(asNumber) : 1;
+        // Assigner une chaîne sûre au champ input
+        editQuantity.value = String(normalized);
     }
     if (editComputersNeeded) editComputersNeeded.value = request.computers_needed || 0;
     if (editMaterialProf) editMaterialProf.value = request.material_prof || '';
