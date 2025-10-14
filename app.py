@@ -368,6 +368,7 @@ def api_add_request():
                     computers_needed=data.get('computers_needed', 0),
                     notes=data.get('notes', ''),
                     group_count=data.get('group_count', data.get('quantity', 1)),
+                    material_prof=data.get('material_prof', ''),
                     request_name=data.get('request_name', ''),
                     image_url=data.get('image_url', '')
                 )
