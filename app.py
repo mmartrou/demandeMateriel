@@ -207,7 +207,7 @@ def api_get_requests():
                 'notes': req[9],
                 'prepared': req[10] if req[10] else False,
                 'modified': req[11] if req[11] else False,
-                'group_count': req[12] if len(req) > 12 else 1,
+                'group_count': int(req[12]) if len(req) > 12 and req[12] is not None else 1,
                 'material_prof': req[13] if len(req) > 13 else '',
                 'request_name': req[14] if len(req) > 14 else '',
                 'room_type': req[15] if len(req) > 15 and req[15] else 'Mixte',
@@ -217,8 +217,11 @@ def api_get_requests():
                 'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
             }
             # Debug log
-            if req[12] != 1:
-                print(f"🔍 Backend: Request #{req[0]} has group_count={req[12]} (type={type(req[12])})")
+            try:
+                if int(req[12]) != 1:
+                    print(f"🔍 Backend: Request #{req[0]} has group_count={req[12]} (type={type(req[12])})")
+            except Exception:
+                pass
         requests_list.append(r)
     return jsonify(requests_list)
 
@@ -481,7 +484,7 @@ def api_get_request_by_id(request_id):
             'notes': request_data[9],
             'prepared': request_data[10] if request_data[10] else False,
             'modified': request_data[11] if request_data[11] else False,
-            'group_count': request_data[12] if len(request_data) > 12 else 1,
+            'group_count': int(request_data[12]) if len(request_data) > 12 and request_data[12] is not None else 1,
             'material_prof': request_data[13] if len(request_data) > 13 else '',
             'request_name': request_data[14] if len(request_data) > 14 else '',
             'room_type': request_data[15] if len(request_data) > 15 and request_data[15] else 'Mixte',
