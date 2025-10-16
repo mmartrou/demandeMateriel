@@ -965,9 +965,24 @@ def api_get_working_days():
     try:
         config = get_working_days_config(start_date, end_date)
         # Format: [{date, is_working_day, description}]
-        # Ensure is_working_day is bool
+        # Ensure is_working_day is bool and date is YYYY-MM-DD
         for item in config:
             item['is_working_day'] = bool(item['is_working_day'])
+            # Convert date to YYYY-MM-DD if needed
+            if item['date']:
+                if isinstance(item['date'], str) and len(item['date']) > 10:
+                    # Try to parse RFC 1123 or other formats
+                    from dateutil import parser
+                    try:
+                        dt = parser.parse(item['date'])
+                        item['date'] = dt.strftime('%Y-%m-%d')
+                    except Exception:
+                        pass
+                elif isinstance(item['date'], (str,)) and len(item['date']) == 10:
+                    # Already correct format
+                    pass
+                elif hasattr(item['date'], 'strftime'):
+                    item['date'] = item['date'].strftime('%Y-%m-%d')
         return jsonify(config)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
