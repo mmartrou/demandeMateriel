@@ -953,6 +953,83 @@ def api_delete_c21_availability(availability_id):
         return jsonify({'error': str(e)}), 500
 
 # API Routes pour la gestion des salles
+from database import get_working_days_config, set_working_day_config, delete_working_day_config
+# === API pour la gestion des jours ouvrés ===
+from flask import abort
+
+@app.route('/api/working-days', methods=['GET'])
+def api_get_working_days():
+    """API endpoint to get working days config for a date range"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    try:
+        config = get_working_days_config(start_date, end_date)
+        # Format: [{date, is_working_day, description}]
+        # Ensure is_working_day is bool
+        for item in config:
+            item['is_working_day'] = bool(item['is_working_day'])
+        return jsonify(config)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/working-days/<date>', methods=['PUT'])
+def api_set_working_day(date):
+    """API endpoint to set a working day config for a specific date (YYYY-MM-DD)"""
+    try:
+        data = request.get_json()
+        is_working_day = data.get('is_working_day')
+        description = data.get('description', None)
+        if is_working_day is None:
+            return jsonify({'error': 'is_working_day is required'}), 400
+        # Accept true/false as string or bool
+        if isinstance(is_working_day, str):
+            is_working_day = is_working_day.lower() == 'true'
+        success = set_working_day_config(date, is_working_day, description)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to update config'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/working-days/<date>', methods=['DELETE'])
+def api_delete_working_day(date):
+    """API endpoint to delete a working day config for a specific date (reset to default)"""
+    try:
+        success = delete_working_day_config(date)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to delete config'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/working-days/bulk', methods=['PUT'])
+def api_bulk_update_working_days():
+    """API endpoint to bulk update working days config for multiple dates"""
+    try:
+        data = request.get_json()
+        updates = data.get('updates', [])
+        updated_count = 0
+        errors = []
+        for upd in updates:
+            date = upd.get('date')
+            is_working_day = upd.get('is_working_day')
+            description = upd.get('description', None)
+            if date is None or is_working_day is None:
+                errors.append(f"Donnée manquante pour {date or '[date inconnue]'}")
+                continue
+            # Accept true/false as string or bool
+            if isinstance(is_working_day, str):
+                is_working_day = is_working_day.lower() == 'true'
+            success = set_working_day_config(date, is_working_day, description)
+            if success:
+                updated_count += 1
+            else:
+                errors.append(f"Erreur pour {date}")
+        return jsonify({'updated_count': updated_count, 'errors': errors})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @app.route('/api/rooms', methods=['GET'])
 def api_get_rooms():
     """API endpoint to get all rooms"""
