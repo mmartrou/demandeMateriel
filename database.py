@@ -836,12 +836,26 @@ def get_working_days_config(start_date=None, end_date=None):
                 'description': row['description']
             }
         elif isinstance(row, (list, tuple)):
-            # Assume order: date, is_working_day, description
-            return {
-                'date': row[1],
-                'is_working_day': row[2],
-                'description': row[3] if len(row) > 3 else ''
-            }
+            # For PostgreSQL: (id, date, is_working_day, description, created_at, updated_at)
+            # For SQLite: (date, is_working_day, description)
+            if len(row) >= 6:
+                return {
+                    'date': row[1],
+                    'is_working_day': row[2],
+                    'description': row[3] if len(row) > 3 else ''
+                }
+            elif len(row) == 3:
+                return {
+                    'date': row[0],
+                    'is_working_day': row[1],
+                    'description': row[2]
+                }
+            else:
+                return {
+                    'date': row[0] if len(row) > 0 else None,
+                    'is_working_day': row[1] if len(row) > 1 else None,
+                    'description': row[2] if len(row) > 2 else ''
+                }
         else:
             # Fallback: try attribute access
             return {
