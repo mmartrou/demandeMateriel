@@ -8,8 +8,8 @@ from datetime import datetime
 # Configuration des logs
 logger = logging.getLogger(__name__)
 
-# Base de données SQLite dans un sous-dossier du dossier Google Drive (fallback local)
 DATABASE_PATH = os.path.join('imagesDemandesMateriel', 'base', 'material_requests.db')
+SQLITE_ALT_PATH = 'demandeMateriel.db'
 
 def get_db_connection():
     """Get database connection - PostgreSQL en priorité, SQLite en fallback"""
@@ -26,12 +26,18 @@ def get_db_connection():
         except Exception as e:
             logger.warning(f"Échec PostgreSQL: {e}")
     
-    # Fallback vers SQLite dans Google Drive
-    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-    logger.info(f"Fallback vers SQLite: {DATABASE_PATH}")
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn, 'sqlite'
+    # Fallback vers SQLite: try both paths
+    try:
+        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.row_factory = sqlite3.Row
+        logger.info(f"Fallback vers SQLite: {DATABASE_PATH}")
+        return conn, 'sqlite'
+    except Exception:
+        conn = sqlite3.connect(SQLITE_ALT_PATH)
+        conn.row_factory = sqlite3.Row
+        logger.info(f"Fallback vers SQLite: {SQLITE_ALT_PATH}")
+        return conn, 'sqlite'
 
 def init_database():
     """Initialize the database with required tables"""
@@ -805,7 +811,7 @@ def get_working_days_config(start_date=None, end_date=None):
         cursor.execute(f'''
             SELECT date, is_working_day, description 
             FROM working_days_config 
-            WHERE date BETWEEN {placeholder} AND {placeholder}
+            WHERE date >= {placeholder} AND date <= {placeholder}
             ORDER BY date
         ''', (start_date, end_date))
     else:
@@ -823,12 +829,18 @@ def get_working_days_config(start_date=None, end_date=None):
             return row
         elif hasattr(row, '_asdict'):
             return row._asdict()
+        elif isinstance(row, sqlite3.Row):
+            return {
+                'date': row['date'],
+                'is_working_day': row['is_working_day'],
+                'description': row['description']
+            }
         elif isinstance(row, (list, tuple)):
             # Assume order: date, is_working_day, description
             return {
-                'date': row[0],
-                'is_working_day': row[1],
-                'description': row[2] if len(row) > 2 else ''
+                'date': row[1],
+                'is_working_day': row[2],
+                'description': row[3] if len(row) > 3 else ''
             }
         else:
             # Fallback: try attribute access
