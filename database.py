@@ -817,8 +817,27 @@ def get_working_days_config(start_date=None, end_date=None):
     
     results = cursor.fetchall()
     conn.close()
-    
-    return [dict(row) for row in results]
+    # Always return list of dicts, compatible with SQLite, PostgreSQL, tuple, or Row
+    def row_to_dict(row):
+        if isinstance(row, dict):
+            return row
+        elif hasattr(row, '_asdict'):
+            return row._asdict()
+        elif isinstance(row, (list, tuple)):
+            # Assume order: date, is_working_day, description
+            return {
+                'date': row[0],
+                'is_working_day': row[1],
+                'description': row[2] if len(row) > 2 else ''
+            }
+        else:
+            # Fallback: try attribute access
+            return {
+                'date': getattr(row, 'date', None),
+                'is_working_day': getattr(row, 'is_working_day', None),
+                'description': getattr(row, 'description', '')
+            }
+    return [row_to_dict(row) for row in results]
 
 def set_working_day_config(date, is_working_day, description=None):
     """
