@@ -97,42 +97,33 @@ function validateDate(elementId, message) {
 function getMinimumValidDate() {
     const now = new Date();
     const currentHour = now.getHours();
-    
-    // Appliquer la règle de 17h
-    let startCountingFrom = new Date(now);
+    // Backend logic: after 17h, start from J+2, before 17h from J+1
+    let startDate = new Date(now);
     if (currentHour >= 17) {
-        // Après 17h : on commence à compter à partir de J+2
-        startCountingFrom.setDate(now.getDate() + 2);
+        startDate.setDate(now.getDate() + 2);
     } else {
-        // Avant 17h : on commence à compter à partir de J+1
-        startCountingFrom.setDate(now.getDate() + 1);
+        startDate.setDate(now.getDate() + 1);
     }
-    startCountingFrom.setHours(0, 0, 0, 0);
-    
-    // Commencer la recherche à partir du jour suivant le point de départ
-    let candidate = new Date(startCountingFrom);
-    candidate.setDate(startCountingFrom.getDate() + 1);
-    
-    // Chercher la première date avec au moins 2 jours ouvrés
+    startDate.setHours(8, 0, 0, 0); // Requests are for 8am
+
+    // Find the first date with at least 2 full working days between now and candidate
+    let candidate = new Date(startDate);
     while (true) {
-        let workingDaysCount = 0;
-        
-        // Compter les jours ouvrés entre le point de départ et la date candidate (exclus)
-        let checkDate = new Date(startCountingFrom);
-        
+        // Count working days between now and candidate (exclusive)
+        let workingDays = 0;
+        let checkDate = new Date(now);
+        checkDate.setHours(8, 0, 0, 0);
         while (checkDate < candidate) {
             const dayOfWeek = checkDate.getDay();
-            // Lundi = 1, Mardi = 2, ..., Vendredi = 5 (jours ouvrés)
             if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                workingDaysCount++;
+                workingDays++;
             }
             checkDate.setDate(checkDate.getDate() + 1);
         }
-        
-        if (workingDaysCount >= 2) {
+        if (workingDays >= 2) {
+            candidate.setHours(0, 0, 0, 0);
             return candidate;
         }
-        
         candidate.setDate(candidate.getDate() + 1);
     }
 }
