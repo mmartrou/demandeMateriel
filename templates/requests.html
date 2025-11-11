@@ -1556,74 +1556,20 @@ function saveRequestChanges() {
             }
         }, 100);
         
-        // Mettre à jour les Maps locales immédiatement pour l'affichage
-        if (bulkEdit && Object.keys(changes).length > 0) {
-            const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
-            const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
-            
-            if (window.allRequests) {
-                const relatedRequests = window.allRequests.filter(req => 
-                    req.teacher_id === originalTeacherId && 
-                    req.request_name === originalRequestName
-                );
-                
-                relatedRequests.forEach(req => {
-                    // Ajouter à la liste des demandes avec modifications
-                    requestsWithPendingModifications.add(req.id);
-                    
-                    // Mettre à jour la Map globale des modifications en attente
-                    if (!allPendingModifications.has(req.id)) {
-                        allPendingModifications.set(req.id, []);
-                    }
-                    
-                    // Ajouter les nouvelles modifications à la liste
-                    Object.entries(changes).forEach(([fieldName, change]) => {
-                        const modification = {
-                            request_id: req.id,
-                            field_name: fieldName,
-                            original_value: change.original,
-                            new_value: change.new
-                        };
-                        
-                        allPendingModifications.get(req.id).push(modification);
-                    });
-                });
-            }
-        } else {
-            // Modification individuelle
-            requestsWithPendingModifications.add(parseInt(requestId));
-            
-            if (!allPendingModifications.has(parseInt(requestId))) {
-                allPendingModifications.set(parseInt(requestId), []);
-            }
-            
-            Object.entries(changes).forEach(([fieldName, change]) => {
-                const modification = {
-                    request_id: parseInt(requestId),
-                    field_name: fieldName,
-                    original_value: change.original,
-                    new_value: change.new
-                };
-                
-                allPendingModifications.get(parseInt(requestId)).push(modification);
-            });
-        }
-        
-        // Recharger l'affichage des demandes pour montrer les badges et boutons
+        // Recharger depuis la base pour synchroniser et garantir la persistance
+        return loadRequestsWithPendingModifications();
+    })
+    .then(() => {
+        // Après rechargement depuis la base, afficher les demandes
         loadRequests();
-        
-        // Recharger depuis la base après un court délai pour synchroniser
-        setTimeout(() => {
-            loadRequestsWithPendingModifications().then(() => {
-                console.log('✅ Modifications synchronisées avec la base de données');
-            });
-        }, 500);
         
         // Message de succès adapté
         const successMessage = bulkEdit ? 
             `${relatedRequestsCount} modifications sauvegardées en attente de validation` : 
             'Modifications sauvegardées en attente de validation';
         showSuccessToast(successMessage);
+        
+        console.log('✅ Modifications synchronisées avec la base de données');
     })
     .catch(error => {
         console.error('Error:', error);
