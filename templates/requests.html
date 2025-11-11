@@ -571,6 +571,7 @@ function loadRequestsWithPendingModifications() {
     const modsPromise = fetch('/api/pending-modifications')
         .then(response => response.json())
         .then(modifications => {
+            // Reconstruire complètement la Map à partir des données de la base
             allPendingModifications.clear();
             
             // Grouper les modifications par request_id
@@ -1555,7 +1556,7 @@ function saveRequestChanges() {
             }
         }, 100);
         
-        // Mettre à jour les Maps locales pour l'affichage immédiat
+        // Mettre à jour les Maps locales immédiatement pour l'affichage
         if (bulkEdit && Object.keys(changes).length > 0) {
             const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
             const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
@@ -1567,8 +1568,8 @@ function saveRequestChanges() {
                 );
                 
                 relatedRequests.forEach(req => {
-                    // Mettre à jour la Map locale pour l'affichage immédiat
-                    modifiedRequests.set(req.id.toString(), changes);
+                    // Ajouter à la liste des demandes avec modifications
+                    requestsWithPendingModifications.add(req.id);
                     
                     // Mettre à jour la Map globale des modifications en attente
                     if (!allPendingModifications.has(req.id)) {
@@ -1586,17 +1587,37 @@ function saveRequestChanges() {
                         
                         allPendingModifications.get(req.id).push(modification);
                     });
-                    
-                    // Ajouter à la liste des demandes avec modifications
-                    requestsWithPendingModifications.add(req.id);
                 });
             }
+        } else {
+            // Modification individuelle
+            requestsWithPendingModifications.add(parseInt(requestId));
+            
+            if (!allPendingModifications.has(parseInt(requestId))) {
+                allPendingModifications.set(parseInt(requestId), []);
+            }
+            
+            Object.entries(changes).forEach(([fieldName, change]) => {
+                const modification = {
+                    request_id: parseInt(requestId),
+                    field_name: fieldName,
+                    original_value: change.original,
+                    new_value: change.new
+                };
+                
+                allPendingModifications.get(parseInt(requestId)).push(modification);
+            });
         }
         
-        // Reload requests pour afficher le bouton de validation
-        loadRequestsWithPendingModifications().then(() => {
-            loadRequests();
-        });
+        // Recharger l'affichage des demandes pour montrer les badges et boutons
+        loadRequests();
+        
+        // Recharger depuis la base après un court délai pour synchroniser
+        setTimeout(() => {
+            loadRequestsWithPendingModifications().then(() => {
+                console.log('✅ Modifications synchronisées avec la base de données');
+            });
+        }, 500);
         
         // Message de succès adapté
         const successMessage = bulkEdit ? 
