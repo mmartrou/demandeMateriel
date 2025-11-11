@@ -549,23 +549,26 @@ let allPendingModifications = new Map(); // Map<requestId, modifications[]>
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeFilters();
-    loadRequestsWithPendingModifications();
-    loadRequests();
+    // Charger d'abord les modifications en attente, puis les demandes
+    loadRequestsWithPendingModifications().then(() => {
+        loadRequests();
+    });
 });
 
 function loadRequestsWithPendingModifications() {
-    // Charger les IDs des demandes avec modifications
-    fetch('/api/requests-with-pending-modifications')
+    // Charger les IDs des demandes avec modifications et toutes les modifications en attente
+    // Retourner une Promise pour permettre l'attente de la fin du chargement
+    const idsPromise = fetch('/api/requests-with-pending-modifications')
         .then(response => response.json())
         .then(requestIds => {
             requestsWithPendingModifications = new Set(requestIds);
+            console.log(`📋 ${requestIds.length} demandes avec modifications en attente chargées`);
         })
         .catch(error => {
             console.error('Error loading pending modifications IDs:', error);
         });
     
-    // Charger toutes les modifications en attente
-    fetch('/api/pending-modifications')
+    const modsPromise = fetch('/api/pending-modifications')
         .then(response => response.json())
         .then(modifications => {
             allPendingModifications.clear();
@@ -578,10 +581,14 @@ function loadRequestsWithPendingModifications() {
                 }
                 allPendingModifications.get(requestId).push(mod);
             });
+            console.log(`📝 ${modifications.length} modifications en attente chargées pour ${allPendingModifications.size} demandes`);
         })
         .catch(error => {
             console.error('Error loading all pending modifications:', error);
         });
+    
+    // Retourner une Promise qui attend les deux chargements
+    return Promise.all([idsPromise, modsPromise]);
 }function loadRequests() {
     const loadingIndicator = document.getElementById('loadingIndicator');
     const tableBody = document.getElementById('requestsTableBody');
@@ -817,7 +824,8 @@ function getStatusBadge(request) {
     } else {
         badges.push('<span class="badge bg-light text-dark">⏳ Non préparée</span>');
     }
-    if (request.modified) {
+    // Vérifier si la demande a des modifications en attente (persisté en base)
+    if (requestsWithPendingModifications.has(request.id)) {
         badges.push('<span class="badge bg-warning">⚠️ Modifiée</span>');
     }
     return badges.join(' ');
@@ -1586,8 +1594,9 @@ function saveRequestChanges() {
         }
         
         // Reload requests pour afficher le bouton de validation
-        loadRequestsWithPendingModifications();
-        loadRequests();
+        loadRequestsWithPendingModifications().then(() => {
+            loadRequests();
+        });
         
         // Message de succès adapté
         const successMessage = bulkEdit ? 
@@ -1746,8 +1755,9 @@ function validateModifications() {
         });
         
         // Rafraîchir la liste
-        loadRequestsWithPendingModifications();
-        loadRequests();
+        loadRequestsWithPendingModifications().then(() => {
+            loadRequests();
+        });
         
         const successMessage = relatedRequestsWithModifications.length > 1 ? 
             `${relatedRequestsWithModifications.length} demandes validées avec succès` : 
@@ -1820,8 +1830,9 @@ function rejectModifications() {
         });
         
         // Rafraîchir la liste
-        loadRequestsWithPendingModifications();
-        loadRequests();
+        loadRequestsWithPendingModifications().then(() => {
+            loadRequests();
+        });
         
         const successMessage = relatedRequestsWithModifications.length > 1 ? 
             `${relatedRequestsWithModifications.length} demandes rejetées` : 
