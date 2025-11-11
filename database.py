@@ -1131,17 +1131,27 @@ def add_pending_modification(request_id, field_name, original_value, new_value, 
     placeholder = '%s' if db_type == 'postgresql' else '?'
     
     try:
+        logger.info(f"💾 Tentative d'ajout modification: request_id={request_id}, field={field_name}, original='{original_value}', new='{new_value}'")
+        
         cursor.execute(f'''
             INSERT INTO pending_modifications 
             (request_id, field_name, original_value, new_value, modified_by) 
             VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
         ''', (request_id, field_name, original_value, new_value, modified_by))
         
+        affected_rows = cursor.rowcount
+        logger.info(f"✅ INSERT réussi - {affected_rows} ligne(s) insérée(s)")
+        
         conn.commit()
+        logger.info(f"✅ COMMIT réussi pour la modification de la demande {request_id}")
         conn.close()
         return True
     except Exception as e:
-        logger.error(f"Erreur lors de l'ajout de la modification en attente: {e}")
+        logger.error(f"❌ Erreur lors de l'ajout de la modification en attente: {e}")
+        logger.error(f"   request_id={request_id}, field={field_name}, db_type={db_type}")
+        import traceback
+        logger.error(f"   Traceback: {traceback.format_exc()}")
+        conn.rollback()
         conn.close()
         return False
 
