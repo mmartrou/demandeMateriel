@@ -369,20 +369,50 @@ function generatePlanning() {
         },
         body: JSON.stringify({date: date})
     })
-    .then(response => {
+    .then(async (response) => {
         if (!response.ok) {
-            return response.json().then(err => {
-                throw new Error(err.error || 'Erreur lors de la génération');
-            });
+            let errMsg = 'Erreur lors de la génération';
+            try {
+                const err = await response.json();
+                if (err && err.error) errMsg = err.error;
+            } catch (_) {}
+            throw new Error(errMsg);
         }
 
-        // Appeler l'API pour sauvegarder le planning
+        // Déclencher le téléchargement du fichier Excel
+        const disposition = response.headers.get('Content-Disposition') || '';
+        let filename = 'planning.xlsx';
+        const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i.exec(disposition);
+        if (match && match[1]) {
+            filename = match[1].replace(/["']/g, '');
+        } else {
+            // Fallback: générer un nom à partir de la date sélectionnée
+            try {
+                const d = new Date(date + 'T00:00:00');
+                const jours = ['LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI','DIMANCHE'];
+                const jour = jours[d.getDay() === 0 ? 6 : d.getDay() - 1]; // adapter à Lundi=0
+                const formatted = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+                filename = `planning_${jour}_${formatted}.xlsx`;
+            } catch (_) {}
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        // Ensuite, sauvegarder le planning côté serveur (données à compléter si nécessaire)
         return fetch('/api/save-planning', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({date: date, planning_data: {}}) // Remplacer {} par les données réelles si disponibles
+            body: JSON.stringify({date: date, data: {}})
         });
     })
     .then(saveResponse => {
@@ -392,7 +422,7 @@ function generatePlanning() {
             });
         }
 
-        showMessage('Planning généré et sauvegardé avec succès', 'success');
+        showMessage('Planning généré, téléchargé et sauvegardé avec succès', 'success');
     })
     .catch(error => {
         console.error('Error:', error);

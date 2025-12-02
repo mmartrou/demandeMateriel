@@ -1027,11 +1027,15 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 else:
                     poids_salle[i][s] = 0
 
-        # Constraints: each course must have exactly one room
+        # Constraints: each course with compatible rooms must have exactly one room
         for i in range(len(cours)):
             compatible_rooms = [x[(i,s)] for s in salles if (i,s) in x]
             if compatible_rooms:
                 model.Add(sum(compatible_rooms) == 1)
+            else:
+                print(f"⚠️ ATTENTION: Cours {i} ({cours[i]['enseignant']} - {cours[i]['niveau']}) n'a AUCUNE salle compatible!")
+                print(f"   Matière: {cours[i]['matiere']}, Horaire: {cours[i]['horaire']}")
+                print(f"   Besoins: ordinateurs={cours[i]['ordinateurs']}, eviers={cours[i]['eviers']}, hotte={cours[i]['hotte']}")
 
         # Constraints: no room conflicts (time overlap)
         for i in range(len(cours)):
@@ -1067,7 +1071,12 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         salle_utilisee = {}
         for s in salles:
             salle_utilisee[s] = model.NewBoolVar(f"salle_utilisee_{s}")
-            model.AddMaxEquality(salle_utilisee[s], [x[(i,s)] for i in range(len(cours)) if (i,s) in x])
+            vars_for_salle = [x[(i,s)] for i in range(len(cours)) if (i,s) in x]
+            if vars_for_salle:
+                model.AddMaxEquality(salle_utilisee[s], vars_for_salle)
+            else:
+                # Aucune variable pour cette salle -> elle n'est pas utilisée
+                model.Add(salle_utilisee[s] == 0)
 
         # Objective: maximize room specialization + teacher preference + room usage
         model.Maximize(
@@ -1085,6 +1094,12 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         print(f"Nombre de cours: {len(cours)}")
         print(f"Nombre de salles disponibles: {len(salles)}")
         print(f"Salles: {list(salles.keys())}")
+        print(f"Variables x créées: {len(x)}")
+        
+        # Debug: afficher les cours et leurs salles compatibles
+        for i, c in enumerate(cours):
+            compatible_rooms_list = [s for s in salles if (i,s) in x]
+            print(f"Cours {i} ({c['enseignant']} - {c['niveau']} à {c['horaire']}): {len(compatible_rooms_list)} salles compatibles - {compatible_rooms_list}")
         
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             # Count assignments
@@ -1170,29 +1185,13 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 else:
                     days = [date if isinstance(date, str) else date.strftime('%Y-%m-%d')]
                 
-                # Grille complète de créneaux de 15 minutes de 9h00 à 18h15
-                time_slots = []
-                start_hour = 9
-                start_minute = 0
-                end_hour = 18
-                end_minute = 15
+                # Horaires autorisés pour le début des cours (pas toutes les 15 minutes)
+                time_slots = [
+                    '9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45',
+                    '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'
+                ]
                 
-                current_hour = start_hour
-                current_minute = start_minute
-                
-                while current_hour < end_hour or (current_hour == end_hour and current_minute <= end_minute):
-                    time_slot = f"{current_hour}h{current_minute:02d}"
-                    time_slots.append(time_slot)
-                    
-                    # Incrémenter de 15 minutes
-                    current_minute += 15
-                    if current_minute >= 60:
-                        current_minute = 0
-                        current_hour += 1
-                
-                print(f"⏰ Grille complète (15min) 9h00-18h15 - Total: {len(time_slots)} créneaux")
-                print(f"📝 Créneaux 9h: {[slot for slot in time_slots if slot.startswith('9h')]}")
-                print(f"📝 Créneaux 10h: {[slot for slot in time_slots if slot.startswith('10h')]}")
+                print(f"⏰ Créneaux autorisés pour début de cours - Total: {len(time_slots)} horaires")
                 print(f"📝 Tous les créneaux: {time_slots}")
                 
                 rooms_list = [{'id': s, 'name': salles[s]['nom']} for s in salles]
@@ -1246,7 +1245,7 @@ def get_planning_data_for_editor_v2(target_date):
             return {
                 'courses': [],
                 'days': [target_date],
-                'time_slots': ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30'],
+                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
                 'assignments': {},
                 'rooms': []
             }
@@ -1261,7 +1260,7 @@ def get_planning_data_for_editor_v2(target_date):
         return {
             'courses': [],
             'days': [target_date],
-            'time_slots': ['8h00', '9h30', '11h00', '13h30', '15h00', '16h30'],
+            'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
             'assignments': {},
             'rooms': []
         }
