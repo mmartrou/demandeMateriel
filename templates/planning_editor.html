@@ -66,7 +66,7 @@
         position: sticky;
         left: 0;
         z-index: 25;
-        height: 27px;
+        height: 40px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -75,7 +75,7 @@
     .room-cell {
         border: 1px solid #dee2e6;
         padding: 2px;
-        height: 27px;
+        height: 40px;
         background: #fff;
         position: relative;
         display: flex;
@@ -614,18 +614,24 @@
         let placementByRoom = {};
         rooms.forEach(room => placementByRoom[room.name] = 0);
         
-        // Créer une ligne pour chaque créneau horaire (cellules vides pour la grille)
+        // Créer une ligne pour chaque créneau horaire avec hauteur proportionnelle à la durée
         timeSlots.forEach((slot, slotIndex) => {
             const row = document.createElement('div');
             row.className = 'grid-row';
+            
+            // Calculer la hauteur en fonction de la durée du créneau
+            const slotDuration = getSlotDuration(slot);
+            // Base: 40px pour 30min, 60px pour 45min, 80px pour 60min
+            const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
             
             // Cellule de l'horaire
             const timeCell = document.createElement('div');
             timeCell.className = 'time-cell';
             timeCell.textContent = slot;
+            timeCell.style.height = `${cellHeight}px`;
             row.appendChild(timeCell);
             
-            // Cellules vides pour chaque salle (les cours seront positionnés par CSS Grid)
+            // Cellules vides pour chaque salle (les cours seront positionnés par position absolute)
             rooms.forEach((room, roomIndex) => {
                 const roomCell = document.createElement('div');
                 roomCell.className = 'room-cell drop-zone';
@@ -633,6 +639,7 @@
                 roomCell.dataset.slot = slot;
                 roomCell.dataset.slotIndex = slotIndex;
                 roomCell.dataset.roomIndex = roomIndex;
+                roomCell.style.height = `${cellHeight}px`;
                 
                 // Configurer les événements de drop
                 setupDropZone(roomCell);
@@ -762,17 +769,31 @@
         // Calculer la durée en minutes
         const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
         
-        // Calculer dynamiquement la hauteur réelle d'une cellule
-        const cellHeight = getCellHeight();
-        // Calculer la hauteur exacte strictement proportionnelle à la durée
-        let exactHeight = (durationInMinutes / 15) * cellHeight;
+        // Calculer la hauteur totale en cumulant les hauteurs des créneaux traversés
+        let totalHeight = 0;
+        let remainingDuration = durationInMinutes;
+        let currentSlotIndex = startSlotIndex;
+        
+        while (remainingDuration > 0 && currentSlotIndex < timeSlots.length) {
+            const slot = timeSlots[currentSlotIndex];
+            const slotDuration = getSlotDuration(slot);
+            const usedDuration = Math.min(remainingDuration, slotDuration);
+            
+            // Calculer la hauteur proportionnelle de ce créneau
+            const baseCellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
+            const proportionalHeight = (usedDuration / slotDuration) * baseCellHeight;
+            
+            totalHeight += proportionalHeight;
+            remainingDuration -= usedDuration;
+            currentSlotIndex++;
+        }
 
         // Utiliser position absolute pour déborder sur les cellules suivantes
         card.style.position = 'absolute';
         card.style.top = '1px';
         card.style.left = '1px';
         card.style.right = '1px';
-        card.style.height = `${exactHeight}px`;
+        card.style.height = `${totalHeight - 2}px`; // -2px pour les marges
         card.style.zIndex = '10';
         
         // Formatage de la durée pour affichage
@@ -805,7 +826,7 @@
             ${equipmentLine}
         `;
         
-        console.log(`📅 Cours ${course.subject} - Hauteur: ${exactHeight}px (${durationInMinutes}min)`);
+        console.log(`📅 Cours ${course.subject} - Hauteur cumulée: ${totalHeight.toFixed(1)}px (${durationInMinutes}min)`);
         
         // Ajouter les événements de drag
         setupDragEvents(card);
@@ -890,34 +911,57 @@
         }, 250);
     });
 
-    // Générer tous les créneaux de 15 minutes de 9h00 à 18h15
+    // Générer les créneaux horaires autorisés pour le début des cours
     function generateAllTimeSlots() {
-        const timeSlots = [];
-        const startHour = 9;
-        const startMinute = 0;
-        const endHour = 18;
-        const endMinute = 15;
+        // Horaires de début de cours autorisés avec leurs durées jusqu'au prochain créneau
+        const authorizedSlots = [
+            '9h00',   // 30min jusqu'à 9h30
+            '9h30',   // 30min jusqu'à 10h00
+            '10h00',  // 45min jusqu'à 10h45
+            '10h45',  // 30min jusqu'à 11h15
+            '11h15',  // 30min jusqu'à 11h45
+            '11h45',  // 30min jusqu'à 12h15
+            '12h15',  // 30min jusqu'à 12h45
+            '12h45',  // 30min jusqu'à 13h15
+            '13h15',  // 30min jusqu'à 13h45
+            '13h45',  // 30min jusqu'à 14h15
+            '14h15',  // 30min jusqu'à 14h45
+            '14h45',  // 30min jusqu'à 15h15
+            '15h15',  // 30min jusqu'à 15h45
+            '15h45',  // 30min jusqu'à 16h15
+            '16h15',  // 30min jusqu'à 16h45
+            '16h45',  // 30min jusqu'à 17h15
+            '17h15'   // 60min (double taille pour permettre cours jusqu'à 18h15)
+        ];
         
-        let currentHour = startHour;
-        let currentMinute = startMinute;
+        console.log(`📅 Créneaux autorisés: ${authorizedSlots.length} horaires de début`);
+        console.log(`📅 Horaires: ${authorizedSlots.join(', ')}`);
         
-        while (currentHour < endHour || (currentHour === endHour && currentMinute <= endMinute)) {
-            const timeSlot = `${currentHour}h${currentMinute.toString().padStart(2, '0')}`;
-            timeSlots.push(timeSlot);
-            
-            // Incrémenter de 15 minutes
-            currentMinute += 15;
-            if (currentMinute >= 60) {
-                currentMinute = 0;
-                currentHour += 1;
-            }
-        }
-        
-        console.log(`📅 Créneaux générés côté client: ${timeSlots.length} créneaux`);
-        console.log(`📅 Premiers: ${timeSlots.slice(0, 8)}`);
-        console.log(`📅 Derniers: ${timeSlots.slice(-4)}`);
-        
-        return timeSlots;
+        return authorizedSlots;
+    }
+    
+    // Calculer la durée en minutes entre deux créneaux horaires
+    function getSlotDuration(slot) {
+        const slotDurations = {
+            '9h00': 30,
+            '9h30': 30,
+            '10h00': 45,  // Durée spéciale
+            '10h45': 30,
+            '11h15': 30,
+            '11h45': 30,
+            '12h15': 30,
+            '12h45': 30,
+            '13h15': 30,
+            '13h45': 30,
+            '14h15': 30,
+            '14h45': 30,
+            '15h15': 30,
+            '15h45': 30,
+            '16h15': 30,
+            '16h45': 30,
+            '17h15': 60   // Double durée pour fin de journée
+        };
+        return slotDurations[slot] || 30;
     }
 
     // Calculer la position de fin exacte d'un cours selon sa durée

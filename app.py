@@ -3,6 +3,7 @@ import csv
 import io
 import logging
 import os
+import traceback
 from datetime import datetime, timedelta
 import openpyxl
 # Charger les variables d'environnement depuis .env
@@ -25,6 +26,10 @@ app = Flask(__name__)
 
 # Configuration pour gérer les erreurs d'encodage UTF-8
 app.config['JSON_AS_ASCII'] = False
+
+# Configuration du logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # Middleware pour gérer les erreurs d'encodage dans les requêtes
 @app.before_request  
@@ -96,11 +101,18 @@ def generate_planning():
         if not success:
             return jsonify({'error': result}), 404
         
-        # Extract filename from result message
-        if "Planning généré:" in result:
-            # Extract filename from message like "Planning généré: filename.xlsx (2/3 cours assignés)"
-            file_path = result.split("Planning généré: ")[1].split(" (")[0]
-        else:
+        # Resolve generated file path from result
+        file_path = None
+        try:
+            # Case 1: function returns the filename directly
+            if isinstance(result, str) and result.lower().endswith('.xlsx'):
+                file_path = result
+            # Case 2: function returned a message string (legacy)
+            elif isinstance(result, str) and "Planning généré:" in result:
+                file_path = result.split("Planning généré: ")[1].split(" (")[0]
+            else:
+                return jsonify({'error': "Format de réponse inattendu lors de la génération du fichier"}), 500
+        except Exception as _e:
             return jsonify({'error': 'Erreur lors de l\'extraction du nom de fichier'}), 500
         
         # Read the generated file and return it
@@ -118,10 +130,11 @@ def generate_planning():
         from datetime import datetime
         try:
             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            day_names = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+            # datetime.weekday(): Lundi=0 .. Dimanche=6
+            day_names = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
             day_name = day_names[date_obj.weekday()]
             formatted_date = date_obj.strftime('%d-%m-%Y')
-            filename = f"planning{day_name.upper()}_{formatted_date}.xlsx"
+            filename = f"planning_{day_name.upper()}_{formatted_date}.xlsx"
         except:
             filename = f"planning_{date_str}.xlsx"
         
@@ -697,6 +710,8 @@ def api_pending_modifications():
             
             # Log pour debug
             logger.info(f"📥 Pending modification reçue: {data}")
+            logger.info(f"📥 Type de données: {type(data)}")
+            logger.info(f"📥 Clés disponibles: {list(data.keys()) if data else 'None'}")
             
             # Validation des champs requis
             required_fields = ['request_id', 'field_name', 'original_value', 'new_value']
@@ -740,12 +755,17 @@ def api_pending_modifications():
                 data.get('modified_by', 'User')
             )
             
+            logger.info(f"✅ Résultat add_pending_modification: {success}")
+            
             if success:
                 return jsonify({'message': 'Modification en attente ajoutée avec succès'})
             else:
+                logger.error(f"❌ add_pending_modification a retourné False")
                 return jsonify({'error': 'Erreur lors de l\'ajout de la modification'}), 500
                 
         except Exception as e:
+            logger.error(f"❌ Exception dans POST /api/pending-modifications: {str(e)}")
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return jsonify({'error': f'Erreur lors de l\'ajout: {str(e)}'}), 500
 
 @app.route('/api/requests-with-pending-modifications', methods=['GET'])
@@ -1233,11 +1253,10 @@ def api_get_planning_data():
                 rooms_dict = {room['name']: room for room in planning_data['rooms']}
                 planning_data['rooms'] = [rooms_dict[name] for name in correct_order if name in rooms_dict]
             
-            # Forcer l'utilisation de tous les créneaux horaires
-            full_time_slots = ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', 
-                              '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', 
-                              '17h15', '17h45', '18h15']
-            planning_data['time_slots'] = full_time_slots
+            # Utiliser seulement les horaires de début de cours autorisés
+            authorized_time_slots = ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45',
+                                     '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15']
+            planning_data['time_slots'] = authorized_time_slots
             
             print(f"🔍 API: OR-Tools terminé - {len(planning_data.get('courses', []))} cours, {len(planning_data.get('rooms', []))} salles")
             return jsonify(planning_data)
@@ -1248,7 +1267,7 @@ def api_get_planning_data():
             return jsonify({
                 'courses': [],
                 'rooms': [{'name': name} for name in ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']],
-                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15', '17h45', '18h15'],
+                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
                 'room_assignments': {},
                 'days': [target_date],
                 'error': str(e)
@@ -1319,15 +1338,21 @@ def api_generate_planning_from_editor():
 def save_planning():
     """API endpoint to save planning data into the database"""
     try:
-        data = request.get_json()
+        # Parse JSON payload robustly
+        data = request.get_json(silent=True) or {}
         app.logger.info(f"Données reçues pour enregistrement: {data}")
 
-        if not data or 'date' not in data or 'data' not in data:
+        # Normalize keys: accept 'data' or legacy 'planning_data'
+        if 'data' not in data and 'planning_data' in data:
+            data['data'] = data.get('planning_data')
+
+        # Validate required 'date'; default empty dict for data if missing
+        if 'date' not in data or not data['date']:
             app.logger.error("Requête invalide: date ou données manquantes")
-            return jsonify({'error': 'Requête invalide: date ou données manquantes'}), 400
+            return jsonify({'error': "Requête invalide: date ou données manquantes"}), 400
 
         date = data['date']
-        planning_data = data['data']
+        planning_data = data.get('data') if data.get('data') is not None else {}
 
         # Connexion à la base de données
         conn, db_type = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
