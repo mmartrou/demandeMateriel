@@ -1215,6 +1215,23 @@ def validate_pending_modifications(request_id):
     """Apply all pending modifications for a request and remove them from pending table"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
+
+    allowed_fields = {
+        'request_date',
+        'horaire',
+        'class_name',
+        'material_description',
+        'quantity',
+        'selected_materials',
+        'computers_needed',
+        'notes',
+        'group_count',
+        'material_prof',
+        'request_name',
+        'room_type',
+        'image_url',
+        'exam'
+    }
     
     placeholder = '%s' if db_type == 'postgresql' else '?'
     # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
@@ -1248,6 +1265,10 @@ def validate_pending_modifications(request_id):
                 # Tuple classique [field_name, new_value]
                 field_name = mod[0]
                 new_value = mod[1]
+
+            if field_name not in allowed_fields:
+                logger.warning(f"Champ de modification non autorisé ignoré: {field_name}")
+                continue
             
             cursor.execute(f'''
                 UPDATE material_requests 

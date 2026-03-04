@@ -37,9 +37,9 @@ python database.py
 python app.py
 ```
 
-L'application sera accessible sur `http://localhost:5000`
+L'application sera accessible sur `http://localhost:8080`
 
-> 📖 **Guide détaillé** : Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour toutes les options
+> 📖 **Guide détaillé OVH VPS** : Voir [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Utilisation
 

@@ -368,6 +368,24 @@
 let originalRequestData = {};
 let modifiedRequests = new Map(); // Stocke les modifications pour chaque demande
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function sanitizeImageUrl(url) {
+    const value = String(url ?? '').trim();
+    if (!value) return '';
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/static/')) {
+        return value;
+    }
+    return '';
+}
+
 // Gestion des cookies
 function setCookie(name, value, days = 30) {
     const expires = new Date();
@@ -396,13 +414,16 @@ function formatDateToYMD(dateString) {
 
 // Fonction pour comparer deux textes et générer un affichage avec les modifications
 function generateDiffDisplay(originalText, newText) {
-    if (originalText === newText) {
-        return newText; // Aucun changement
+    const safeOriginalText = escapeHtml(originalText ?? '');
+    const safeNewText = escapeHtml(newText ?? '');
+
+    if (safeOriginalText === safeNewText) {
+        return safeNewText; // Aucun changement
     }
     
     // Diviser les textes en mots pour une comparaison plus fine
-    const originalWords = originalText.split(/(\s+)/);
-    const newWords = newText.split(/(\s+)/);
+    const originalWords = safeOriginalText.split(/(\s+)/);
+    const newWords = safeNewText.split(/(\s+)/);
     
     let result = '';
     let i = 0, j = 0;
@@ -691,20 +712,30 @@ function loadRequestsWithPendingModifications() {
                 let otherSchedules = '';
                 if (relatedRequests.length > 0) {
                     const schedules = relatedRequests.map(r => 
-                        `${formatDate(r.request_date)} à ${r.horaire || 'non spécifié'}`
+                        `${formatDate(r.request_date)} à ${escapeHtml(r.horaire || 'non spécifié')}`
                     ).join(', ');
                     otherSchedules = `<br><small class="text-muted">📅 Autres horaires: ${schedules}</small>`;
                 }
+
+                const safeRequestName = escapeHtml(request.request_name || '');
+                const safeHoraire = escapeHtml(request.horaire || '-');
+                const safeClassName = escapeHtml(request.class_name || '');
+                const safeMaterialDescription = escapeHtml(request.material_description || '');
+                const safeMaterialProf = escapeHtml(request.material_prof || '');
+                const safeNotes = escapeHtml(request.notes || '');
+                const safeTeacherName = escapeHtml(request.teacher_name || '');
                 
                 // Améliorer l'affichage avec les modifications si elles existent
                 const displayRequestName = enhanceRequestDisplay(request, 'request_name', 
-                    `<span class="badge bg-primary">${request.request_name || '<em class="text-muted">Sans nom</em>'}</span>`);
+                    safeRequestName
+                        ? `<span class="badge bg-primary">${safeRequestName}</span>`
+                        : '<em class="text-muted">Sans nom</em>');
                 
                 const displayHoraire = enhanceRequestDisplay(request, 'horaire', 
-                    `<span class="badge bg-success">${request.horaire || '-'}</span>`);
+                    `<span class="badge bg-success">${safeHoraire}</span>`);
                 
                 const displayClassName = enhanceRequestDisplay(request, 'class_name', 
-                    `<span class="badge bg-info">${request.class_name}</span>`);
+                    `<span class="badge bg-info">${safeClassName}</span>`);
                 
                 // Afficher group_count (nombre de groupes), pas quantity
                 const groupCountValue = request.group_count !== undefined && request.group_count !== null ? request.group_count : 1;
@@ -721,23 +752,30 @@ function loadRequestsWithPendingModifications() {
                     `<span class="badge bg-warning">${request.computers_needed || 0}</span>`);
                 
                 const displayMaterialDescription = enhanceRequestDisplay(request, 'material_description', 
-                    request.material_description);
+                    `<span style="white-space: pre-wrap;">${safeMaterialDescription}</span>`);
                 
                 const displayMaterialProf = enhanceRequestDisplay(request, 'material_prof', 
-                    `<small class="text-muted" style="white-space: pre-wrap;">${request.material_prof || '<em>Aucun</em>'}</small>`);
+                    safeMaterialProf
+                        ? `<small class="text-muted" style="white-space: pre-wrap;">${safeMaterialProf}</small>`
+                        : '<small class="text-muted"><em>Aucun</em></small>');
                 
                 const displayNotes = enhanceRequestDisplay(request, 'notes', 
-                    `<span style="white-space: pre-wrap;">${request.notes || '<em class="text-muted">Aucune</em>'}</span>`);
+                    safeNotes
+                        ? `<span style="white-space: pre-wrap;">${safeNotes}</span>`
+                        : '<em class="text-muted">Aucune</em>');
 
                 // Gestion de l'affichage de l'image
                 let displayImage = '<em class="text-muted">Aucune</em>';
-                if (request.image_url && request.image_url.trim()) {
+                const safeImageUrl = sanitizeImageUrl(request.image_url);
+                if (safeImageUrl) {
+                    const encodedImageUrl = encodeURIComponent(safeImageUrl);
+                    const encodedImageTitle = encodeURIComponent(`Demande #${request.id} - ${request.teacher_name || ''}`);
                     displayImage = `
-                        <img src="${request.image_url}" 
+                        <img src="${safeImageUrl}" 
                              alt="Image de la demande" 
                              class="img-thumbnail" 
                              style="max-width: 50px; max-height: 50px; cursor: pointer;"
-                             onclick="showImageModal('${request.image_url}', 'Demande #${request.id} - ${request.teacher_name}')"
+                             onclick="showImageModal(decodeURIComponent('${encodedImageUrl}'), decodeURIComponent('${encodedImageTitle}'))"
                              title="Cliquez pour agrandir">
                     `;
                 }
@@ -749,7 +787,7 @@ function loadRequestsWithPendingModifications() {
                 
                 row.innerHTML = `
                     <td>${request.id}</td>
-                    <td><div class="fw-bold">${request.teacher_name || '<em class="text-muted">Nom manquant</em>'}</div></td>
+                    <td><div class="fw-bold">${safeTeacherName || '<em class="text-muted">Nom manquant</em>'}</div></td>
                     <td>${displayRequestName}</td>
                     <td>${formatDate(request.request_date)}${otherSchedules}</td>
                     <td>${displayHoraire}</td>
