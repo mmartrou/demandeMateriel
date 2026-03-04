@@ -5,6 +5,7 @@ import logging
 import os
 import hmac
 import traceback
+from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 import openpyxl
 # Charger les variables d'environnement depuis .env
@@ -115,7 +116,21 @@ def protect_sensitive_routes():
             provided_token = auth_header[7:].strip()
 
     if not provided_token:
+        provided_token = request.cookies.get('admin_token', '').strip()
+
+    if not provided_token:
         provided_token = request.args.get('admin_token', '').strip()
+
+    if not provided_token:
+        referer = request.headers.get('Referer', '')
+        try:
+            if referer:
+                referer_query = parse_qs(urlparse(referer).query)
+                referer_token = referer_query.get('admin_token', [''])[0].strip()
+                if referer_token:
+                    provided_token = referer_token
+        except Exception:
+            pass
 
     if not provided_token or not hmac.compare_digest(provided_token, admin_token):
         logger.warning(f"Accès refusé à {request.path} ({request.method}) - token admin manquant/invalide")
@@ -124,6 +139,25 @@ def protect_sensitive_routes():
         return "Non autorisé", 401
 
     return None
+
+
+@app.after_request
+def persist_admin_token_cookie(response):
+    """Persiste un admin_token valide en cookie HTTP-only pour les appels API du navigateur."""
+    admin_token = os.getenv('ADMIN_TOKEN', '').strip()
+    query_token = request.args.get('admin_token', '').strip()
+
+    if admin_token and query_token and hmac.compare_digest(query_token, admin_token):
+        response.set_cookie(
+            'admin_token',
+            query_token,
+            max_age=60 * 60 * 8,
+            httponly=True,
+            samesite='Lax',
+            secure=request.is_secure
+        )
+
+    return response
 
 # Configuration des logs pour éviter le spam d'erreurs d'encodage
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
