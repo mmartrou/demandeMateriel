@@ -238,6 +238,8 @@ def est_C21_disponible(cours_info, c21_slots):
 
 def compatible(salle, besoin, c21_slots=None):
     """Check if a room is compatible with course needs"""
+    room_type = str(salle.get("type", "mixte") or "mixte").strip().lower()
+
     # Vérification spécifique pour C21
     if salle.get("nom") == "C21" and c21_slots is not None:
         if not est_C21_disponible(besoin, c21_slots):
@@ -259,9 +261,9 @@ def compatible(salle, besoin, c21_slots=None):
         return True
     
     # For courses with specific equipment needs, check subject compatibility
-    if besoin["matiere"] == "chimie" and salle["type"] not in ("chimie", "mixte"):
+    if besoin["matiere"] == "chimie" and room_type not in ("chimie", "mixte"):
         return False
-    if besoin["matiere"] == "physique" and salle["type"] not in ("physique", "mixte"):
+    if besoin["matiere"] == "physique" and room_type not in ("physique", "mixte"):
         return False
     
     # Check equipment needs
@@ -881,7 +883,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
             salle_list.append(room_name)
             salles[room_name] = {
                 "nom": room_name,
-                "type": room.get('type', 'mixte'),
+                "type": str(room.get('type', 'mixte') or 'mixte').strip().lower(),
                 "ordinateurs": room.get('ordinateurs', 0) or 0,
                 "chaises": room.get('chaises', 20) or 20,
                 "eviers": room.get('eviers', 0) or 0,
