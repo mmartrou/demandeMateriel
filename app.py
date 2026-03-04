@@ -3,6 +3,7 @@ import csv
 import io
 import logging
 import os
+import hmac
 import traceback
 from datetime import datetime, timedelta
 import openpyxl
@@ -26,10 +27,46 @@ app = Flask(__name__)
 
 # Configuration pour gérer les erreurs d'encodage UTF-8
 app.config['JSON_AS_ASCII'] = False
+app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_MB', '10')) * 1024 * 1024
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def api_error(message="Erreur serveur interne", exception=None, status_code=500):
+    """Retourne une erreur API sans exposer les détails internes en production."""
+    if exception is not None:
+        logger.exception(message)
+    else:
+        logger.error(message)
+
+    payload = {'error': message}
+    if app.debug and exception is not None:
+        payload['details'] = str(exception)
+    return jsonify(payload), status_code
+
+
+def _is_sensitive_route(path, method):
+    """Détermine si la route nécessite un token admin."""
+    if path.startswith('/admin'):
+        return True
+
+    if path.startswith('/api/requests/') and method in {'PUT', 'DELETE', 'POST'}:
+        return True
+
+    sensitive_prefixes = (
+        '/api/pending-modifications',
+        '/api/requests-with-pending-modifications',
+        '/api/working-days',
+        '/api/c21-availability',
+        '/api/rooms',
+        '/api/students',
+        '/api/planning-editor',
+        '/api/save-planning',
+        '/api/get-planning'
+    )
+    return any(path.startswith(prefix) for prefix in sensitive_prefixes)
 
 # Middleware pour gérer les erreurs d'encodage dans les requêtes
 @app.before_request  
@@ -60,6 +97,34 @@ def handle_encoding_errors():
         # Ignorer complètement les erreurs d'encodage pour éviter le spam des logs
         pass
 
+
+@app.before_request
+def protect_sensitive_routes():
+    """Protège les routes d'administration/sensibles via ADMIN_TOKEN (si configuré)."""
+    admin_token = os.getenv('ADMIN_TOKEN', '').strip()
+    if not admin_token:
+        return None
+
+    if not _is_sensitive_route(request.path, request.method):
+        return None
+
+    provided_token = request.headers.get('X-Admin-Token', '').strip()
+    if not provided_token:
+        auth_header = request.headers.get('Authorization', '').strip()
+        if auth_header.lower().startswith('bearer '):
+            provided_token = auth_header[7:].strip()
+
+    if not provided_token:
+        provided_token = request.args.get('admin_token', '').strip()
+
+    if not provided_token or not hmac.compare_digest(provided_token, admin_token):
+        logger.warning(f"Accès refusé à {request.path} ({request.method}) - token admin manquant/invalide")
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        return "Non autorisé", 401
+
+    return None
+
 # Configuration des logs pour éviter le spam d'erreurs d'encodage
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
@@ -78,6 +143,12 @@ def handle_unicode_encode_error(e):
     """Gère les erreurs d'encodage Unicode lors de l'envoi de réponses"""
     app.logger.debug(f"Erreur d'encodage Unicode lors de l'envoi: {e}")
     return "Erreur d'encodage", 400
+
+
+@app.errorhandler(413)
+def handle_payload_too_large(e):
+    """Retourne une erreur explicite si le fichier uploadé dépasse la taille autorisée."""
+    return jsonify({'error': "Fichier trop volumineux"}), 413
 
 # Route Générateur de Planning
 @app.route('/planning')
@@ -151,7 +222,7 @@ def generate_planning():
         
     except Exception as e:
         logging.error(f"Erreur génération planning: {e}")
-        return jsonify({'error': f'Erreur lors de la génération: {str(e)}'}), 500
+        return api_error('Erreur lors de la génération du planning', e)
 
 @app.route('/')
 def index():
@@ -390,7 +461,7 @@ def api_add_request():
         return jsonify({'success': True, 'request_ids': request_ids}), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la création de la demande', e)
 
 @app.route('/export/csv')
 def export_csv():
@@ -572,7 +643,7 @@ def api_update_request(request_id):
             return jsonify({'error': 'Demande non trouvée'}), 404
     
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour de la demande', e)
 
 @app.route('/api/requests/<int:request_id>/toggle-prepared', methods=['POST'])
 def api_toggle_prepared(request_id):
@@ -584,7 +655,7 @@ def api_toggle_prepared(request_id):
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour du statut', e)
 
 @app.route('/api/requests/<int:request_id>', methods=['DELETE'])
 def api_delete_request(request_id):
@@ -596,7 +667,7 @@ def api_delete_request(request_id):
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la suppression de la demande', e)
 
 @app.route('/api/requests/<int:request_id>/room-type', methods=['PUT'])
 def api_update_room_type(request_id):
@@ -614,7 +685,7 @@ def api_update_room_type(request_id):
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour du type de salle', e)
 
 @app.route('/admin')
 def admin():
@@ -702,7 +773,7 @@ def api_pending_modifications():
         
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des modifications: {str(e)}")
-            return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
+            return api_error('Erreur serveur lors de la récupération des modifications', e)
     
     elif request.method == 'POST':
         try:
@@ -766,7 +837,7 @@ def api_pending_modifications():
         except Exception as e:
             logger.error(f"❌ Exception dans POST /api/pending-modifications: {str(e)}")
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
-            return jsonify({'error': f'Erreur lors de l\'ajout: {str(e)}'}), 500
+            return api_error('Erreur lors de l\'ajout de la modification', e)
 
 @app.route('/api/requests-with-pending-modifications', methods=['GET'])
 def api_get_requests_with_pending_modifications():
@@ -797,7 +868,7 @@ def api_validate_pending_modifications(request_id):
         else:
             return jsonify({'error': 'Aucune modification en attente trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': f'Erreur lors de la validation: {str(e)}'}), 500
+        return api_error('Erreur lors de la validation des modifications', e)
 
 @app.route('/api/pending-modifications/<int:request_id>/reject', methods=['POST'])
 def api_reject_pending_modifications(request_id):
@@ -809,7 +880,7 @@ def api_reject_pending_modifications(request_id):
         else:
             return jsonify({'error': 'Aucune modification en attente trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': f'Erreur lors du rejet: {str(e)}'}), 500
+        return api_error('Erreur lors du rejet des modifications', e)
 
 # API endpoints pour les images Google Drive
 @app.route('/api/validate-google-drive-image', methods=['POST'])
@@ -844,7 +915,7 @@ def api_validate_google_drive_image():
         })
         
     except Exception as e:
-        return jsonify({'error': f'Erreur lors de la validation: {str(e)}'}), 500
+        return api_error('Erreur lors de la validation de l\'image', e)
 
 @app.route('/api/image-info/<drive_id>', methods=['GET'])
 def api_get_image_info(drive_id):
@@ -857,7 +928,7 @@ def api_get_image_info(drive_id):
         return jsonify(image_info)
         
     except Exception as e:
-        return jsonify({'error': f'Erreur lors de la récupération: {str(e)}'}), 500
+        return api_error('Erreur lors de la récupération des informations image', e)
 
 @app.route('/api/upload-image', methods=['POST'])
 def api_upload_image():
@@ -939,7 +1010,7 @@ def api_upload_image():
             })
         
     except Exception as e:
-        return jsonify({'error': f'Erreur lors de l\'upload: {str(e)}'}), 500
+        return api_error('Erreur lors de l\'upload de l\'image', e)
 
 @app.route('/api/c21-availability', methods=['GET', 'POST'])
 def api_c21_availability():
@@ -970,7 +1041,7 @@ def api_delete_c21_availability(availability_id):
         else:
             return jsonify({'error': 'Créneau non trouvé'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la suppression du créneau C21', e)
 
 # API Routes pour la gestion des salles
 from database import get_working_days_config, set_working_day_config, delete_working_day_config
@@ -1005,7 +1076,7 @@ def api_get_working_days():
                     item['date'] = item['date'].strftime('%Y-%m-%d')
         return jsonify(config)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la récupération des jours ouvrés', e)
 
 @app.route('/api/working-days/<date>', methods=['PUT'])
 def api_set_working_day(date):
@@ -1025,7 +1096,7 @@ def api_set_working_day(date):
         else:
             return jsonify({'error': 'Failed to update config'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour du jour ouvré', e)
 
 @app.route('/api/working-days/<date>', methods=['DELETE'])
 def api_delete_working_day(date):
@@ -1037,7 +1108,7 @@ def api_delete_working_day(date):
         else:
             return jsonify({'error': 'Failed to delete config'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la suppression du jour ouvré', e)
 
 @app.route('/api/working-days/bulk', methods=['PUT'])
 def api_bulk_update_working_days():
@@ -1064,7 +1135,7 @@ def api_bulk_update_working_days():
                 errors.append(f"Erreur pour {date}")
         return jsonify({'updated_count': updated_count, 'errors': errors})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour groupée des jours ouvrés', e)
 @app.route('/api/rooms', methods=['GET'])
 def api_get_rooms():
     """API endpoint to get all rooms"""
@@ -1072,7 +1143,7 @@ def api_get_rooms():
         rooms = get_all_rooms()
         return jsonify(rooms)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la récupération des salles', e)
 
 @app.route('/api/rooms/<int:room_id>', methods=['PUT'])
 def api_update_room(room_id):
@@ -1085,7 +1156,7 @@ def api_update_room(room_id):
         else:
             return jsonify({'error': 'Salle non trouvée'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour de la salle', e)
 
 @app.route('/api/rooms/import-csv', methods=['POST'])
 def api_import_rooms_csv():
@@ -1113,7 +1184,7 @@ def api_import_rooms_csv():
             return jsonify({'error': message}), 400
             
     except Exception as e:
-        return jsonify({'error': f'Erreur lors de l\'import: {str(e)}'}), 500
+        return api_error('Erreur lors de l\'import du CSV des salles', e)
 
 @app.route('/api/rooms/export-csv', methods=['GET'])
 def api_export_rooms_csv():
@@ -1169,7 +1240,7 @@ def api_export_rooms_csv():
         return response
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de l\'export CSV des salles', e)
 
 # API Routes pour la gestion des effectifs d'étudiants
 @app.route('/api/students', methods=['GET'])
@@ -1179,7 +1250,7 @@ def api_get_students():
         students = get_all_student_numbers()
         return jsonify(students)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la récupération des effectifs', e)
 
 @app.route('/api/students', methods=['POST'])
 def api_add_student():
@@ -1200,7 +1271,7 @@ def api_add_student():
             return jsonify({'error': 'Erreur lors de l\'ajout'}), 500
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de l\'ajout de l\'effectif', e)
 
 @app.route('/api/students/<int:student_id>', methods=['PUT'])
 def api_update_student(student_id):
@@ -1213,7 +1284,7 @@ def api_update_student(student_id):
         else:
             return jsonify({'error': 'Effectif non trouvé'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la mise à jour de l\'effectif', e)
 
 @app.route('/api/students/<int:student_id>', methods=['DELETE'])
 def api_delete_student(student_id):
@@ -1225,7 +1296,7 @@ def api_delete_student(student_id):
         else:
             return jsonify({'error': 'Effectif non trouvé'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la suppression de l\'effectif', e)
 
 # Routes API pour l'éditeur de planning
 @app.route('/api/planning-editor/data', methods=['GET'])
@@ -1273,7 +1344,7 @@ def api_get_planning_data():
                 'error': str(e)
             })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la récupération des données planning', e)
 
 @app.route('/api/planning-editor/generate', methods=['POST'])
 def api_generate_planning_from_editor():
@@ -1332,7 +1403,7 @@ def api_generate_planning_from_editor():
         return response
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la génération du planning depuis l\'éditeur', e)
 
 @app.route('/api/save-planning', methods=['POST'])
 def save_planning():
@@ -1383,7 +1454,7 @@ def save_planning():
 
     except Exception as e:
         app.logger.error(f"Erreur lors de l'enregistrement du planning: {e}")
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de l\'enregistrement du planning', e)
 
 @app.route('/api/get-planning', methods=['GET'])
 def get_planning():
@@ -1415,7 +1486,7 @@ def get_planning():
 
     except Exception as e:
         app.logger.error(f"Erreur lors de la récupération du planning: {e}")
-        return jsonify({'error': str(e)}), 500
+        return api_error('Erreur lors de la récupération du planning', e)
 
         
 if __name__ == '__main__':
@@ -1464,4 +1535,4 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_ENV') == 'development'
     print(f" * Application démarrée sur http://127.0.0.1:{port}")
     print(" * Gestion des erreurs UTF-8 activée")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=debug, host='0.0.0.0', port=port)
