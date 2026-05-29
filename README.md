@@ -39,6 +39,32 @@ python app.py
 
 L'application sera accessible sur `http://localhost:8080`
 
+## 🔐 Authentification Google et droits
+
+L'application utilise une connexion Google avec rôles:
+- `admin` : accès à toute la partie administration
+- `teacher` : accès uniquement à ses propres demandes
+
+Variables d'environnement à configurer:
+
+```bash
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_WORKSPACE_DOMAIN=etablissement.fr
+ADMIN_EMAIL=mon.email@etablissement.fr
+FLASK_SECRET_KEY=une-cle-secrete-longue
+```
+
+Associer les emails enseignants à la table `teachers` via `TEACHER_EMAIL_MAP` (JSON):
+
+```bash
+TEACHER_EMAIL_MAP={"prenom.nom@etablissement.fr":"Bonfand","autre@etablissement.fr":"Martrou"}
+```
+
+Notes:
+- Seul `ADMIN_EMAIL` voit et accède aux routes admin.
+- Un enseignant non associé via `TEACHER_EMAIL_MAP` (ou déjà mappé en base `users`) est refusé.
+- Les enseignants ne peuvent plus lire/modifier les demandes des autres.
+
 > 📖 **Guide détaillé OVH VPS** : Voir [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Utilisation

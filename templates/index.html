@@ -33,6 +33,23 @@
                         </div>
                     </div>
                     <div class="mb-3">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="replacement_mode" name="replacement_mode" value="true">
+                            <label class="form-check-label fw-bold" for="replacement_mode">
+                                🔁 Remplacement (je dépose pour un enseignant absent)
+                            </label>
+                        </div>
+                        <div id="replacement_teacher_container" style="display: none;">
+                            <label for="replacement_teacher_id" class="form-label">
+                                👤 Enseignant absent *
+                            </label>
+                            <select class="form-select" id="replacement_teacher_id" name="replacement_teacher_id">
+                                <option value="">Sélectionner l'enseignant absent</option>
+                            </select>
+                            <small class="text-muted">La demande sera enregistrée au nom de l'enseignant absent pour le planning final.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">🕒 Horaires pour ce jour</label>
                         <div id="horaires-table" class="table-responsive">
                             <table class="table table-bordered table-sm">
@@ -370,6 +387,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    const replacementCheckbox = document.getElementById('replacement_mode');
+    const replacementTeacherContainer = document.getElementById('replacement_teacher_container');
+    const replacementTeacherSelect = document.getElementById('replacement_teacher_id');
+
+    async function loadReplacementTeachers() {
+        try {
+            const response = await fetch('/api/replacement-teachers');
+            const teachers = await response.json();
+
+            replacementTeacherSelect.innerHTML = '<option value="">Sélectionner l\'enseignant absent</option>';
+            teachers.forEach(teacher => {
+                const option = document.createElement('option');
+                option.value = teacher.id;
+                option.textContent = teacher.name;
+                replacementTeacherSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Erreur chargement remplacements:', error);
+            showErrorToast('Impossible de charger la liste des enseignants pour remplacement');
+        }
+    }
+
+    replacementCheckbox.addEventListener('change', async function() {
+        if (this.checked) {
+            replacementTeacherContainer.style.display = 'block';
+            replacementTeacherSelect.setAttribute('required', 'required');
+            await loadReplacementTeachers();
+        } else {
+            replacementTeacherContainer.style.display = 'none';
+            replacementTeacherSelect.removeAttribute('required');
+            replacementTeacherSelect.value = '';
+        }
+    });
+
     // Gestion des cases "Absent", "Pas besoin de matériel" et "Examen"
     const absentCheckbox = document.getElementById('absent');
     const noMaterialCheckbox = document.getElementById('no_material');
@@ -538,6 +589,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const formData = new FormData(this);
     const data = Object.fromEntries(formData.entries());
 
+    // Normaliser le mode remplacement (checkbox absente du FormData si non cochée)
+    const replacementMode = replacementCheckbox.checked;
+    data.replacement_mode = replacementMode;
+    if (!replacementMode) {
+        delete data.replacement_teacher_id;
+    }
+
+    if (replacementMode && !data.replacement_teacher_id) {
+        showErrorToast('Veuillez choisir l\'enseignant absent pour le remplacement.');
+        replacementTeacherSelect.focus();
+        return;
+    }
+
     // Ajout explicite de l'URL de l'image uploadée
     data.image_url = document.getElementById('image_url') ? document.getElementById('image_url').value : '';
 
@@ -635,6 +699,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 daysHoraires = [];
                 updateDaysList();
                 document.getElementById('planning_date').value = today;
+                replacementTeacherContainer.style.display = 'none';
+                replacementTeacherSelect.removeAttribute('required');
+                replacementTeacherSelect.value = '';
                 // Réinitialiser l'état des sections après le reset du formulaire
                 toggleSpecialModes();
             } else {

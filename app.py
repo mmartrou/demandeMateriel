@@ -1,13 +1,16 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response, session
 import csv
 import io
 import logging
 import os
 import hmac
 import traceback
+import secrets
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 import openpyxl
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 # Charger les variables d'environnement depuis .env
 from dotenv import load_dotenv
 load_dotenv()
@@ -18,13 +21,19 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
                       validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability, delete_c21_availability,
                       get_all_rooms, update_room, import_rooms_from_csv_content,
-                      get_all_student_numbers, update_student_number, add_student_number, delete_student_number)
+                      get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
+                      upsert_user, get_user_by_email, find_teacher_id_by_name)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
 from database import get_db_connection
 import json
 
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', os.getenv('SECRET_KEY', secrets.token_hex(32)))
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.permanent_session_lifetime = timedelta(hours=8)
 
 # Configuration pour gérer les erreurs d'encodage UTF-8
 app.config['JSON_AS_ASCII'] = False
@@ -33,6 +42,48 @@ app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_MB', '10')) * 1024 
 # Configuration du logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def _parse_teacher_email_map():
+    raw = os.getenv('TEACHER_EMAIL_MAP', '').strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return {str(k).strip().lower(): v for k, v in parsed.items()}
+    except Exception as e:
+        logger.warning(f"TEACHER_EMAIL_MAP invalide: {e}")
+    return {}
+
+
+def _get_current_user():
+    user = session.get('user')
+    if not user or not isinstance(user, dict):
+        return None
+    return user
+
+
+def _is_admin_user(user=None):
+    if user is None:
+        user = _get_current_user()
+    return bool(user and user.get('role') == 'admin')
+
+
+def _is_authenticated():
+    return _get_current_user() is not None
+
+
+def _is_owner_or_admin(request_teacher_id):
+    user = _get_current_user()
+    if not user:
+        return False
+    if user.get('role') == 'admin':
+        return True
+    try:
+        return int(user.get('teacher_id')) == int(request_teacher_id)
+    except Exception:
+        return False
 
 
 def api_error(message="Erreur serveur interne", exception=None, status_code=500):
@@ -49,11 +100,8 @@ def api_error(message="Erreur serveur interne", exception=None, status_code=500)
 
 
 def _is_sensitive_route(path, method):
-    """Détermine si la route nécessite un token admin."""
+    """Détermine si la route nécessite un rôle admin."""
     if path.startswith('/admin'):
-        return True
-
-    if path.startswith('/api/requests/') and method in {'PUT', 'DELETE', 'POST'}:
         return True
 
     sensitive_prefixes = (
@@ -67,7 +115,23 @@ def _is_sensitive_route(path, method):
         '/api/save-planning',
         '/api/get-planning'
     )
-    return any(path.startswith(prefix) for prefix in sensitive_prefixes)
+    if any(path.startswith(prefix) for prefix in sensitive_prefixes):
+        return True
+
+    if path.startswith('/api/requests/') and (path.endswith('/toggle-prepared') or path.endswith('/room-type')):
+        return True
+
+    return False
+
+
+def _is_public_route(path):
+    public_routes = {
+        '/login',
+        '/auth/google',
+        '/logout',
+        '/api/me',
+    }
+    return path in public_routes or path.startswith('/static/')
 
 # Middleware pour gérer les erreurs d'encodage dans les requêtes
 @app.before_request  
@@ -100,64 +164,143 @@ def handle_encoding_errors():
 
 
 @app.before_request
-def protect_sensitive_routes():
-    """Protège les routes d'administration/sensibles via ADMIN_TOKEN (si configuré)."""
-    admin_token = os.getenv('ADMIN_TOKEN', '').strip()
-    if not admin_token:
+def enforce_authentication():
+    """Force l'authentification Google pour toute route non publique."""
+    if _is_public_route(request.path):
         return None
 
+    if _is_authenticated():
+        return None
+
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Authentification requise'}), 401
+    return redirect(url_for('login'))
+
+
+@app.before_request
+def protect_sensitive_routes():
+    """Protège les routes sensibles via le rôle admin."""
     if not _is_sensitive_route(request.path, request.method):
         return None
 
-    provided_token = request.headers.get('X-Admin-Token', '').strip()
-    if not provided_token:
-        auth_header = request.headers.get('Authorization', '').strip()
-        if auth_header.lower().startswith('bearer '):
-            provided_token = auth_header[7:].strip()
+    if _is_admin_user():
+        return None
 
-    if not provided_token:
-        provided_token = request.cookies.get('admin_token', '').strip()
-
-    if not provided_token:
-        provided_token = request.args.get('admin_token', '').strip()
-
-    if not provided_token:
-        referer = request.headers.get('Referer', '')
-        try:
-            if referer:
-                referer_query = parse_qs(urlparse(referer).query)
-                referer_token = referer_query.get('admin_token', [''])[0].strip()
-                if referer_token:
-                    provided_token = referer_token
-        except Exception:
-            pass
-
-    if not provided_token or not hmac.compare_digest(provided_token, admin_token):
-        logger.warning(f"Accès refusé à {request.path} ({request.method}) - token admin manquant/invalide")
-        if request.path.startswith('/api/'):
-            return jsonify({'error': 'Non autorisé'}), 401
-        return "Non autorisé", 401
-
-    return None
+    logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin requis")
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    return "Non autorisé", 403
 
 
-@app.after_request
-def persist_admin_token_cookie(response):
-    """Persiste un admin_token valide en cookie HTTP-only pour les appels API du navigateur."""
-    admin_token = os.getenv('ADMIN_TOKEN', '').strip()
-    query_token = request.args.get('admin_token', '').strip()
+@app.context_processor
+def inject_auth_context():
+    user = _get_current_user()
+    return {
+        'current_user': user,
+        'google_client_id': os.getenv('GOOGLE_CLIENT_ID', '').strip()
+    }
 
-    if admin_token and query_token and hmac.compare_digest(query_token, admin_token):
-        response.set_cookie(
-            'admin_token',
-            query_token,
-            max_age=60 * 60 * 8,
-            httponly=True,
-            samesite='Lax',
-            secure=request.is_secure
+
+@app.route('/login')
+def login():
+    """Page de connexion via Google."""
+    if _is_authenticated():
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+
+@app.route('/auth/google', methods=['POST'])
+def auth_google():
+    """Authentifie un utilisateur à partir d'un token Google ID."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        credential = payload.get('credential', '').strip()
+        if not credential:
+            return jsonify({'error': 'Token Google manquant'}), 400
+
+        google_client_id = os.getenv('GOOGLE_CLIENT_ID', '').strip()
+        if not google_client_id:
+            return jsonify({'error': 'GOOGLE_CLIENT_ID non configuré'}), 500
+
+        id_info = id_token.verify_oauth2_token(credential, google_requests.Request(), google_client_id)
+        email = (id_info.get('email') or '').strip().lower()
+        full_name = (id_info.get('name') or '').strip()
+        google_sub = (id_info.get('sub') or '').strip()
+
+        if not id_info.get('email_verified') or not email or not google_sub:
+            return jsonify({'error': 'Compte Google invalide'}), 401
+
+        allowed_domain = os.getenv('GOOGLE_WORKSPACE_DOMAIN', '').strip().lower()
+        if allowed_domain and not email.endswith(f'@{allowed_domain}'):
+            return jsonify({'error': 'Compte hors domaine autorisé'}), 403
+
+        admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
+        role = 'admin' if admin_email and email == admin_email else 'teacher'
+
+        existing_user = get_user_by_email(email)
+        teacher_id = existing_user.get('teacher_id') if existing_user else None
+
+        if role == 'teacher':
+            email_map = _parse_teacher_email_map()
+            mapped_value = email_map.get(email)
+            if mapped_value is not None:
+                try:
+                    teacher_id = int(mapped_value)
+                except Exception:
+                    teacher_id = find_teacher_id_by_name(str(mapped_value).strip())
+
+            if teacher_id is None:
+                return jsonify({
+                    'error': "Compte enseignant non associé. Configure TEACHER_EMAIL_MAP ou associe ce compte en base."
+                }), 403
+
+        upsert_user(
+            google_sub=google_sub,
+            email=email,
+            full_name=full_name,
+            role=role,
+            teacher_id=teacher_id
         )
 
-    return response
+        user = get_user_by_email(email)
+        if not user:
+            return jsonify({'error': 'Impossible de charger le compte utilisateur'}), 500
+
+        session.clear()
+        session.permanent = True
+        session['user'] = {
+            'id': user.get('id'),
+            'email': user.get('email'),
+            'full_name': user.get('full_name') or full_name,
+            'role': user.get('role') or role,
+            'teacher_id': user.get('teacher_id'),
+            'teacher_name': user.get('teacher_name')
+        }
+
+        return jsonify({'success': True, 'user': session['user']})
+    except ValueError as e:
+        logger.warning(f"Token Google invalide: {e}")
+        return jsonify({'error': 'Échec de validation du token Google'}), 401
+    except Exception as e:
+        return api_error('Erreur lors de la connexion Google', e)
+
+
+@app.route('/logout', methods=['POST', 'GET'])
+def logout():
+    """Déconnecte l'utilisateur courant."""
+    session.clear()
+    if request.path.startswith('/api/'):
+        return jsonify({'success': True})
+    return redirect(url_for('login'))
+
+
+@app.route('/api/me', methods=['GET'])
+def api_me():
+    """Retourne l'utilisateur connecté."""
+    user = _get_current_user()
+    if not user:
+        return jsonify({'authenticated': False}), 401
+    return jsonify({'authenticated': True, 'user': user})
 
 # Configuration des logs pour éviter le spam d'erreurs d'encodage
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
@@ -261,20 +404,32 @@ def generate_planning():
 @app.route('/')
 def index():
     """Home page with material request form"""
-    teachers = get_all_teachers()
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
+    else:
+        teachers = get_all_teachers()
     return render_template('index.html', teachers=teachers)
 
 
 @app.route('/calendar')
 def calendar():
     """Calendar view of material requests"""
-    teachers = get_all_teachers()
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
+    else:
+        teachers = get_all_teachers()
     return render_template('calendar.html', teachers=teachers)
 
 @app.route('/api/teachers', methods=['GET'])
 def api_get_teachers():
     """API endpoint to get all teachers"""
-    teachers = get_all_teachers()
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
+    else:
+        teachers = get_all_teachers()
     teachers_list = []
     for teacher in teachers:
         teachers_list.append({
@@ -283,12 +438,34 @@ def api_get_teachers():
         })
     return jsonify(teachers_list)
 
+
+@app.route('/api/replacement-teachers', methods=['GET'])
+def api_replacement_teachers():
+    """Retourne les enseignants sélectionnables en mode remplacement."""
+    user = _get_current_user()
+    teachers = get_all_teachers()
+
+    if user and user.get('role') == 'teacher' and user.get('teacher_id'):
+        current_teacher_id = int(user.get('teacher_id'))
+        teachers = [teacher for teacher in teachers if int(teacher['id']) != current_teacher_id]
+
+    return jsonify([
+        {
+            'id': teacher['id'],
+            'name': teacher['name']
+        }
+        for teacher in teachers
+    ])
+
 @app.route('/api/requests', methods=['GET'])
 def api_get_requests():
     """API endpoint to get material requests"""
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     teacher_id = request.args.get('teacher_id')
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teacher_id = user.get('teacher_id')
     
     requests = get_material_requests(start_date, end_date, teacher_id)
     # Compatibilité PostgreSQL/SQLite : transformer en liste de dicts
@@ -347,6 +524,9 @@ def api_get_requests():
 def api_calendar_events():
     """API endpoint to get calendar events with optional filters"""
     teacher_id = request.args.get('teacher_id')
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teacher_id = user.get('teacher_id')
     status_filter = request.args.get('status')
     type_filter = request.args.get('type')
     
@@ -444,6 +624,41 @@ def api_add_request():
     """API endpoint to add a new material request"""
     try:
         data = request.get_json()
+        user = _get_current_user()
+
+        replacement_mode = str(data.get('replacement_mode', '')).strip().lower() in {'1', 'true', 'yes', 'on'}
+        replacement_teacher_id_raw = data.get('replacement_teacher_id')
+        replacement_teacher_id = None
+        if replacement_teacher_id_raw not in (None, ''):
+            try:
+                replacement_teacher_id = int(replacement_teacher_id_raw)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Enseignant remplacé invalide'}), 400
+
+        if user and user.get('role') == 'teacher':
+            if not user.get('teacher_id'):
+                return jsonify({'error': 'Compte enseignant non associé à un profil'}), 403
+
+            own_teacher_id = int(user.get('teacher_id'))
+            target_teacher_id = own_teacher_id
+
+            if replacement_mode:
+                if replacement_teacher_id is None:
+                    return jsonify({'error': 'Veuillez choisir l\'enseignant absent en mode remplacement'}), 400
+
+                teachers = get_all_teachers()
+                teacher_ids = {int(teacher['id']) for teacher in teachers}
+                if replacement_teacher_id not in teacher_ids:
+                    return jsonify({'error': 'Enseignant remplacé introuvable'}), 400
+
+                target_teacher_id = replacement_teacher_id
+
+                replacement_actor = user.get('teacher_name') or user.get('full_name') or user.get('email') or 'Enseignant'
+                existing_notes = (data.get('notes') or '').strip()
+                replacement_note = f"Remplacement saisi par {replacement_actor}"
+                data['notes'] = f"{replacement_note} | {existing_notes}" if existing_notes else replacement_note
+
+            data['teacher_id'] = target_teacher_id
         
         # Validation des champs principaux
         required_fields = ['teacher_id', 'class_name', 'material_description']
@@ -503,6 +718,9 @@ def export_csv():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     teacher_id = request.args.get('teacher_id')
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teacher_id = user.get('teacher_id')
     
     requests = get_material_requests(start_date, end_date, teacher_id)
     
@@ -573,7 +791,11 @@ def export_csv():
 @app.route('/requests')
 def view_requests():
     """View all material requests in a table"""
-    teachers = get_all_teachers()
+    user = _get_current_user()
+    if user and user.get('role') == 'teacher':
+        teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
+    else:
+        teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
 
 @app.route('/api/requests/<int:request_id>', methods=['GET'])
@@ -582,6 +804,9 @@ def api_get_request_by_id(request_id):
     request_data = get_material_request_by_id(request_id)
     if not request_data:
         return jsonify({'error': 'Demande non trouvée'}), 404
+
+    if not _is_owner_or_admin(request_data.get('teacher_id')):
+        return jsonify({'error': 'Non autorisé'}), 403
 
     # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
     if isinstance(request_data, dict):
@@ -624,6 +849,18 @@ def api_update_request(request_id):
     """API endpoint to update a material request"""
     try:
         data = request.get_json()
+        current_user = _get_current_user()
+
+        current_request = get_material_request_by_id(request_id)
+        if not current_request:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+        if not _is_owner_or_admin(current_request.get('teacher_id')):
+            return jsonify({'error': 'Non autorisé'}), 403
+
+        if current_user and current_user.get('role') == 'teacher':
+            if not current_user.get('teacher_id'):
+                return jsonify({'error': 'Compte enseignant non associé à un profil'}), 403
+            data['teacher_id'] = current_user.get('teacher_id')
         
         # Validation des champs principaux
         required_fields = ['teacher_id', 'class_name', 'material_description']
@@ -695,6 +932,12 @@ def api_toggle_prepared(request_id):
 def api_delete_request(request_id):
     """API endpoint to delete a material request"""
     try:
+        current_request = get_material_request_by_id(request_id)
+        if not current_request:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+        if not _is_owner_or_admin(current_request.get('teacher_id')):
+            return jsonify({'error': 'Non autorisé'}), 403
+
         success = delete_material_request(request_id)
         if success:
             return jsonify({'message': 'Demande supprimée avec succès'})

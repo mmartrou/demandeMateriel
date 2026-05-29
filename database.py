@@ -62,6 +62,21 @@ def init_database():
             created_at {timestamp_default}
         )
     ''')
+
+    # Create users table for Google authentication and role management
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS users (
+            id {auto_increment},
+            google_sub {text_type} NOT NULL UNIQUE,
+            email {text_type} NOT NULL UNIQUE,
+            full_name {text_type},
+            role {text_type} NOT NULL DEFAULT 'teacher',
+            teacher_id INTEGER,
+            created_at {timestamp_default},
+            updated_at {timestamp_default},
+            FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+        )
+    ''')
     
     # Create material requests table with all columns
     cursor.execute(f'''
@@ -118,6 +133,29 @@ def init_database():
             cursor.execute(f'ALTER TABLE material_requests ADD COLUMN {column_name} {column_type}')
         except (sqlite3.OperationalError, psycopg2.errors.DuplicateColumn):
             pass  # Column already exists
+
+    user_columns_to_add = [
+        ('google_sub', 'TEXT'),
+        ('email', 'TEXT'),
+        ('full_name', 'TEXT'),
+        ('role', 'TEXT DEFAULT "teacher"'),
+        ('teacher_id', 'INTEGER'),
+        ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+    ]
+
+    for column_name, column_type in user_columns_to_add:
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='users' AND column_name=%s
+            """, (column_name,))
+            exists = cursor.fetchone() is not None
+            if exists:
+                continue
+        try:
+            cursor.execute(f'ALTER TABLE users ADD COLUMN {column_name} {column_type}')
+        except (sqlite3.OperationalError, psycopg2.errors.DuplicateColumn):
+            pass
     
     
     # Create rooms table for planning
@@ -295,6 +333,89 @@ def get_all_teachers():
     print("DEBUG teachers:", teachers)
     conn.close()
     return teachers
+
+
+def find_teacher_id_by_name(teacher_name):
+    """Find teacher ID by exact name."""
+    if not teacher_name:
+        return None
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT id FROM teachers WHERE name = {placeholder}', (teacher_name,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return row[0] if not isinstance(row, dict) else row['id']
+
+
+def get_user_by_email(email):
+    """Get user by email address."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'''
+        SELECT u.id, u.google_sub, u.email, u.full_name, u.role, u.teacher_id, t.name AS teacher_name
+        FROM users u
+        LEFT JOIN teachers t ON t.id = u.teacher_id
+        WHERE u.email = {placeholder}
+    ''', (email,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return row
+    return {
+        'id': row[0],
+        'google_sub': row[1],
+        'email': row[2],
+        'full_name': row[3],
+        'role': row[4],
+        'teacher_id': row[5],
+        'teacher_name': row[6]
+    }
+
+
+def upsert_user(google_sub, email, full_name, role='teacher', teacher_id=None):
+    """Create or update user account linked to Google identity."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+
+    if db_type == 'postgresql':
+        cursor.execute(f'''
+            INSERT INTO users (google_sub, email, full_name, role, teacher_id)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            ON CONFLICT(email)
+            DO UPDATE SET
+                google_sub = EXCLUDED.google_sub,
+                full_name = EXCLUDED.full_name,
+                role = EXCLUDED.role,
+                teacher_id = EXCLUDED.teacher_id,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id
+        ''', (google_sub, email, full_name, role, teacher_id))
+        row = cursor.fetchone()
+        user_id = row[0] if row else None
+    else:
+        cursor.execute(f'''
+            INSERT INTO users (google_sub, email, full_name, role, teacher_id)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            ON CONFLICT(email)
+            DO UPDATE SET
+                google_sub=excluded.google_sub,
+                full_name=excluded.full_name,
+                role=excluded.role,
+                teacher_id=excluded.teacher_id,
+                updated_at=CURRENT_TIMESTAMP
+        ''', (google_sub, email, full_name, role, teacher_id))
+        user_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+    return user_id
 
 def add_material_request(teacher_id, request_date, class_name, material_description, 
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
