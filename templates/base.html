@@ -50,15 +50,13 @@
                                     ⚙️ Admin
                                 </a>
                             </li>
-                            {% if current_user.teacher_id %}
-                                <li class="nav-item d-flex align-items-center px-2">
-                                    <label for="acting-mode-select" class="text-white small me-2 mb-0">Mode</label>
-                                    <select id="acting-mode-select" class="form-select form-select-sm" style="width: 145px;">
-                                        <option value="admin" {% if effective_user_mode == 'admin' %}selected{% endif %}>Admin</option>
-                                        <option value="teacher" {% if effective_user_mode == 'teacher' %}selected{% endif %}>Prof</option>
-                                    </select>
-                                </li>
-                            {% endif %}
+                            <li class="nav-item d-flex align-items-center px-2">
+                                <label for="acting-mode-select" class="text-white small me-2 mb-0">Mode</label>
+                                <select id="acting-mode-select" class="form-select form-select-sm bg-white text-dark" style="width: 145px;">
+                                    <option value="admin" {% if effective_user_mode == 'admin' %}selected{% endif %}>Admin</option>
+                                    <option value="teacher" {% if effective_user_mode == 'teacher' %}selected{% endif %} {% if not current_user.teacher_id %}disabled{% endif %}>Prof</option>
+                                </select>
+                            </li>
                         {% endif %}
                         <li class="nav-item d-flex align-items-center text-white px-2 small">
                             {{ current_user.full_name or current_user.email }}
