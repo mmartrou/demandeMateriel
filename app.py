@@ -265,19 +265,18 @@ def auth_google():
         existing_user = get_user_by_email(email)
         teacher_id = existing_user.get('teacher_id') if existing_user else None
 
-        if role == 'teacher':
-            email_map = _parse_teacher_email_map()
-            mapped_value = email_map.get(email)
-            if mapped_value is not None:
-                try:
-                    teacher_id = int(mapped_value)
-                except Exception:
-                    teacher_id = find_teacher_id_by_name(str(mapped_value).strip())
+        email_map = _parse_teacher_email_map()
+        mapped_value = email_map.get(email)
+        if mapped_value is not None:
+            try:
+                teacher_id = int(mapped_value)
+            except Exception:
+                teacher_id = find_teacher_id_by_name(str(mapped_value).strip())
 
-            if teacher_id is None:
-                return jsonify({
-                    'error': "Compte enseignant non associé. Configure TEACHER_EMAIL_MAP ou associe ce compte en base."
-                }), 403
+        if role == 'teacher' and teacher_id is None:
+            return jsonify({
+                'error': "Compte enseignant non associé. Configure TEACHER_EMAIL_MAP ou associe ce compte en base."
+            }), 403
 
         upsert_user(
             google_sub=google_sub,

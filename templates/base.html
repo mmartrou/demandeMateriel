@@ -124,9 +124,9 @@
                 logoutLink.addEventListener('click', async function (event) {
                     event.preventDefault();
                     try {
-                        await fetch('{{ url_for('logout') }}', { method: 'POST' });
+                        await fetch('{{ url_for("logout") }}', { method: 'POST' });
                     } finally {
-                        window.location.href = '{{ url_for('login') }}';
+                        window.location.href = '{{ url_for("login") }}';
                     }
                 });
             }
