@@ -370,17 +370,39 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set today's date as default for planning_date
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('planning_date').value = today;
+
+    const teacherSelect = document.getElementById('teacher_id');
+    const isTeacherUser = {% if current_user and current_user.role == 'teacher' %}true{% else %}false{% endif %};
+
+    function enforceConnectedTeacherSelection() {
+        if (!isTeacherUser || !teacherSelect) {
+            return;
+        }
+
+        const availableTeachers = Array.from(teacherSelect.options).filter(option => option.value);
+        if (availableTeachers.length === 1) {
+            teacherSelect.value = availableTeachers[0].value;
+            teacherSelect.setAttribute('disabled', 'disabled');
+            teacherSelect.classList.add('bg-light');
+        }
+    }
     
     // Restaurer l'enseignant depuis le cookie
     const savedTeacher = getCookie('selectedTeacher');
-    if (savedTeacher) {
-        const teacherSelect = document.getElementById('teacher_id');
+    if (savedTeacher && !isTeacherUser) {
         teacherSelect.value = savedTeacher;
         console.log(`🍪 Enseignant restauré depuis le cookie: ${savedTeacher}`);
     }
+
+    enforceConnectedTeacherSelection();
     
     // Sauvegarder l'enseignant quand il est sélectionné
-    document.getElementById('teacher_id').addEventListener('change', function() {
+    teacherSelect.addEventListener('change', function() {
+        if (isTeacherUser) {
+            enforceConnectedTeacherSelection();
+            return;
+        }
+
         if (this.value) {
             setCookie('selectedTeacher', this.value);
             console.log(`🍪 Enseignant sauvegardé: ${this.value}`);
@@ -699,6 +721,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 daysHoraires = [];
                 updateDaysList();
                 document.getElementById('planning_date').value = today;
+                enforceConnectedTeacherSelection();
                 replacementTeacherContainer.style.display = 'none';
                 replacementTeacherSelect.removeAttribute('required');
                 replacementTeacherSelect.value = '';

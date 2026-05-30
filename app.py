@@ -646,16 +646,23 @@ def api_add_request():
                 if replacement_teacher_id is None:
                     return jsonify({'error': 'Veuillez choisir l\'enseignant absent en mode remplacement'}), 400
 
+                if replacement_teacher_id == own_teacher_id:
+                    return jsonify({'error': 'En mode remplacement, vous devez choisir un autre enseignant'}), 400
+
                 teachers = get_all_teachers()
-                teacher_ids = {int(teacher['id']) for teacher in teachers}
-                if replacement_teacher_id not in teacher_ids:
+                teacher_by_id = {
+                    int(teacher['id']): teacher.get('name', f"ID {teacher['id']}")
+                    for teacher in teachers
+                }
+                if replacement_teacher_id not in teacher_by_id:
                     return jsonify({'error': 'Enseignant remplacé introuvable'}), 400
 
                 target_teacher_id = replacement_teacher_id
 
                 replacement_actor = user.get('teacher_name') or user.get('full_name') or user.get('email') or 'Enseignant'
+                replaced_teacher_name = teacher_by_id.get(replacement_teacher_id, 'Enseignant absent')
                 existing_notes = (data.get('notes') or '').strip()
-                replacement_note = f"Remplacement saisi par {replacement_actor}"
+                replacement_note = f"Remplacement: demande saisie par {replacement_actor} pour {replaced_teacher_name}"
                 data['notes'] = f"{replacement_note} | {existing_notes}" if existing_notes else replacement_note
 
             data['teacher_id'] = target_teacher_id
