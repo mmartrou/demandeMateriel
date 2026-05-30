@@ -64,10 +64,34 @@ def _get_current_user():
     return user
 
 
+def _get_effective_user_mode(user=None):
+    """Retourne le mode effectif: admin ou teacher."""
+    if user is None:
+        user = _get_current_user()
+    if not user:
+        return 'anonymous'
+    if user.get('role') != 'admin':
+        return 'teacher'
+
+    requested_mode = str(session.get('acting_mode', 'admin')).strip().lower()
+    if requested_mode not in {'admin', 'teacher'}:
+        requested_mode = 'admin'
+
+    # Un admin non lié à un enseignant ne peut pas basculer en mode professeur.
+    if requested_mode == 'teacher' and not user.get('teacher_id'):
+        return 'admin'
+
+    return requested_mode
+
+
+def _is_teacher_scoped_user(user=None):
+    return _get_effective_user_mode(user) == 'teacher'
+
+
 def _is_admin_user(user=None):
     if user is None:
         user = _get_current_user()
-    return bool(user and user.get('role') == 'admin')
+    return bool(user and user.get('role') == 'admin' and _get_effective_user_mode(user) == 'admin')
 
 
 def _is_authenticated():
@@ -78,7 +102,7 @@ def _is_owner_or_admin(request_teacher_id):
     user = _get_current_user()
     if not user:
         return False
-    if user.get('role') == 'admin':
+    if _is_admin_user(user):
         return True
     try:
         return int(user.get('teacher_id')) == int(request_teacher_id)
@@ -197,6 +221,7 @@ def inject_auth_context():
     user = _get_current_user()
     return {
         'current_user': user,
+        'effective_user_mode': _get_effective_user_mode(user),
         'google_client_id': os.getenv('GOOGLE_CLIENT_ID', '').strip()
     }
 
@@ -276,6 +301,7 @@ def auth_google():
             'teacher_id': user.get('teacher_id'),
             'teacher_name': user.get('teacher_name')
         }
+        session['acting_mode'] = 'admin' if (user.get('role') or role) == 'admin' else 'teacher'
 
         return jsonify({'success': True, 'user': session['user']})
     except ValueError as e:
@@ -300,7 +326,26 @@ def api_me():
     user = _get_current_user()
     if not user:
         return jsonify({'authenticated': False}), 401
-    return jsonify({'authenticated': True, 'user': user})
+    return jsonify({'authenticated': True, 'user': user, 'effective_mode': _get_effective_user_mode(user)})
+
+
+@app.route('/api/acting-mode', methods=['POST'])
+def api_set_acting_mode():
+    """Permet à l'admin de choisir son mode: admin ou professeur."""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    mode = str(payload.get('mode', '')).strip().lower()
+    if mode not in {'admin', 'teacher'}:
+        return jsonify({'error': 'Mode invalide'}), 400
+
+    if mode == 'teacher' and not user.get('teacher_id'):
+        return jsonify({'error': 'Aucun profil enseignant associé'}), 400
+
+    session['acting_mode'] = mode
+    return jsonify({'success': True, 'effective_mode': _get_effective_user_mode(user)})
 
 # Configuration des logs pour éviter le spam d'erreurs d'encodage
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
@@ -405,7 +450,7 @@ def generate_planning():
 def index():
     """Home page with material request form"""
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user) and user.get('teacher_id'):
         teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
     else:
         teachers = get_all_teachers()
@@ -416,7 +461,7 @@ def index():
 def calendar():
     """Calendar view of material requests"""
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user) and user.get('teacher_id'):
         teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
     else:
         teachers = get_all_teachers()
@@ -426,7 +471,7 @@ def calendar():
 def api_get_teachers():
     """API endpoint to get all teachers"""
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user) and user.get('teacher_id'):
         teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
     else:
         teachers = get_all_teachers()
@@ -445,7 +490,7 @@ def api_replacement_teachers():
     user = _get_current_user()
     teachers = get_all_teachers()
 
-    if user and user.get('role') == 'teacher' and user.get('teacher_id'):
+    if user and _is_teacher_scoped_user(user) and user.get('teacher_id'):
         current_teacher_id = int(user.get('teacher_id'))
         teachers = [teacher for teacher in teachers if int(teacher['id']) != current_teacher_id]
 
@@ -464,7 +509,7 @@ def api_get_requests():
     end_date = request.args.get('end_date')
     teacher_id = request.args.get('teacher_id')
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user):
         teacher_id = user.get('teacher_id')
     
     requests = get_material_requests(start_date, end_date, teacher_id)
@@ -525,7 +570,7 @@ def api_calendar_events():
     """API endpoint to get calendar events with optional filters"""
     teacher_id = request.args.get('teacher_id')
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user):
         teacher_id = user.get('teacher_id')
     status_filter = request.args.get('status')
     type_filter = request.args.get('type')
@@ -635,9 +680,7 @@ def api_add_request():
             except (TypeError, ValueError):
                 return jsonify({'error': 'Enseignant remplacé invalide'}), 400
 
-        if user and user.get('role') == 'teacher':
-            if not user.get('teacher_id'):
-                return jsonify({'error': 'Compte enseignant non associé à un profil'}), 403
+        if user and _is_teacher_scoped_user(user) and user.get('teacher_id'):
 
             own_teacher_id = int(user.get('teacher_id'))
             target_teacher_id = own_teacher_id
@@ -726,7 +769,7 @@ def export_csv():
     end_date = request.args.get('end_date')
     teacher_id = request.args.get('teacher_id')
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user):
         teacher_id = user.get('teacher_id')
     
     requests = get_material_requests(start_date, end_date, teacher_id)
@@ -799,7 +842,7 @@ def export_csv():
 def view_requests():
     """View all material requests in a table"""
     user = _get_current_user()
-    if user and user.get('role') == 'teacher':
+    if user and _is_teacher_scoped_user(user):
         teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
     else:
         teachers = get_all_teachers()

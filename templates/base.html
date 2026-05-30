@@ -50,6 +50,15 @@
                                     ⚙️ Admin
                                 </a>
                             </li>
+                            {% if current_user.teacher_id %}
+                                <li class="nav-item d-flex align-items-center px-2">
+                                    <label for="acting-mode-select" class="text-white small me-2 mb-0">Mode</label>
+                                    <select id="acting-mode-select" class="form-select form-select-sm" style="width: 145px;">
+                                        <option value="admin" {% if effective_user_mode == 'admin' %}selected{% endif %}>Admin</option>
+                                        <option value="teacher" {% if effective_user_mode == 'teacher' %}selected{% endif %}>Prof</option>
+                                    </select>
+                                </li>
+                            {% endif %}
                         {% endif %}
                         <li class="nav-item d-flex align-items-center text-white px-2 small">
                             {{ current_user.full_name or current_user.email }}
@@ -118,6 +127,33 @@
                         await fetch('{{ url_for('logout') }}', { method: 'POST' });
                     } finally {
                         window.location.href = '{{ url_for('login') }}';
+                    }
+                });
+            }
+
+            const actingModeSelect = document.getElementById('acting-mode-select');
+            if (actingModeSelect) {
+                actingModeSelect.addEventListener('change', async function () {
+                    const selectedMode = this.value;
+                    this.disabled = true;
+                    try {
+                        const response = await fetch('{{ url_for("api_set_acting_mode") }}', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode: selectedMode })
+                        });
+
+                        const payload = await response.json();
+                        if (!response.ok || !payload.success) {
+                            throw new Error(payload.error || 'Impossible de changer de mode');
+                        }
+
+                        window.location.reload();
+                    } catch (error) {
+                        alert(error.message || 'Erreur de changement de mode');
+                        this.value = this.value === 'admin' ? 'teacher' : 'admin';
+                    } finally {
+                        this.disabled = false;
                     }
                 });
             }

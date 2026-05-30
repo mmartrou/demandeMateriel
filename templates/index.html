@@ -372,10 +372,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('planning_date').value = today;
 
     const teacherSelect = document.getElementById('teacher_id');
-    const isTeacherUser = {% if current_user and current_user.role == 'teacher' %}true{% else %}false{% endif %};
+    const isTeacherScopedMode = {% if effective_user_mode == 'teacher' and current_user and current_user.teacher_id %}true{% else %}false{% endif %};
 
     function enforceConnectedTeacherSelection() {
-        if (!isTeacherUser || !teacherSelect) {
+        if (!isTeacherScopedMode || !teacherSelect) {
             return;
         }
 
@@ -389,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Restaurer l'enseignant depuis le cookie
     const savedTeacher = getCookie('selectedTeacher');
-    if (savedTeacher && !isTeacherUser) {
+    if (savedTeacher && !isTeacherScopedMode) {
         teacherSelect.value = savedTeacher;
         console.log(`🍪 Enseignant restauré depuis le cookie: ${savedTeacher}`);
     }
@@ -398,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Sauvegarder l'enseignant quand il est sélectionné
     teacherSelect.addEventListener('change', function() {
-        if (isTeacherUser) {
+        if (isTeacherScopedMode) {
             enforceConnectedTeacherSelection();
             return;
         }
