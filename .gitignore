@@ -133,3 +133,6 @@ dmypy.json
 material_requests.db
 *.csv
 test_export.csv
+
+# Claude Code
+CLAUDE.md

@@ -65,11 +65,13 @@ def _get_current_user():
 
 
 def _get_effective_user_mode(user=None):
-    """Retourne le mode effectif: admin ou teacher."""
+    """Retourne le mode effectif: admin, labo ou teacher."""
     if user is None:
         user = _get_current_user()
     if not user:
         return 'anonymous'
+    if user.get('role') == 'labo':
+        return 'labo'
     if user.get('role') != 'admin':
         return 'teacher'
 
@@ -88,10 +90,21 @@ def _is_teacher_scoped_user(user=None):
     return _get_effective_user_mode(user) == 'teacher'
 
 
+def _is_labo_user(user=None):
+    if user is None:
+        user = _get_current_user()
+    return bool(user and user.get('role') == 'labo')
+
+
 def _is_admin_user(user=None):
     if user is None:
         user = _get_current_user()
     return bool(user and user.get('role') == 'admin' and _get_effective_user_mode(user) == 'admin')
+
+
+def _is_privileged_user(user=None):
+    """Retourne True pour admin (en mode admin) et labo."""
+    return _is_admin_user(user) or _is_labo_user(user)
 
 
 def _is_authenticated():
@@ -102,7 +115,7 @@ def _is_owner_or_admin(request_teacher_id):
     user = _get_current_user()
     if not user:
         return False
-    if _is_admin_user(user):
+    if _is_privileged_user(user):
         return True
     try:
         return int(user.get('teacher_id')) == int(request_teacher_id)
@@ -123,12 +136,11 @@ def api_error(message="Erreur serveur interne", exception=None, status_code=500)
     return jsonify(payload), status_code
 
 
-def _is_sensitive_route(path, method):
-    """Détermine si la route nécessite un rôle admin."""
+def _is_admin_only_route(path, method):
+    """Routes réservées aux admins uniquement."""
     if path.startswith('/admin'):
         return True
-
-    sensitive_prefixes = (
+    admin_prefixes = (
         '/api/pending-modifications',
         '/api/requests-with-pending-modifications',
         '/api/working-days',
@@ -139,13 +151,18 @@ def _is_sensitive_route(path, method):
         '/api/save-planning',
         '/api/get-planning'
     )
-    if any(path.startswith(prefix) for prefix in sensitive_prefixes):
-        return True
+    return any(path.startswith(prefix) for prefix in admin_prefixes)
 
-    if path.startswith('/api/requests/') and (path.endswith('/toggle-prepared') or path.endswith('/room-type')):
-        return True
 
-    return False
+def _is_privileged_route(path, method):
+    """Routes accessibles aux admins ET au compte labo."""
+    return path.startswith('/api/requests/') and (
+        path.endswith('/toggle-prepared') or path.endswith('/room-type')
+    )
+
+
+def _is_sensitive_route(path, method):
+    return _is_admin_only_route(path, method) or _is_privileged_route(path, method)
 
 
 def _is_public_route(path):
@@ -203,17 +220,22 @@ def enforce_authentication():
 
 @app.before_request
 def protect_sensitive_routes():
-    """Protège les routes sensibles via le rôle admin."""
-    if not _is_sensitive_route(request.path, request.method):
-        return None
+    """Protège les routes sensibles."""
+    if _is_admin_only_route(request.path, request.method):
+        if _is_admin_user():
+            return None
+        logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin requis")
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Non autorisé'}), 403
+        return "Non autorisé", 403
 
-    if _is_admin_user():
-        return None
-
-    logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin requis")
-    if request.path.startswith('/api/'):
+    if _is_privileged_route(request.path, request.method):
+        if _is_privileged_user():
+            return None
+        logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin ou labo requis")
         return jsonify({'error': 'Non autorisé'}), 403
-    return "Non autorisé", 403
+
+    return None
 
 
 @app.context_processor
@@ -260,7 +282,14 @@ def auth_google():
             return jsonify({'error': 'Compte hors domaine autorisé'}), 403
 
         admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
-        role = 'admin' if admin_email and email == admin_email else 'teacher'
+        labo_email = os.getenv('LABO_EMAIL', 'labo.physiquechimie@lfmadrid.org').strip().lower()
+
+        if admin_email and email == admin_email:
+            role = 'admin'
+        elif email == labo_email:
+            role = 'labo'
+        else:
+            role = 'teacher'
 
         existing_user = get_user_by_email(email)
         teacher_id = existing_user.get('teacher_id') if existing_user else None
@@ -290,17 +319,18 @@ def auth_google():
         if not user:
             return jsonify({'error': 'Impossible de charger le compte utilisateur'}), 500
 
+        effective_role = user.get('role') or role
         session.clear()
         session.permanent = True
         session['user'] = {
             'id': user.get('id'),
             'email': user.get('email'),
-            'full_name': user.get('full_name') or full_name,
-            'role': user.get('role') or role,
+            'full_name': 'Labo' if effective_role == 'labo' else (user.get('full_name') or full_name),
+            'role': effective_role,
             'teacher_id': user.get('teacher_id'),
             'teacher_name': user.get('teacher_name')
         }
-        session['acting_mode'] = 'admin' if (user.get('role') or role) == 'admin' else 'teacher'
+        session['acting_mode'] = 'admin' if effective_role == 'admin' else 'teacher'
 
         return jsonify({'success': True, 'user': session['user']})
     except ValueError as e:
@@ -341,7 +371,43 @@ def api_set_acting_mode():
         return jsonify({'error': 'Mode invalide'}), 400
 
     if mode == 'teacher' and not user.get('teacher_id'):
-        return jsonify({'error': 'Aucun profil enseignant associé'}), 400
+        email = (user.get('email') or '').strip().lower()
+        resolved_teacher_id = None
+
+        db_user = get_user_by_email(email) if email else None
+        if db_user and db_user.get('teacher_id'):
+            resolved_teacher_id = db_user.get('teacher_id')
+
+        if resolved_teacher_id is None:
+            email_map = _parse_teacher_email_map()
+            mapped_value = email_map.get(email)
+            if mapped_value is not None:
+                try:
+                    resolved_teacher_id = int(mapped_value)
+                except Exception:
+                    resolved_teacher_id = find_teacher_id_by_name(str(mapped_value).strip())
+
+        if resolved_teacher_id is None:
+            return jsonify({'error': 'Aucun profil enseignant associé'}), 400
+
+        # Met à jour la session courante pour activer immédiatement le mode professeur.
+        user['teacher_id'] = int(resolved_teacher_id)
+
+        # Met à jour le nom enseignant en session si possible.
+        teacher_name_by_id = {int(t['id']): t['name'] for t in get_all_teachers()}
+        if int(resolved_teacher_id) in teacher_name_by_id:
+            user['teacher_name'] = teacher_name_by_id[int(resolved_teacher_id)]
+        session['user'] = user
+
+        # Persiste l'association pour les prochaines connexions si l'utilisateur existe en base.
+        if db_user and db_user.get('google_sub'):
+            upsert_user(
+                google_sub=db_user.get('google_sub'),
+                email=db_user.get('email') or email,
+                full_name=db_user.get('full_name') or user.get('full_name') or '',
+                role='admin',
+                teacher_id=int(resolved_teacher_id)
+            )
 
     session['acting_mode'] = mode
     return jsonify({'success': True, 'effective_mode': _get_effective_user_mode(user)})
@@ -717,21 +783,31 @@ def api_add_request():
         if not data.get('days_horaires') or not isinstance(data['days_horaires'], list) or len(data['days_horaires']) == 0:
             return jsonify({'error': 'Veuillez ajouter au moins un jour avec des horaires.'}), 400
 
-        # Validation du délai de 2 jours ouvrés pour chaque date
-        from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-        
-        for dh in data['days_horaires']:
-            date = dh.get('date')
-            if not date:
-                return jsonify({'error': 'Date manquante pour un des jours'}), 400
-                
-            # Vérifier le délai de 2 jours ouvrés
-            validation = is_request_deadline_respected(date)
-            if not validation['valid']:
-                earliest_date = get_earliest_valid_date()
-                return jsonify({
-                    'error': f'Délai insuffisant pour le {date}. {validation["message"]} Première date disponible: {earliest_date}'
-                }), 400
+        # Ajout d'une note automatique quand le compte labo soumet une demande
+        if _is_labo_user():
+            existing_notes = (data.get('notes') or '').strip()
+            labo_note = "Demande saisie par Labo"
+            data['notes'] = f"{labo_note} | {existing_notes}" if existing_notes else labo_note
+
+        # Validation du délai de 2 jours ouvrés pour chaque date (sauf admin et labo)
+        if not _is_privileged_user():
+            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+
+            for dh in data['days_horaires']:
+                date = dh.get('date')
+                if not date:
+                    return jsonify({'error': 'Date manquante pour un des jours'}), 400
+
+                validation = is_request_deadline_respected(date)
+                if not validation['valid']:
+                    earliest_date = get_earliest_valid_date()
+                    return jsonify({
+                        'error': f'Délai insuffisant pour le {date}. {validation["message"]} Première date disponible: {earliest_date}'
+                    }), 400
+        else:
+            for dh in data['days_horaires']:
+                if not dh.get('date'):
+                    return jsonify({'error': 'Date manquante pour un des jours'}), 400
 
         # Ajout de chaque demande (jour/horaire)
         request_ids = []
@@ -917,29 +993,29 @@ def api_update_request(request_id):
             if not data.get(field):
                 return jsonify({'error': f'Le champ {field} est requis'}), 400
         
-        # Validation du délai de 2 jours ouvrés pour toute modification
-        current_request = get_material_request_by_id(request_id)
-        if current_request:
-            current_date = current_request['request_date']
-            
-            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-            validation = is_request_deadline_respected(current_date)
-            if not validation['valid']:
-                earliest_date = get_earliest_valid_date()
-                return jsonify({
-                    'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
-                }), 400
-        
-        # Si la date est modifiée, valider aussi la nouvelle date
-        if 'request_date' in data:
-            new_date = data['request_date']
-            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-            validation = is_request_deadline_respected(new_date)
-            if not validation['valid']:
-                earliest_date = get_earliest_valid_date()
-                return jsonify({
-                    'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
-                }), 400
+        # Validation du délai de 2 jours ouvrés pour toute modification (sauf admin et labo)
+        if not _is_privileged_user():
+            current_request = get_material_request_by_id(request_id)
+            if current_request:
+                current_date = current_request['request_date']
+
+                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                validation = is_request_deadline_respected(current_date)
+                if not validation['valid']:
+                    earliest_date = get_earliest_valid_date()
+                    return jsonify({
+                        'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                    }), 400
+
+            if 'request_date' in data:
+                new_date = data['request_date']
+                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                validation = is_request_deadline_respected(new_date)
+                if not validation['valid']:
+                    earliest_date = get_earliest_valid_date()
+                    return jsonify({
+                        'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
+                    }), 400
         
         success = update_material_request(
             request_id,
@@ -1117,32 +1193,28 @@ def api_pending_modifications():
                     logger.error(f"❌ Champ manquant: {field}")
                     return jsonify({'error': f'Champ manquant: {field}'}), 400
             
-            # Validation du délai de 2 jours ouvrés si la modification concerne la date
-            if data['field_name'] == 'request_date' or data.get('field_name') == 'request_date':
-                # Récupérer la demande actuelle pour vérifier la date
-                current_request = get_material_request_by_id(data['request_id'])
-                if current_request:
-                    # Utiliser la date actuelle de la demande pour la validation
-                    current_date = current_request['request_date']
-                    
+            # Validation du délai de 2 jours ouvrés (sauf admin et labo)
+            if not _is_privileged_user():
+                if data['field_name'] == 'request_date':
+                    current_request = get_material_request_by_id(data['request_id'])
+                    if current_request:
+                        current_date = current_request['request_date']
+                        from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                        validation = is_request_deadline_respected(current_date)
+                        if not validation['valid']:
+                            earliest_date = get_earliest_valid_date()
+                            return jsonify({
+                                'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                            }), 400
+
+                    new_date = data['new_value']
                     from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-                    validation = is_request_deadline_respected(current_date)
+                    validation = is_request_deadline_respected(new_date)
                     if not validation['valid']:
                         earliest_date = get_earliest_valid_date()
                         return jsonify({
-                            'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                            'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
                         }), 400
-            
-            # Si la modification concerne une nouvelle date, valider aussi cette nouvelle date
-            if data['field_name'] == 'request_date':
-                new_date = data['new_value']
-                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-                validation = is_request_deadline_respected(new_date)
-                if not validation['valid']:
-                    earliest_date = get_earliest_valid_date()
-                    return jsonify({
-                        'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
-                    }), 400
             
             success = add_pending_modification(
                 data['request_id'],
@@ -1175,18 +1247,18 @@ def api_get_requests_with_pending_modifications():
 def api_validate_pending_modifications(request_id):
     """API endpoint to validate and apply pending modifications for a request"""
     try:
-        # Validation du délai de 2 jours ouvrés avant d'appliquer les modifications
-        current_request = get_material_request_by_id(request_id)
-        if current_request:
-            current_date = current_request['request_date']
-            
-            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-            validation = is_request_deadline_respected(current_date)
-            if not validation['valid']:
-                earliest_date = get_earliest_valid_date()
-                return jsonify({
-                    'error': f'Validation interdite - délai insuffisant pour la demande du {current_date}. {validation["message"]} Première date modifiable: {earliest_date}'
-                }), 400
+        # Validation du délai de 2 jours ouvrés avant d'appliquer les modifications (sauf admin et labo)
+        if not _is_privileged_user():
+            current_request = get_material_request_by_id(request_id)
+            if current_request:
+                current_date = current_request['request_date']
+                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+                validation = is_request_deadline_respected(current_date)
+                if not validation['valid']:
+                    earliest_date = get_earliest_valid_date()
+                    return jsonify({
+                        'error': f'Validation interdite - délai insuffisant pour la demande du {current_date}. {validation["message"]} Première date modifiable: {earliest_date}'
+                    }), 400
         
         success = validate_pending_modifications(request_id)
         if success:

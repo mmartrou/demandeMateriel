@@ -238,7 +238,8 @@ def init_database():
     
     # Insert sample data if tables are empty
     cursor.execute('SELECT COUNT(*) FROM rooms')
-    if cursor.fetchone()[0] == 0:
+    row = cursor.fetchone()
+    if row is not None and row[0] == 0:
         sample_rooms = [
             # PHYSIQUE (ordre demandé: C23, C25, C27, C22, C24)
             ('C23', 'physique', 10, 53, 0, 0, 0, 0, 0, 0, 0, 1),
@@ -264,7 +265,8 @@ def init_database():
     
     # Insert sample student numbers if table is empty
     cursor.execute('SELECT COUNT(*) FROM student_numbers')
-    if cursor.fetchone()[0] == 0:
+    row = cursor.fetchone()
+    if row is not None and row[0] == 0:
         sample_students = [
             ('Bonfand', 29, '2nde'),
             ('Carpentier', 27, '2nde'),
@@ -286,7 +288,8 @@ def init_database():
     
     # Insert sample teachers if table is empty
     cursor.execute('SELECT COUNT(*) FROM teachers')
-    if cursor.fetchone()[0] == 0:
+    row = cursor.fetchone()
+    if row is not None and row[0] == 0:
         sample_teachers = [
             ('Bats',),
             ('Bonfand',),
@@ -521,8 +524,8 @@ def get_material_request_by_id(request_id):
     # Normaliser en dictionnaire pour compatibilité PostgreSQL/SQLite
     if isinstance(request, dict):
         return request
-    elif hasattr(request, '_asdict'):
-        return request._asdict()
+    elif hasattr(request, '_asdict') and callable(getattr(request, '_asdict', None)):
+        return request._asdict()  # type: ignore[union-attr]
     else:
         # Tuple classique - mapping manuel selon l'ordre des colonnes SELECT
         return {
@@ -650,7 +653,7 @@ def get_grouped_requests_by_name(teacher_id, request_name):
     if db_type == 'postgresql':
         return [dict(row) for row in results]
     else:
-        columns = [description[0] for description in cursor.description]
+        columns = [description[0] for description in (cursor.description or [])]
         return [dict(zip(columns, row)) for row in results]
 
 def update_room_type(request_id, room_type):
