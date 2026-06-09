@@ -535,7 +535,7 @@ function togglePreparedFromModal() {
             if (data.error) throw new Error(data.error);
             const req = window.allRequests?.find(r => r.id === requestId);
             if (req) req.prepared = !req.prepared;
-            const isPrepared = req?.prepared ?? (btn && btn.textContent.includes('Non'));
+            const isPrepared = req?.prepared ?? !(btn && btn.textContent.includes('Non'));
             if (btn) {
                 btn.textContent = isPrepared ? '↩ Non préparée' : '✅ Marquer préparée';
                 btn.className   = isPrepared ? 'btn btn-outline-secondary' : 'btn btn-success';
