@@ -926,6 +926,7 @@
         `;
 
         card.dataset.prepared = course.prepared ? '1' : '0';
+        if (course.request_id) card.dataset.requestId = course.request_id;
 
         console.log(`📅 Cours ${course.subject} - Hauteur cumulée: ${totalHeight.toFixed(1)}px (${durationInMinutes}min)`);
 
@@ -935,7 +936,7 @@
         // Double-clic : ouvrir la modale de détail
         card.addEventListener('dblclick', function(e) {
             e.stopPropagation();
-            openCourseModal(course.id);
+            openCourseModal(course.id, course.request_id);
         });
 
         return card;
@@ -1491,11 +1492,17 @@ async function reloadPlanningIfExists(targetDate) {
     }
 }
 
-async function openCourseModal(courseId) {
+async function openCourseModal(courseId, requestId) {
     currentModalCourseId = courseId;
+    const dbId = requestId || courseId;
+
+    if (!dbId) {
+        showAlert('Impossible de trouver l\'identifiant de la demande.', 'danger');
+        return;
+    }
 
     try {
-        const resp = await fetch(`/api/requests/${courseId}`);
+        const resp = await fetch(`/api/requests/${dbId}`);
         if (!resp.ok) throw new Error('Demande introuvable');
         const r = await resp.json();
 
@@ -1566,8 +1573,10 @@ async function togglePreparedFromView() {
             btn.className = isPrepared ? 'btn btn-outline-secondary me-auto' : 'btn btn-success me-auto';
         }
 
-        // Mettre à jour le badge sur la carte
-        const card = document.querySelector(`.course-card[data-course-id="${currentModalCourseId}"]`);
+        // Mettre à jour le badge sur la carte (chercher par courseId ou request_id)
+        const course2 = planningData?.courses?.find(c => c.id === currentModalCourseId);
+        const card = document.querySelector(`.course-card[data-course-id="${currentModalCourseId}"]`)
+                  || (course2?.request_id && document.querySelector(`.course-card[data-request-id="${course2.request_id}"]`));
         if (card) {
             const existingBadge = card.querySelector('.prepared-badge');
             if (isPrepared && !existingBadge) {

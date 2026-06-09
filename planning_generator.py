@@ -922,6 +922,8 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 material_needs["ordinateurs"] = max(material_needs["ordinateurs"], computers_needed)
             cours.append({
                 "id": f"{req.get('teacher_name', 'Unknown')}_{i}",
+                "request_id": req.get('id'),
+                "prepared": bool(req.get('prepared', False)),
                 "enseignant": req.get('teacher_name', 'Unknown'),
                 "horaire": req.get('horaire', '9h00') or '9h00',
                 "niveau": req.get('class_name', ''),
@@ -1123,6 +1125,8 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                     course_id = course['id']  # Utiliser l'ID artificiel généré par la conversion 
                     courses_data.append({
                         'id': course_id,
+                        'request_id': course.get('request_id'),
+                        'prepared': course.get('prepared', False),
                         'subject': course['matiere'],
                         'level': course['niveau'],
                         'teacher': course['enseignant'],
