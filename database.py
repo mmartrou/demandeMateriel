@@ -3,6 +3,7 @@ import psycopg2
 import psycopg2.extras
 import os
 import logging
+import unicodedata
 from datetime import datetime
 
 # Configuration des logs
@@ -359,19 +360,26 @@ def get_all_teachers():
     return teachers
 
 
+def _normalize_name(s):
+    """Lowercase + strip accents for case/accent-insensitive comparison."""
+    return unicodedata.normalize('NFD', s.strip().lower()).encode('ascii', 'ignore').decode('ascii')
+
+
 def find_teacher_id_by_name(teacher_name):
-    """Find teacher ID by exact name."""
+    """Find teacher ID by name (case and accent insensitive)."""
     if not teacher_name:
         return None
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    cursor.execute(f'SELECT id FROM teachers WHERE name = {placeholder}', (teacher_name,))
-    row = cursor.fetchone()
+    cursor.execute('SELECT id, name FROM teachers')
+    rows = cursor.fetchall()
     conn.close()
-    if not row:
-        return None
-    return row[0] if not isinstance(row, dict) else row['id']
+    target = _normalize_name(teacher_name)
+    for row in rows:
+        db_name = row['name'] if isinstance(row, dict) else row[1]
+        if _normalize_name(db_name) == target:
+            return row['id'] if isinstance(row, dict) else row[0]
+    return None
 
 
 def get_user_by_email(email):
