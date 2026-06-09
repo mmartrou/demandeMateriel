@@ -1022,12 +1022,10 @@ function showRequestInReadOnlyMode(request) {
     // Marquer la modale comme étant en mode lecture seule
     document.getElementById('editRequestModal').setAttribute('data-readonly', 'true');
     
-    // Nettoyer les backdrops avant d'afficher la modale
-    clearModalBackdrops();
-    
-    // Afficher la modale simplement
-    const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
-    modal.show();
+    // Afficher la modale en réutilisant l'instance existante si possible
+    const _roModalEl = document.getElementById('editRequestModal');
+    const _roModal = bootstrap.Modal.getInstance(_roModalEl) || new bootstrap.Modal(_roModalEl);
+    _roModal.show();
 }
 
 function populateEditForm(request) {
@@ -1337,11 +1335,9 @@ function editRequest(requestId) {
             // Toggle sections based on special modes
             toggleEditSpecialModes();
             
-            // Nettoyer les backdrops avant d'afficher la modale
-            clearModalBackdrops();
-            
-            // Afficher la modale simplement
-            const modal = new bootstrap.Modal(document.getElementById('editRequestModal'));
+            // Afficher la modale en réutilisant l'instance existante si possible
+            const modalEl = document.getElementById('editRequestModal');
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
             modal.show();
         })
         .catch(error => {

@@ -461,11 +461,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const t = JSON.parse(selected.dataset.template);
 
         document.getElementById('request_name').value = t.request_name || '';
-        document.getElementById('material_description').value = t.material_description || '';
         document.getElementById('selected_materials').value = t.selected_materials || '';
         document.getElementById('material_prof').value = t.material_prof || '';
         document.getElementById('computers_needed').value = t.computers_needed || 0;
         document.getElementById('quantity').value = t.group_count || 1;
+        document.getElementById('notes').value = t.notes || '';
 
         // Remettre les cases matériaux
         const materials = (t.selected_materials || '').toLowerCase();
@@ -476,6 +476,19 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('becs_electriques').checked = materials.includes('becs électriques') || materials.includes('becs electriques');
         document.getElementById('support_filtration').checked = materials.includes('support de filtration');
         document.getElementById('imprimante').checked = materials.includes('imprimante');
+
+        // Pré-charger l'image si disponible
+        const imageUrlInput = document.getElementById('image_url');
+        const imagePreview = document.getElementById('image_preview');
+        const previewImg = document.getElementById('preview_img');
+        if (t.image_url && imageUrlInput && imagePreview && previewImg) {
+            imageUrlInput.value = t.image_url;
+            previewImg.src = t.image_url;
+            imagePreview.style.display = 'block';
+        } else if (imageUrlInput) {
+            imageUrlInput.value = '';
+            if (imagePreview) imagePreview.style.display = 'none';
+        }
     });
 
     const replacementCheckbox = document.getElementById('replacement_mode');
@@ -1068,7 +1081,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function setMinimumDate(inputEl) {
         if (isPrivilegedUser) return; // pas de restriction pour admin/labo
         const minDate = getMinimumValidDate();
-        const minDateStr = minDate.toISOString().split('T')[0];
+        // Utiliser les composantes locales pour éviter le décalage UTC
+        const y = minDate.getFullYear();
+        const m = String(minDate.getMonth() + 1).padStart(2, '0');
+        const d = String(minDate.getDate()).padStart(2, '0');
+        const minDateStr = `${y}-${m}-${d}`;
         inputEl.setAttribute('min', minDateStr);
         if (!inputEl.value || inputEl.value < minDateStr) {
             inputEl.value = minDateStr;

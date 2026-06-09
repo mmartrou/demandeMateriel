@@ -138,6 +138,27 @@ sudo certbot renew --dry-run
 
 ## 9) Déploiement des mises à jour
 
+### Étape 1 — Pousser les changements vers GitHub (depuis votre machine locale)
+
+```bash
+# Vérifier ce qui a changé
+git status
+git diff --stat
+
+# Ajouter les fichiers modifiés (liste explicite recommandée)
+git add app.py database.py templates/index.html templates/requests.html
+# ou pour tout ajouter d'un coup :
+git add -A
+
+# Créer un commit
+git commit -m "Description courte des modifications"
+
+# Pousser vers GitHub
+git push origin main
+```
+
+### Étape 2 — Mettre à jour le serveur (sur le VPS via SSH)
+
 ```bash
 cd /opt/demande-materiel
 source .venv/bin/activate
