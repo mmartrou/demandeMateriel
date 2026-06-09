@@ -487,18 +487,74 @@
     <div id="loading-container"></div>
 </div>
 
-<!-- Modal détail TP -->
+<!-- Modal détail TP (read-only, même structure que "Voir les demandes") -->
 <div class="modal fade" id="courseDetailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="courseDetailTitle">Détail du TP</h5>
+                <h5 class="modal-title" id="courseDetailTitle">Visualisation de la demande</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="courseDetailBody"></div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i> Mode visualisation depuis l'éditeur de planning.
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">👨‍🏫 Enseignant</label>
+                        <input type="text" class="form-control" id="viewTeacher" disabled>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">🏷️ Nom de la demande</label>
+                        <input type="text" class="form-control" id="viewRequestName" disabled>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">📅 Date</label>
+                        <input type="text" class="form-control" id="viewDate" disabled>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">⏰ Horaire</label>
+                        <input type="text" class="form-control" id="viewHoraire" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">🎓 Niveau/Classe</label>
+                        <input type="text" class="form-control" id="viewClassName" disabled>
+                    </div>
+                </div>
+                <div class="mb-3" id="viewSpecialModes"></div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">🔢 Nombre de groupes</label>
+                        <input type="text" class="form-control" id="viewQuantity" disabled>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">💻 Ordinateurs</label>
+                        <input type="text" class="form-control" id="viewComputers" disabled>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">🔧 Matériel peu mobile à avoir dans la salle</label>
+                    <input type="text" class="form-control" id="viewMaterials" disabled>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">📝 Matériel requis par groupe</label>
+                    <textarea class="form-control" id="viewMaterialDescription" rows="3" disabled></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">👨‍🏫 Matériel prof</label>
+                    <textarea class="form-control" id="viewMaterialProf" rows="2" disabled></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">📝 Notes supplémentaires</label>
+                    <textarea class="form-control" id="viewNotes" rows="2" disabled></textarea>
+                </div>
+                <div id="viewImageSection" class="mb-3"></div>
+            </div>
             <div class="modal-footer">
                 {% if current_user and current_user.role in ('admin', 'labo') %}
-                <button type="button" class="btn btn-success" id="togglePreparedBtn" onclick="togglePrepared()">
+                <button type="button" id="viewTogglePreparedBtn" class="btn btn-success me-auto" onclick="togglePreparedFromView()">
                     ✅ Marquer comme préparé
                 </button>
                 {% endif %}
@@ -1435,104 +1491,96 @@ async function reloadPlanningIfExists(targetDate) {
     }
 }
 
-function openCourseModal(courseId) {
-    const course = planningData?.courses?.find(c => c.id === courseId);
-    if (!course) return;
-
+async function openCourseModal(courseId) {
     currentModalCourseId = courseId;
 
-    document.getElementById('courseDetailTitle').textContent =
-        course.request_name || course.subject || 'Détail du TP';
+    try {
+        const resp = await fetch(`/api/requests/${courseId}`);
+        if (!resp.ok) throw new Error('Demande introuvable');
+        const r = await resp.json();
 
-    const equipments = [];
-    if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
-    if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
-    if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
-    if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
-    if (course.oscilloscopes > 0) equipments.push(`📊 Oscillo.`);
-    if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
-    if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
-    if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
-    if (course.examen > 0) equipments.push(`📝 Examen`);
+        document.getElementById('courseDetailTitle').textContent =
+            r.request_name ? `Visualisation — ${r.request_name}` : 'Visualisation de la demande';
+        document.getElementById('viewTeacher').value = r.teacher_name || '';
+        document.getElementById('viewRequestName').value = r.request_name || '';
+        document.getElementById('viewDate').value = r.request_date || '';
+        document.getElementById('viewHoraire').value = r.horaire || '';
+        document.getElementById('viewClassName').value = r.class_name || '';
+        document.getElementById('viewQuantity').value = r.group_count || r.quantity || 1;
+        document.getElementById('viewComputers').value = r.computers_needed || 0;
+        document.getElementById('viewMaterialDescription').value = r.material_description || '';
+        document.getElementById('viewMaterialProf').value = r.material_prof || '';
+        document.getElementById('viewNotes').value = r.notes || '';
 
-    const durationText = course.duration ? formatDuration(course.duration) : '';
-    const assignedRoom = currentRoomAssignments[courseId] || course.room || '—';
+        // Modes spéciaux
+        const specials = [];
+        if (r.selected_materials === 'Absent') specials.push('❌ Enseignant absent');
+        if (r.selected_materials === 'Pas besoin de matériel') specials.push('📚 Pas besoin de matériel');
+        if (r.selected_materials === 'Examen') specials.push('📝 Examen');
+        document.getElementById('viewSpecialModes').innerHTML = specials.length
+            ? `<span class="badge bg-warning text-dark fs-6">${specials.join(' / ')}</span>` : '';
 
-    document.getElementById('courseDetailBody').innerHTML = `
-        <div class="row g-3">
-            <div class="col-md-6">
-                <table class="table table-sm">
-                    <tr><th>Matière</th><td>${course.subject || '—'}</td></tr>
-                    <tr><th>Niveau</th><td>${course.level || '—'}</td></tr>
-                    <tr><th>Enseignant</th><td>${course.teacher || '—'}</td></tr>
-                    <tr><th>Horaire</th><td>${course.time || '—'}${durationText ? ` (${durationText})` : ''}</td></tr>
-                    <tr><th>Salle</th><td>${assignedRoom}</td></tr>
-                    <tr><th>Groupes</th><td>${course.group_count || course.quantity || 1}</td></tr>
-                </table>
-            </div>
-            <div class="col-md-6">
-                ${course.selected_materials ? `<p><strong>Matériel :</strong><br>${course.selected_materials}</p>` : ''}
-                ${course.material_prof ? `<p><strong>Matériel prof :</strong><br>${course.material_prof}</p>` : ''}
-                ${equipments.length ? `<p><strong>Équipements :</strong><br>${equipments.join(', ')}</p>` : ''}
-                ${course.notes ? `<p><strong>Notes :</strong><br>${course.notes}</p>` : ''}
-            </div>
-        </div>
-        <div class="mt-2">
-            <span class="badge ${course.prepared ? 'bg-success' : 'bg-secondary'}" id="preparedBadgeInModal">
-                ${course.prepared ? '✓ Préparé' : 'Non préparé'}
-            </span>
-        </div>
-    `;
+        // Matériels cochés
+        const knownMats = ['Éviers','Hotte','Bancs optiques','Oscilloscopes','Becs électriques','Support de filtration','Imprimante'];
+        const checkedMats = (r.selected_materials || '').split(',').map(s => s.trim()).filter(s => knownMats.includes(s));
+        document.getElementById('viewMaterials').value = checkedMats.join(', ') || '—';
 
-    const btn = document.getElementById('togglePreparedBtn');
-    if (btn) {
-        btn.textContent = course.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
-        btn.className = course.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+        // Image
+        const imgSection = document.getElementById('viewImageSection');
+        imgSection.innerHTML = r.image_url
+            ? `<img src="${r.image_url}" alt="Image" class="img-thumbnail" style="max-width:200px;max-height:200px;cursor:pointer;" onclick="window.open('${r.image_url}','_blank')">`
+            : '';
+
+        // Bouton préparé
+        const btn = document.getElementById('viewTogglePreparedBtn');
+        if (btn) {
+            btn.textContent = r.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
+            btn.className = r.prepared ? 'btn btn-outline-secondary me-auto' : 'btn btn-success me-auto';
+        }
+
+        // Mettre à jour le state local si le cours est dans planningData
+        const course = planningData?.courses?.find(c => c.id === courseId);
+        if (course) course.prepared = r.prepared;
+
+        (bootstrap.Modal.getInstance(document.getElementById('courseDetailModal'))
+            || new bootstrap.Modal(document.getElementById('courseDetailModal'))).show();
+    } catch(e) {
+        showAlert('Impossible de charger la demande.', 'danger');
     }
-
-    (bootstrap.Modal.getInstance(document.getElementById('courseDetailModal'))
-        || new bootstrap.Modal(document.getElementById('courseDetailModal'))).show();
 }
 
-async function togglePrepared() {
+async function togglePreparedFromView() {
     if (!currentModalCourseId) return;
-    const course = planningData?.courses?.find(c => c.id === currentModalCourseId);
-    if (!course) return;
-
     try {
         const resp = await fetch(`/api/requests/${currentModalCourseId}/toggle-prepared`, { method: 'POST' });
-        if (!resp.ok) throw new Error('Erreur serveur');
+        if (!resp.ok) throw new Error();
 
-        // Mettre à jour l'état local
-        course.prepared = !course.prepared;
+        const course = planningData?.courses?.find(c => c.id === currentModalCourseId);
+        if (course) course.prepared = !course.prepared;
+        const isPrepared = course?.prepared;
 
-        // Mettre à jour la modale
-        const badge = document.getElementById('preparedBadgeInModal');
-        if (badge) {
-            badge.textContent = course.prepared ? '✓ Préparé' : 'Non préparé';
-            badge.className = `badge ${course.prepared ? 'bg-success' : 'bg-secondary'}`;
-        }
-        const btn = document.getElementById('togglePreparedBtn');
+        // Mettre à jour le bouton dans la modale
+        const btn = document.getElementById('viewTogglePreparedBtn');
         if (btn) {
-            btn.textContent = course.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
-            btn.className = course.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+            btn.textContent = isPrepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
+            btn.className = isPrepared ? 'btn btn-outline-secondary me-auto' : 'btn btn-success me-auto';
         }
 
-        // Mettre à jour la carte dans la grille
+        // Mettre à jour le badge sur la carte
         const card = document.querySelector(`.course-card[data-course-id="${currentModalCourseId}"]`);
         if (card) {
-            card.dataset.prepared = course.prepared ? '1' : '0';
             const existingBadge = card.querySelector('.prepared-badge');
-            if (course.prepared && !existingBadge) {
+            if (isPrepared && !existingBadge) {
                 const span = document.createElement('span');
                 span.className = 'prepared-badge';
                 span.textContent = '✓';
                 card.insertBefore(span, card.firstChild);
-            } else if (!course.prepared && existingBadge) {
+            } else if (!isPrepared && existingBadge) {
                 existingBadge.remove();
             }
+            card.dataset.prepared = isPrepared ? '1' : '0';
         }
-    } catch (e) {
+    } catch(e) {
         showAlert('Erreur lors de la mise à jour du statut.', 'danger');
     }
 }

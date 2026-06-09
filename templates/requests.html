@@ -324,6 +324,11 @@
                 <button type="button" class="btn btn-danger me-auto" onclick="deleteRequest()" title="Supprimer définitivement cette demande">
                     🗑️ Supprimer
                 </button>
+                {% if current_user and current_user.role in ('admin', 'labo') %}
+                <button type="button" class="btn btn-success" id="modalPreparedBtn" onclick="togglePreparedFromModal()">
+                    ✅ Marquer préparée
+                </button>
+                {% endif %}
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <button type="button" class="btn btn-primary" onclick="saveRequestChanges()">💾 Sauvegarder</button>
             </div>
@@ -1046,6 +1051,13 @@ function populateEditForm(request) {
     const editExamMode = document.getElementById('editExamMode');
     
     if (editRequestId) editRequestId.value = request.id;
+
+    // Mettre à jour le bouton "Marquer préparée" si présent
+    const prepBtn = document.getElementById('modalPreparedBtn');
+    if (prepBtn) {
+        prepBtn.textContent = request.prepared ? '↩ Non préparée' : '✅ Marquer préparée';
+        prepBtn.className = request.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+    }
     if (editTeacher) editTeacher.value = request.teacher_id;
     if (editRequestName) editRequestName.value = request.request_name || '';
     if (editDate) editDate.value = formatDateToYMD(request.request_date);
@@ -1927,6 +1939,27 @@ function deleteRequest() {
         console.error('Error:', error);
         showErrorToast('Erreur lors de la suppression: ' + error.message);
     });
+}
+
+function togglePreparedFromModal() {
+    const requestId = parseInt(document.getElementById('editRequestId').value);
+    if (!requestId) return;
+    const btn = document.getElementById('modalPreparedBtn');
+    fetch(`/api/requests/${requestId}/toggle-prepared`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            const req = window.allRequests?.find(r => r.id === requestId);
+            if (req) req.prepared = !req.prepared;
+            if (btn) {
+                const isPrepared = req?.prepared ?? (btn.textContent.includes('Non'));
+                btn.textContent = isPrepared ? '↩ Non préparée' : '✅ Marquer préparée';
+                btn.className = isPrepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+            }
+            loadRequests();
+            showSuccessToast('Statut mis à jour avec succès');
+        })
+        .catch(() => showErrorToast('Erreur lors de la mise à jour du statut'));
 }
 
 function togglePrepared(requestId) {
