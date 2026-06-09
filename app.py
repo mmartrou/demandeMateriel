@@ -22,7 +22,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability, delete_c21_availability,
                       get_all_rooms, update_room, import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
-                      upsert_user, get_user_by_email, find_teacher_id_by_name)
+                      upsert_user, get_user_by_email, find_teacher_id_by_name,
+                      get_tp_templates, upsert_tp_template)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
 from database import get_db_connection
@@ -573,10 +574,7 @@ def api_get_requests():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     teacher_id = request.args.get('teacher_id')
-    user = _get_current_user()
-    if user and _is_teacher_scoped_user(user):
-        teacher_id = user.get('teacher_id')
-    
+
     requests = get_material_requests(start_date, end_date, teacher_id)
     # Compatibilité PostgreSQL/SQLite : transformer en liste de dicts
     requests_list = []
@@ -832,6 +830,27 @@ def api_add_request():
                 )
                 request_ids.append(request_id)
 
+                # Sauvegarder comme template TP si c'est un vrai TP (pas absent/no_material/examen)
+                sm = data.get('selected_materials', '')
+                is_special = sm in ('Absent', 'Pas besoin de matériel', 'Examen')
+                if not is_special and data.get('request_name') and data.get('class_name'):
+                    try:
+                        upsert_tp_template(
+                            teacher_id=data['teacher_id'],
+                            level=data['class_name'],
+                            request_name=data['request_name'],
+                            material_description=data.get('material_description', ''),
+                            selected_materials=sm,
+                            material_prof=data.get('material_prof', ''),
+                            computers_needed=data.get('computers_needed', 0),
+                            group_count=data.get('group_count', data.get('quantity', 1)),
+                            notes=data.get('notes', ''),
+                            image_url=data.get('image_url', ''),
+                            room_type=data.get('room_type', 'Mixte')
+                        )
+                    except Exception:
+                        pass  # Echec silencieux : ne pas bloquer la création
+
         return jsonify({'success': True, 'request_ids': request_ids}), 201
         
     except Exception as e:
@@ -916,11 +935,7 @@ def export_csv():
 @app.route('/requests')
 def view_requests():
     """View all material requests in a table"""
-    user = _get_current_user()
-    if user and _is_teacher_scoped_user(user):
-        teachers = [{'id': user.get('teacher_id'), 'name': user.get('teacher_name') or user.get('full_name')}] if user.get('teacher_id') else []
-    else:
-        teachers = get_all_teachers()
+    teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
 
 @app.route('/api/requests/<int:request_id>', methods=['GET'])
@@ -1070,6 +1085,19 @@ def api_delete_request(request_id):
             return jsonify({'error': 'Demande non trouvée'}), 404
     except Exception as e:
         return api_error('Erreur lors de la suppression de la demande', e)
+
+@app.route('/api/tp-templates', methods=['GET'])
+def api_get_tp_templates():
+    """Retourne les templates TP d'un enseignant pour un niveau donné."""
+    try:
+        teacher_id = request.args.get('teacher_id', type=int)
+        level = request.args.get('level', '')
+        if not teacher_id or not level:
+            return jsonify({'error': 'teacher_id et level sont requis'}), 400
+        templates = get_tp_templates(teacher_id, level)
+        return jsonify(templates)
+    except Exception as e:
+        return api_error('Erreur lors de la récupération des templates TP', e)
 
 @app.route('/api/requests/<int:request_id>/room-type', methods=['PUT'])
 def api_update_room_type(request_id):
@@ -1788,7 +1816,7 @@ def api_generate_planning_from_editor():
         from datetime import datetime
         try:
             date_obj = datetime.strptime(target_date, '%Y-%m-%d')
-            day_names = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+            day_names = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
             day_name = day_names[date_obj.weekday()]
             formatted_date = date_obj.strftime('%d-%m-%Y')
             filename = f"planning{day_name.upper()}_{formatted_date}.xlsx"

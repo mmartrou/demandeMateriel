@@ -38,17 +38,6 @@ from datetime import datetime, timedelta
 from ortools.sat.python import cp_model
 
 
-def h_to_min(hstr):
-    """Convert hour string (like '9h30') to minutes"""
-    if 'h' in hstr:
-        h, m = hstr.split('h')
-        return int(h) * 60 + int(m if m else 0)
-    else:
-        # Handle format like '9:30'
-        parts = hstr.split(':')
-        return int(parts[0]) * 60 + int(parts[1] if len(parts) > 1 else 0)
-
-
 def duree_par_niveau(niveau):
     """Get duration by level"""
     if niveau in ("Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"):
@@ -1249,12 +1238,13 @@ def get_planning_data_for_editor_v2(target_date):
                 'days': [target_date],
                 'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
                 'assignments': {},
-                'rooms': []
+                'rooms': [],
+                'error': result
             }
-        
+
         print(f"✅ Planning avec assignations généré avec succès")
         return result
-        
+
     except Exception as e:
         print(f"❌ Erreur dans get_planning_data_for_editor_v2: {str(e)}")
         import traceback
@@ -1264,7 +1254,8 @@ def get_planning_data_for_editor_v2(target_date):
             'days': [target_date],
             'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
             'assignments': {},
-            'rooms': []
+            'rooms': [],
+            'error': str(e)
         }
 
 

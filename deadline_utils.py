@@ -178,10 +178,6 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
             'message': str
         }
     """
-    if current_datetime is None:
-        current_datetime = datetime.now()
-    
-    # Utilise UTC pour le calcul du délai (important pour Railway)
     import sys
     if current_datetime is None:
         current_datetime = datetime.utcnow()

@@ -513,26 +513,19 @@
             console.log('📋 Données reçues:', data);
             
             if (response.ok) {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                if (!data.courses || data.courses.length === 0) {
+                    throw new Error('Aucun cours trouvé pour cette date.');
+                }
+
                 planningData = data;
                 currentAssignments = { ...data.assignments };
                 currentRoomAssignments = { ...data.room_assignments || {} };
-                
-                // Debug des données reçues
-        console.log('📊 DEBUG - Données reçues:', {
-            courses: data.courses?.length || 0,
-            room_assignments: Object.keys(data.room_assignments || {}).length,
-            rooms: data.rooms?.length || 0,
-            room_names: data.rooms?.map(r => r.name)
-        });
-        
-        // Debug complet des assignations
-        console.log('🔍 TOUTES les assignations:', data.room_assignments);
-        console.log('🔍 TOUS les cours avec temps:', data.courses.map(c => ({id: c.id, teacher: c.teacher, time: c.time, assignedRoom: data.room_assignments[c.id]})));
-        
-        // APPELER renderPlanningGrid() maintenant avec les données de test
-        console.log('🎨 Appel renderPlanningGrid()');
-        renderPlanningGrid();
-        updateStats();
+
+                renderPlanningGrid();
+                updateStats();
                 document.getElementById('generate-btn').disabled = false;
                 showAlert('Planning généré et prêt à éditer!', 'success');
             } else {
@@ -1127,7 +1120,8 @@
                 // Re-rendre la grille
                 renderPlanningGrid();
                 updateStats();
-                
+                savePlanningData();
+
                 showAlert(`Cours déplacé vers ${newRoom} à ${newSlot}`, 'success');
             }
         });
@@ -1298,13 +1292,10 @@
     document.getElementById('generate-btn').addEventListener('click', savePlanningData);
     
     document.getElementById('target-date').addEventListener('change', function() {
-    const selectedDate = this.value;
-
-    // Utiliser reloadPlanning() pour charger automatiquement le planning dans la grille
-    if (selectedDate) {
-        reloadPlanning();
-    }
-});
+        if (this.value) {
+            reloadPlanningIfExists(this.value);
+        }
+    });
 
 // Fonctions supprimées car on utilise maintenant reloadPlanning() automatiquement
 
@@ -1352,13 +1343,48 @@ async function reloadPlanning() {
     }
 }
 
+async function reloadPlanningIfExists(targetDate) {
+    try {
+        const response = await fetch(`/api/get-planning?date=${targetDate}`);
+        if (response.status === 404) {
+            // Aucun planning sauvegardé pour cette date : état vide sans erreur
+            planningData = null;
+            currentAssignments = {};
+            currentRoomAssignments = {};
+            document.getElementById('rooms-container').innerHTML = '';
+            document.getElementById('rooms-container').className = 'row';
+            document.getElementById('no-planning-message').style.display = '';
+            document.getElementById('stats-panel').style.display = 'none';
+            document.getElementById('generate-btn').disabled = true;
+            return;
+        }
+        if (!response.ok) {
+            return; // Autre erreur serveur : on n'affiche rien
+        }
+        const data = await response.json();
+        if (typeof data.planning === 'string') {
+            planningData = JSON.parse(data.planning);
+        } else {
+            planningData = data.planning || data;
+        }
+        currentRoomAssignments = { ...planningData.room_assignments || {} };
+        renderPlanningGrid();
+        updateStats();
+        document.getElementById('generate-btn').disabled = false;
+        showAlert('Planning existant chargé.', 'info');
+    } catch (error) {
+        // Erreur réseau ou parse : on ignore silencieusement
+        console.warn('reloadPlanningIfExists:', error);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Attach reloadPlanning to the window object to make it globally accessible
     window.reloadPlanning = reloadPlanning;
     console.log('reloadPlanning function attached to window:', window.reloadPlanning);
     
-    // Attach savePlanningData to the window object to make it globally accessible
     window.savePlanningData = savePlanningData;
+    window.reloadPlanningIfExists = reloadPlanningIfExists;
 });
 </script>
 {% endblock %}

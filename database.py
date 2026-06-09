@@ -235,6 +235,27 @@ def init_database():
             data {text_type} NOT NULL
         );
     ''')
+
+    # Table des templates de TP (TPs précédemment demandés, classés par enseignant+niveau)
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS tp_templates (
+            id {auto_increment},
+            teacher_id INTEGER NOT NULL,
+            level {text_type} NOT NULL,
+            request_name {text_type} NOT NULL,
+            material_description {text_type},
+            selected_materials {text_type},
+            material_prof {text_type},
+            computers_needed INTEGER DEFAULT 0,
+            group_count INTEGER DEFAULT 1,
+            notes {text_type},
+            image_url {text_type},
+            room_type {text_type} DEFAULT 'Mixte',
+            updated_at {timestamp_default},
+            UNIQUE (teacher_id, level, request_name),
+            FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+        )
+    ''')
     
     # Insert sample data if tables are empty
     cursor.execute('SELECT COUNT(*) FROM rooms')
@@ -1443,6 +1464,91 @@ def reject_pending_modifications(request_id):
         logger.error(f"Erreur lors du rejet des modifications: {e}")
         conn.close()
         return False
+
+def get_tp_templates(teacher_id, level):
+    """Retourne les templates TP d'un enseignant pour un niveau donné, triés par nom."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'''
+            SELECT id, request_name, material_description, selected_materials,
+                   material_prof, computers_needed, group_count, notes, image_url, room_type
+            FROM tp_templates
+            WHERE teacher_id = {placeholder} AND level = {placeholder}
+            ORDER BY request_name
+        ''', (teacher_id, level))
+        rows = cursor.fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            if isinstance(row, dict):
+                result.append(row)
+            else:
+                result.append({
+                    'id': row[0], 'request_name': row[1], 'material_description': row[2],
+                    'selected_materials': row[3], 'material_prof': row[4],
+                    'computers_needed': row[5], 'group_count': row[6],
+                    'notes': row[7], 'image_url': row[8], 'room_type': row[9]
+                })
+        return result
+    except Exception as e:
+        logger.error(f"Erreur get_tp_templates: {e}")
+        return []
+
+
+def upsert_tp_template(teacher_id, level, request_name, material_description,
+                       selected_materials, material_prof, computers_needed,
+                       group_count, notes, image_url, room_type):
+    """Insère ou met à jour un template TP (clé unique: teacher_id + level + request_name)."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        if db_type == 'postgresql':
+            cursor.execute('''
+                INSERT INTO tp_templates
+                    (teacher_id, level, request_name, material_description, selected_materials,
+                     material_prof, computers_needed, group_count, notes, image_url, room_type)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (teacher_id, level, request_name)
+                DO UPDATE SET
+                    material_description = EXCLUDED.material_description,
+                    selected_materials   = EXCLUDED.selected_materials,
+                    material_prof        = EXCLUDED.material_prof,
+                    computers_needed     = EXCLUDED.computers_needed,
+                    group_count          = EXCLUDED.group_count,
+                    notes                = EXCLUDED.notes,
+                    image_url            = EXCLUDED.image_url,
+                    room_type            = EXCLUDED.room_type,
+                    updated_at           = CURRENT_TIMESTAMP
+            ''', (teacher_id, level, request_name, material_description, selected_materials,
+                  material_prof, computers_needed, group_count, notes, image_url, room_type))
+        else:
+            cursor.execute('''
+                INSERT INTO tp_templates
+                    (teacher_id, level, request_name, material_description, selected_materials,
+                     material_prof, computers_needed, group_count, notes, image_url, room_type)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(teacher_id, level, request_name)
+                DO UPDATE SET
+                    material_description = excluded.material_description,
+                    selected_materials   = excluded.selected_materials,
+                    material_prof        = excluded.material_prof,
+                    computers_needed     = excluded.computers_needed,
+                    group_count          = excluded.group_count,
+                    notes                = excluded.notes,
+                    image_url            = excluded.image_url,
+                    room_type            = excluded.room_type,
+                    updated_at           = CURRENT_TIMESTAMP
+            ''', (teacher_id, level, request_name, material_description, selected_materials,
+                  material_prof, computers_needed, group_count, notes, image_url, room_type))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur upsert_tp_template: {e}")
+        return False
+
 
 if __name__ == '__main__':
     init_database()

@@ -153,11 +153,22 @@
                             </select>
                         </div>
                         
+                        <!-- Sélecteur TP précédent (visible seulement si des templates existent) -->
+                        <div class="col-md-4 mb-3" id="tp-template-section" style="display:none;">
+                            <label for="tp_template_select" class="form-label">
+                                🔁 Réutiliser un TP précédent
+                            </label>
+                            <select class="form-select" id="tp_template_select">
+                                <option value="">— Nouveau TP —</option>
+                            </select>
+                            <small class="text-muted">Sélectionnez pour pré-remplir le formulaire</small>
+                        </div>
+
                         <div class="col-md-4 mb-3">
                             <label for="request_name" class="form-label">
                                 🏷️ Nom de la demande *
                             </label>
-                            <input type="text" class="form-control" id="request_name" name="request_name" 
+                            <input type="text" class="form-control" id="request_name" name="request_name"
                                    placeholder="Ex: TP Chimie organique, Cours optique..." maxlength="100" required>
                             <small class="text-muted">Obligatoire - pour identifier et regrouper les demandes similaires</small>
                         </div>
@@ -402,11 +413,69 @@ document.addEventListener('DOMContentLoaded', function() {
             enforceConnectedTeacherSelection();
             return;
         }
-
         if (this.value) {
             setCookie('selectedTeacher', this.value);
-            console.log(`🍪 Enseignant sauvegardé: ${this.value}`);
         }
+        loadTpTemplates();
+    });
+
+    document.getElementById('class_name').addEventListener('change', loadTpTemplates);
+
+    async function loadTpTemplates() {
+        const teacherId = teacherSelect.value;
+        const level = document.getElementById('class_name').value;
+        const section = document.getElementById('tp-template-section');
+        const select = document.getElementById('tp_template_select');
+
+        if (!teacherId || !level) {
+            section.style.display = 'none';
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/api/tp-templates?teacher_id=${teacherId}&level=${encodeURIComponent(level)}`);
+            const templates = await resp.json();
+
+            if (!templates.length) {
+                section.style.display = 'none';
+                return;
+            }
+
+            select.innerHTML = '<option value="">— Nouveau TP —</option>';
+            templates.forEach((t, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = t.request_name;
+                opt.dataset.template = JSON.stringify(t);
+                select.appendChild(opt);
+            });
+            section.style.display = 'block';
+        } catch(e) {
+            section.style.display = 'none';
+        }
+    }
+
+    document.getElementById('tp_template_select').addEventListener('change', function() {
+        const selected = this.options[this.selectedIndex];
+        if (!selected.dataset.template) return;
+        const t = JSON.parse(selected.dataset.template);
+
+        document.getElementById('request_name').value = t.request_name || '';
+        document.getElementById('material_description').value = t.material_description || '';
+        document.getElementById('selected_materials').value = t.selected_materials || '';
+        document.getElementById('material_prof').value = t.material_prof || '';
+        document.getElementById('computers_needed').value = t.computers_needed || 0;
+        document.getElementById('quantity').value = t.group_count || 1;
+
+        // Remettre les cases matériaux
+        const materials = (t.selected_materials || '').toLowerCase();
+        document.getElementById('eviers').checked = materials.includes('évier') || materials.includes('evier');
+        document.getElementById('hotte').checked = materials.includes('hotte');
+        document.getElementById('bancs_optiques').checked = materials.includes('bancs optiques');
+        document.getElementById('oscilloscopes').checked = materials.includes('oscilloscope');
+        document.getElementById('becs_electriques').checked = materials.includes('becs électriques') || materials.includes('becs electriques');
+        document.getElementById('support_filtration').checked = materials.includes('support de filtration');
+        document.getElementById('imprimante').checked = materials.includes('imprimante');
     });
 
     const replacementCheckbox = document.getElementById('replacement_mode');
@@ -970,24 +1039,55 @@ document.addEventListener('DOMContentLoaded', function() {
 
     removeImageBtn.addEventListener('click', clearImage);
     
-    // Configuration de la date minimum (2 jours ouvrés)
-    function setMinimumDate() {
-        const dateInput = document.getElementById('planning_date');
-        
-        // Calculer la date minimum (approximation simple)
-        const today = new Date();
-        const minDate = getMinimumValidDate();
-        
-        // Définir la date minimum et par défaut
-        const minDateStr = minDate.toISOString().split('T')[0];
-        dateInput.setAttribute('min', minDateStr);
-        dateInput.value = minDateStr; // Date par défaut
-        
-        console.log(`📅 Date minimum configurée: ${minDateStr} (2 jours ouvrés minimum)`);
+    // Retourne la première date valide selon la règle des 2 jours ouvrés
+    // Miroir JS de deadline_utils.get_earliest_valid_date()
+    function getMinimumValidDate() {
+        const now = new Date();
+        // Après 17h le jour courant est "perdu", on commence à compter à partir de J+2
+        const startDay = new Date(now);
+        startDay.setHours(0, 0, 0, 0);
+        startDay.setDate(startDay.getDate() + (now.getHours() >= 17 ? 2 : 1));
+
+        let workingDayCount = 0;
+        let d = new Date(startDay);
+        while (workingDayCount < 2) {
+            if (d.getDay() !== 0 && d.getDay() !== 6) workingDayCount++;
+            d.setDate(d.getDate() + 1);
+        }
+        // Avancer si on atterrit sur un week-end
+        while (d.getDay() === 0 || d.getDay() === 6) {
+            d.setDate(d.getDate() + 1);
+        }
+        return d;
     }
-    
-    // Appeler au chargement de la page
-    setMinimumDate();
+
+    // Configuration de la date minimum (2 jours ouvrés)
+    // Labo et admin sont exemptés : ils peuvent choisir n'importe quelle date
+    const isPrivilegedUser = ['admin', 'labo'].includes('{{ effective_user_mode }}');
+
+    function setMinimumDate(inputEl) {
+        if (isPrivilegedUser) return; // pas de restriction pour admin/labo
+        const minDate = getMinimumValidDate();
+        const minDateStr = minDate.toISOString().split('T')[0];
+        inputEl.setAttribute('min', minDateStr);
+        if (!inputEl.value || inputEl.value < minDateStr) {
+            inputEl.value = minDateStr;
+        }
+    }
+
+    // Appliquer au champ principal
+    setMinimumDate(document.getElementById('planning_date'));
+
+    // Appliquer aussi aux champs de jours supplémentaires quand ils sont ajoutés
+    const originalAddDayBtn = document.getElementById('addDayBtn');
+    if (originalAddDayBtn) {
+        originalAddDayBtn.addEventListener('click', function() {
+            // Attendre que le DOM soit mis à jour puis appliquer le min aux nouveaux inputs date
+            setTimeout(() => {
+                document.querySelectorAll('#daysList input[type="date"]').forEach(setMinimumDate);
+            }, 50);
+        });
+    }
 });
 
 

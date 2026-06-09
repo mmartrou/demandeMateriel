@@ -553,12 +553,14 @@ function initializeFilters() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('filterStartDate').value = today;
     
-    // Restaurer l'enseignant depuis le cookie
+    // Restaurer l'enseignant depuis le cookie, ou pré-sélectionner l'enseignant connecté
     const savedTeacher = getCookie('selectedTeacher');
+    const teacherSelect = document.getElementById('filterTeacher');
     if (savedTeacher) {
-        const teacherSelect = document.getElementById('filterTeacher');
         teacherSelect.value = savedTeacher;
         console.log(`🍪 Enseignant restauré depuis le cookie: ${savedTeacher}`);
+    } else if (isTeacherMode && myTeacherId) {
+        teacherSelect.value = myTeacherId;
     }
     
     console.log(`📅 Date par défaut définie: ${today}`);
@@ -891,11 +893,26 @@ function getValidationButton(request) {
     return '';
 }
 
+const isTeacherMode = '{{ effective_user_mode }}' === 'teacher';
+const myTeacherId = {% if current_user and current_user.get('teacher_id') %}{{ current_user.get('teacher_id') }}{% else %}null{% endif %};
+
 function canEditRequest(request) {
+    // Labo et admin peuvent toujours modifier, sans restriction de délai
+    if (['admin', 'labo'].includes('{{ effective_user_mode }}')) {
+        return true;
+    }
+
+    // Enseignant : ne peut modifier que ses propres demandes
+    if (isTeacherMode && myTeacherId) {
+        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) {
+            return false;
+        }
+    }
+
     // Vérifier que la date existe
     if (!request.request_date) {
         console.warn('⚠️ request_date manquante pour la demande #' + request.id);
-        return true; // Par défaut, autoriser l'édition si pas de date
+        return true;
     }
     
     try {
@@ -1393,6 +1410,32 @@ function calculateRequestChanges(requestId, newData) {
 }
 
 // Fonction pour sauvegarder les modifications en attente
+function normalizeDateStr(dateStr) {
+    if (!dateStr) return dateStr;
+    const s = String(dateStr);
+    if (s.includes('GMT') || (s.includes(',') && s.length > 10)) {
+        return new Date(s).toISOString().split('T')[0];
+    }
+    if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+    }
+    return s.split('T')[0];
+}
+
+async function saveRequestDirect(reqId, data) {
+    const response = await fetch(`/api/requests/${reqId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Erreur serveur');
+    return true;
+}
+
 async function savePendingModifications(requestId, changes) {
     const pendingPromises = [];
     
@@ -1534,138 +1577,75 @@ function saveRequestChanges() {
         return;
     }
     
-    // Sauvegarder les modifications en attente au lieu de les appliquer directement
+    // Appliquer les modifications directement via PUT /api/requests/:id
     let savePromise;
     let relatedRequestsCount = 1;
-    
+
     if (bulkEdit) {
-        // Modification groupée - sauvegarder pour toutes les demandes liées
         const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
         const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
-        
+
         if (!window.allRequests) {
-            throw new Error('Les données des demandes ne sont pas disponibles. Veuillez rafraîchir la page.');
+            showErrorToast('Les données des demandes ne sont pas disponibles. Veuillez rafraîchir la page.');
+            return;
         }
-        
-        const relatedRequests = window.allRequests.filter(req => 
-            req.teacher_id === originalTeacherId && 
+
+        const relatedRequests = window.allRequests.filter(req =>
+            req.teacher_id === originalTeacherId &&
             req.request_name === originalRequestName
         );
-        
         relatedRequestsCount = relatedRequests.length;
-        
-        // Sauvegarder les modifications en attente pour chaque demande
-        const savePromises = relatedRequests.map(req => 
-            savePendingModifications(req.id, changes)
+
+        const changedFields = Object.fromEntries(
+            Object.entries(changes).map(([k, v]) => [k, v.new])
         );
-        
+        const savePromises = relatedRequests.map(req => {
+            const mergedData = Object.assign({
+                teacher_id: req.teacher_id,
+                request_date: normalizeDateStr(req.request_date),
+                class_name: req.class_name,
+                horaire: req.horaire || '',
+                material_description: req.material_description || '',
+                selected_materials: req.selected_materials || '',
+                computers_needed: req.computers_needed || 0,
+                notes: req.notes || '',
+                group_count: req.group_count || 1,
+                material_prof: req.material_prof || '',
+                request_name: req.request_name || ''
+            }, changedFields);
+            return saveRequestDirect(req.id, mergedData);
+        });
         savePromise = Promise.all(savePromises);
     } else {
-        // Modification individuelle
-        savePromise = savePendingModifications(requestId, changes);
+        savePromise = saveRequestDirect(requestId, formData);
     }
-    
+
     savePromise
-    .then(result => {
-        // En cas de bulkEdit, result est un array de booléens
-        // En cas de modification individuelle, result est un booléen
-        const success = Array.isArray(result) ? result.every(r => r === true) : result === true;
-        
-        if (!success) {
-            throw new Error('Erreur lors de la sauvegarde des modifications');
-        }
-        
-        // Hide modal - Use multiple methods to ensure it closes
+    .then(() => {
+        // Fermer le modal
         const modalElement = document.getElementById('editRequestModal');
-        
-        // Method 1: Try to get existing modal instance
         let modal = bootstrap.Modal.getInstance(modalElement);
         if (modal) {
             modal.hide();
         } else {
-            // Method 2: Create new modal instance if none exists
             modal = new bootstrap.Modal(modalElement);
             modal.hide();
         }
-        
-        // Method 3: Fallback - remove modal classes manually
         setTimeout(() => {
             modalElement.classList.remove('show');
             document.body.classList.remove('modal-open');
             const backdrop = document.querySelector('.modal-backdrop');
-            if (backdrop) {
-                backdrop.remove();
-            }
+            if (backdrop) backdrop.remove();
         }, 100);
-        
-        // Mettre à jour les Maps locales immédiatement pour l'affichage
-        if (bulkEdit && Object.keys(changes).length > 0) {
-            const originalTeacherId = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
-            const originalRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
-            
-            if (window.allRequests) {
-                const relatedRequests = window.allRequests.filter(req => 
-                    req.teacher_id === originalTeacherId && 
-                    req.request_name === originalRequestName
-                );
-                
-                relatedRequests.forEach(req => {
-                    // Ajouter à la liste des demandes avec modifications
-                    requestsWithPendingModifications.add(req.id);
-                    
-                    // Mettre à jour la Map globale des modifications en attente
-                    if (!allPendingModifications.has(req.id)) {
-                        allPendingModifications.set(req.id, []);
-                    }
-                    
-                    // Ajouter les nouvelles modifications à la liste
-                    Object.entries(changes).forEach(([fieldName, change]) => {
-                        const modification = {
-                            request_id: req.id,
-                            field_name: fieldName,
-                            original_value: change.original,
-                            new_value: change.new
-                        };
-                        
-                        allPendingModifications.get(req.id).push(modification);
-                    });
-                });
-            }
-        } else {
-            // Modification individuelle
-            requestsWithPendingModifications.add(parseInt(requestId));
-            
-            if (!allPendingModifications.has(parseInt(requestId))) {
-                allPendingModifications.set(parseInt(requestId), []);
-            }
-            
-            Object.entries(changes).forEach(([fieldName, change]) => {
-                const modification = {
-                    request_id: parseInt(requestId),
-                    field_name: fieldName,
-                    original_value: change.original,
-                    new_value: change.new
-                };
-                
-                allPendingModifications.get(parseInt(requestId)).push(modification);
-            });
-        }
-        
-        // Recharger l'affichage des demandes pour montrer les badges et boutons
+
+        // Recharger les demandes depuis le serveur
         loadRequests();
-        
-        // Recharger depuis la base après un court délai pour synchroniser
-        setTimeout(() => {
-            loadRequestsWithPendingModifications().then(() => {
-                console.log('✅ Modifications synchronisées avec la base de données');
-            });
-        }, 500);
-        
-        // Message de succès adapté
-        const successMessage = bulkEdit ? 
-            `${relatedRequestsCount} modifications sauvegardées en attente de validation` : 
-            'Modifications sauvegardées en attente de validation';
+
+        const successMessage = bulkEdit
+            ? `${relatedRequestsCount} demandes modifiées avec succès`
+            : 'Demande modifiée avec succès';
         showSuccessToast(successMessage);
+
     })
     .catch(error => {
         console.error('Error:', error);
