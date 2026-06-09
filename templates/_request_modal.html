@@ -1,0 +1,259 @@
+<!-- Edit Request Modal -->
+<div class="modal fade" id="editRequestModal" tabindex="-1" aria-labelledby="editRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editRequestModalLabel">✏️ Modifier la demande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editRequestForm">
+                    <input type="hidden" id="editRequestId">
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="editTeacher" class="form-label">👨‍🏫 Enseignant *</label>
+                            <select class="form-select" id="editTeacher" required>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="editRequestName" class="form-label">🏷️ Nom de la demande *</label>
+                            <input type="text" class="form-control" id="editRequestName" placeholder="Ex: TP Distillation, Contrôle Atomes..." required>
+                            <div class="form-text">Obligatoire - Pour identifier et regrouper les demandes similaires</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="editDate" class="form-label">📅 Date *</label>
+                            <input type="date" class="form-control" id="editDate" required>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editHoraire" class="form-label">⏰ Horaire</label>
+                            <select class="form-select" id="editHoraire">
+                                <option value="">Sélectionner un horaire</option>
+                                <optgroup label="🌅 Matin">
+                                    <option value="9h00">9h00</option>
+                                    <option value="9h30">9h30</option>
+                                    <option value="10h00">10h00</option>
+                                    <option value="10h45">10h45</option>
+                                    <option value="11h15">11h15</option>
+                                    <option value="11h45">11h45</option>
+                                    <option value="12h15">12h15</option>
+                                    <option value="12h45">12h45</option>
+                                </optgroup>
+                                <optgroup label="🌇 Après-midi">
+                                    <option value="13h15">13h15</option>
+                                    <option value="13h45">13h45</option>
+                                    <option value="14h15">14h15</option>
+                                    <option value="14h45">14h45</option>
+                                    <option value="15h15">15h15</option>
+                                    <option value="15h45">15h45</option>
+                                    <option value="16h15">16h15</option>
+                                    <option value="16h45">16h45</option>
+                                    <option value="17h15">17h15</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editClassName" class="form-label">🎓 Niveau/Classe *</label>
+                            <select class="form-select" id="editClassName" required>
+                                <option value="">Sélectionner un niveau</option>
+                                <option value="6ème">6ème</option>
+                                <option value="5ème">5ème</option>
+                                <option value="4ème">4ème</option>
+                                <option value="3ème">3ème</option>
+                                <option value="SNT">SNT</option>
+                                <option value="SI">SI</option>
+                                <option value="2nd Classe">2nd Classe</option>
+                                <option value="2nd TP">2nd TP</option>
+                                <option value="AP PP">AP PP</option>
+                                <option value="AP 2nd">AP 2nd</option>
+                                <option value="1ère ES">1ère ES</option>
+                                <option value="Terminale ES">Terminale ES</option>
+                                <option value="1ère Spécialité">1ère Spécialité</option>
+                                <option value="Terminale Spécialité">Terminale Spécialité</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editAbsent" name="editAbsent">
+                                    <label class="form-check-label fw-bold" for="editAbsent">
+                                        ❌ Absent (cocher si enseignant absent ce jour-là)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editNoMaterial" name="editNoMaterial">
+                                    <label class="form-check-label fw-bold" for="editNoMaterial">
+                                        📚 Pas besoin de matériel (cours théorique)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editExamMode" name="editExamMode">
+                                    <label class="form-check-label fw-bold" for="editExamMode">
+                                        📝 Examen (surveillance d'examen)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
+                    </div>
+
+                    <div class="row mb-3" id="editQuantitySection">
+                        <div class="col-md-4">
+                            <label for="editQuantity" class="form-label">🔢 Nombre de groupes</label>
+                            <input type="number" class="form-control" id="editQuantity" min="1" value="1">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="editComputersNeeded" class="form-label">💻 Nombre d'ordinateurs</label>
+                            <input type="number" class="form-control" id="editComputersNeeded" min="0" value="0">
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="editMaterialCheckboxSection">
+                        <label class="form-label">
+                            🔧 Matériel peu mobile à avoir dans la salle
+                        </label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editEviers" name="editMaterials" value="Éviers">
+                                    <label class="form-check-label" for="editEviers">Éviers</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editHotte" name="editMaterials" value="Hotte">
+                                    <label class="form-check-label" for="editHotte">Hotte</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBancsOptiques" name="editMaterials" value="Bancs optiques">
+                                    <label class="form-check-label" for="editBancsOptiques">Bancs optiques</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editOscilloscopes" name="editMaterials" value="Oscilloscopes">
+                                    <label class="form-check-label" for="editOscilloscopes">Oscilloscopes</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editBecsElectriques" name="editMaterials" value="Becs électriques">
+                                    <label class="form-check-label" for="editBecsElectriques">Becs électriques</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editSupportFiltration" name="editMaterials" value="Support de filtration">
+                                    <label class="form-check-label" for="editSupportFiltration">Support de filtration</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="editImprimante" name="editMaterials" value="Imprimante">
+                                    <label class="form-check-label" for="editImprimante">Imprimante</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="editMaterialSection">
+                        <label for="editMaterialDescription" class="form-label">
+                            📝 Matériel requis par groupe
+                        </label>
+                        <textarea class="form-control" id="editMaterialDescription" rows="4"
+                                  placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
+                    </div>
+
+                    <div class="mb-3" id="editMaterialProfSection">
+                        <label for="editMaterialProf" class="form-label">👨‍🏫 Matériel prof</label>
+                        <textarea class="form-control" id="editMaterialProf" rows="2"
+                                  placeholder="Matériel nécessaire pour le professeur"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">📝 Notes supplémentaires</label>
+                        <textarea class="form-control" id="editNotes" rows="2"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="editAllRelated" checked>
+                                    <label class="form-check-label fw-bold" for="editAllRelated">
+                                        🔗 Modifier toutes les demandes liées (même enseignant + même nom)
+                                    </label>
+                                </div>
+                                <small class="text-muted" id="relatedRequestsInfo">
+                                    Les modifications s'appliqueront à toutes les demandes du même nom pour cet enseignant.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="editImageSection" class="mb-3"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger me-auto" onclick="deleteRequest()" title="Supprimer définitivement cette demande">
+                    🗑️ Supprimer
+                </button>
+                {% if current_user and current_user.role in ('admin', 'labo') %}
+                <button type="button" class="btn btn-success" id="modalPreparedBtn" onclick="togglePreparedFromModal()">
+                    ✅ Marquer préparée
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveRequestChanges()">💾 Sauvegarder</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de validation des modifications -->
+<div class="modal fade" id="validationModal" tabindex="-1" aria-labelledby="validationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="validationModalLabel">📝 Valider les modifications</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Les modifications suivantes sont en attente de validation :</p>
+                <div id="modificationsPreview" class="mb-3"></div>
+                <div class="alert alert-info">
+                    <strong>Note :</strong> Une fois validées, ces modifications seront appliquées définitivement à la demande.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="rejectModifications()" title="Rejeter et supprimer les modifications">
+                    ❌ Rejeter
+                </button>
+                <button type="button" class="btn btn-success" onclick="validateModifications()" title="Appliquer les modifications">
+                    ✅ Valider
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal image agrandie -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalTitle">Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="imageModalImg" src="" alt="Image" class="img-fluid">
+            </div>
+        </div>
+    </div>
+</div>

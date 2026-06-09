@@ -500,10 +500,33 @@
 
 <!-- Conteneur pour les alertes -->
 <div id="alert-container" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 1050; width: 50%;"></div>
+
+{% include '_request_modal.html' %}
 {% endblock %}
 
 {% block extra_js %}
+{% include '_request_modal_js.html' %}
 <script>
+    // No-op: planning editor has no request table to reload
+    function loadRequests() {}
+    // Hook: update prepared badge on card when toggled from the modal
+    window.onPreparedToggled = function(requestId, isPrepared) {
+        const card = document.querySelector(`.course-card[data-request-id="${requestId}"]`);
+        if (!card) return;
+        const badge = card.querySelector('.prepared-badge');
+        if (isPrepared && !badge) {
+            const span = document.createElement('span');
+            span.className = 'prepared-badge';
+            span.textContent = '✓';
+            card.insertBefore(span, card.firstChild);
+        } else if (!isPrepared && badge) {
+            badge.remove();
+        }
+        card.dataset.prepared = isPrepared ? '1' : '0';
+        const course = planningData?.courses?.find(c => c.request_id == requestId);
+        if (course) course.prepared = isPrepared;
+    };
+
     let planningData = null;
     let currentAssignments = {};
     let currentRoomAssignments = {};
@@ -856,7 +879,7 @@
         // Ajouter les événements de drag
         setupDragEvents(card);
 
-        // Double-clic : ouvrir la demande dans "Voir les demandes"
+        // Double-clic : ouvrir la modale de modification
         card.addEventListener('dblclick', function(e) {
             e.stopPropagation();
             const dbId = course.request_id && Number.isInteger(Number(course.request_id)) ? course.request_id : null;
@@ -864,7 +887,7 @@
                 showAlert('Régénérez le planning (bouton "Générer et éditer") pour activer la visualisation des demandes.', 'warning');
                 return;
             }
-            window.open(`/requests?open=${dbId}`, '_blank');
+            editRequest(dbId);
         });
 
         return card;

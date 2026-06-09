@@ -1216,7 +1216,8 @@ def view_c21_availability():
 @app.route('/admin/planning-editor')
 def planning_editor():
     """Page d'édition interactive du planning"""
-    return render_template('planning_editor.html')
+    teachers = get_all_teachers()
+    return render_template('planning_editor.html', teachers=teachers)
 
 @app.route('/api/pending-modifications', methods=['GET', 'POST'])
 def api_pending_modifications():
