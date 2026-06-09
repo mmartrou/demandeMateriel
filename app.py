@@ -224,9 +224,9 @@ def enforce_authentication():
 def protect_sensitive_routes():
     """Protège les routes sensibles."""
     if _is_admin_only_route(request.path, request.method):
-        if _is_admin_user():
+        if _is_privileged_user():
             return None
-        logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin requis")
+        logger.warning(f"Accès refusé à {request.path} ({request.method}) - rôle admin ou labo requis")
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Non autorisé'}), 403
         return "Non autorisé", 403
@@ -1128,7 +1128,7 @@ def admin():
 def admin_users():
     """Admin user management page"""
     user = _get_current_user()
-    if not user or user.get('role') != 'admin':
+    if not user or user.get('role') not in ('admin', 'labo'):
         return redirect(url_for('login'))
     users = get_all_users()
     teachers = get_all_teachers()
@@ -1137,9 +1137,9 @@ def admin_users():
 
 @app.route('/api/admin/link-teacher', methods=['POST'])
 def api_admin_link_teacher():
-    """Associate an email with a teacher_id (admin only)."""
+    """Associate an email with a teacher_id (admin/labo)."""
     user = _get_current_user()
-    if not user or user.get('role') != 'admin':
+    if not user or user.get('role') not in ('admin', 'labo'):
         return jsonify({'error': 'Non autorisé'}), 403
     payload = request.get_json(silent=True) or {}
     email = str(payload.get('email', '')).strip().lower()
@@ -1155,9 +1155,9 @@ def api_admin_link_teacher():
 
 @app.route('/api/admin/teachers', methods=['POST'])
 def api_admin_add_teacher():
-    """Create a new teacher (admin only)."""
+    """Create a new teacher (admin/labo)."""
     user = _get_current_user()
-    if not user or user.get('role') != 'admin':
+    if not user or user.get('role') not in ('admin', 'labo'):
         return jsonify({'error': 'Non autorisé'}), 403
     payload = request.get_json(silent=True) or {}
     name = str(payload.get('name', '')).strip()
@@ -1172,9 +1172,9 @@ def api_admin_add_teacher():
 
 @app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
 def api_admin_delete_teacher(teacher_id):
-    """Delete a teacher (admin only)."""
+    """Delete a teacher (admin/labo)."""
     user = _get_current_user()
-    if not user or user.get('role') != 'admin':
+    if not user or user.get('role') not in ('admin', 'labo'):
         return jsonify({'error': 'Non autorisé'}), 403
     try:
         request_count = delete_teacher(teacher_id)
@@ -1185,9 +1185,9 @@ def api_admin_delete_teacher(teacher_id):
 
 @app.route('/api/admin/debug-email-map')
 def api_admin_debug_email_map():
-    """Debug: show TEACHER_EMAIL_MAP parsing result (admin only)."""
+    """Debug: show TEACHER_EMAIL_MAP parsing result (admin/labo)."""
     user = _get_current_user()
-    if not user or user.get('role') != 'admin':
+    if not user or user.get('role') not in ('admin', 'labo'):
         return jsonify({'error': 'Non autorisé'}), 403
     raw = os.getenv('TEACHER_EMAIL_MAP', '')
     parsed = _parse_teacher_email_map()

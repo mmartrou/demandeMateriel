@@ -50,13 +50,13 @@
                                     🗂️ Éditeur de planning
                                 </a>
                             </li>
-                        {% endif %}
-                        {% if current_user.role == 'admin' %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('admin') }}">
                                     ⚙️ Admin
                                 </a>
                             </li>
+                        {% endif %}
+                        {% if current_user.role == 'admin' %}
                             <li class="nav-item d-flex align-items-center px-2">
                                 <label for="acting-mode-select" class="text-white small me-2 mb-0">Mode</label>
                                 <select id="acting-mode-select" class="form-select form-select-sm bg-white text-dark" style="width: 145px;">
