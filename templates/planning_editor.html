@@ -1494,10 +1494,10 @@ async function reloadPlanningIfExists(targetDate) {
 
 async function openCourseModal(courseId, requestId) {
     currentModalCourseId = courseId;
-    const dbId = requestId || courseId;
+    const dbId = (requestId && Number.isInteger(Number(requestId))) ? requestId : null;
 
     if (!dbId) {
-        showAlert('Impossible de trouver l\'identifiant de la demande.', 'danger');
+        showAlert('Régénérez le planning (bouton "Générer et éditer") pour activer la visualisation des demandes.', 'warning');
         return;
     }
 
