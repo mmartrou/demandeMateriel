@@ -488,81 +488,6 @@
 </div>
 
 <!-- Modal détail TP (read-only, même structure que "Voir les demandes") -->
-<div class="modal fade" id="courseDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="courseDetailTitle">Visualisation de la demande</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle"></i> Mode visualisation depuis l'éditeur de planning.
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label">👨‍🏫 Enseignant</label>
-                        <input type="text" class="form-control" id="viewTeacher" disabled>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">🏷️ Nom de la demande</label>
-                        <input type="text" class="form-control" id="viewRequestName" disabled>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">📅 Date</label>
-                        <input type="text" class="form-control" id="viewDate" disabled>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">⏰ Horaire</label>
-                        <input type="text" class="form-control" id="viewHoraire" disabled>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">🎓 Niveau/Classe</label>
-                        <input type="text" class="form-control" id="viewClassName" disabled>
-                    </div>
-                </div>
-                <div class="mb-3" id="viewSpecialModes"></div>
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label">🔢 Nombre de groupes</label>
-                        <input type="text" class="form-control" id="viewQuantity" disabled>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">💻 Ordinateurs</label>
-                        <input type="text" class="form-control" id="viewComputers" disabled>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">🔧 Matériel peu mobile à avoir dans la salle</label>
-                    <input type="text" class="form-control" id="viewMaterials" disabled>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">📝 Matériel requis par groupe</label>
-                    <textarea class="form-control" id="viewMaterialDescription" rows="3" disabled></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">👨‍🏫 Matériel prof</label>
-                    <textarea class="form-control" id="viewMaterialProf" rows="2" disabled></textarea>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">📝 Notes supplémentaires</label>
-                    <textarea class="form-control" id="viewNotes" rows="2" disabled></textarea>
-                </div>
-                <div id="viewImageSection" class="mb-3"></div>
-            </div>
-            <div class="modal-footer">
-                {% if current_user and current_user.role in ('admin', 'labo') %}
-                <button type="button" id="viewTogglePreparedBtn" class="btn btn-success me-auto" onclick="togglePreparedFromView()">
-                    ✅ Marquer comme préparé
-                </button>
-                {% endif %}
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- Overlay de chargement -->
 <div id="loading-overlay" class="loading-overlay" style="display: none;">
@@ -584,8 +509,6 @@
     let currentRoomAssignments = {};
     let draggedElement = null;
     let originalPosition = null;
-    let currentModalCourseId = null;
-
     const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
     
     // Initialiser la date par défaut (aujourd'hui)
@@ -933,10 +856,15 @@
         // Ajouter les événements de drag
         setupDragEvents(card);
 
-        // Double-clic : ouvrir la modale de détail
+        // Double-clic : ouvrir la demande dans "Voir les demandes"
         card.addEventListener('dblclick', function(e) {
             e.stopPropagation();
-            openCourseModal(course.id, course.request_id);
+            const dbId = course.request_id && Number.isInteger(Number(course.request_id)) ? course.request_id : null;
+            if (!dbId) {
+                showAlert('Régénérez le planning (bouton "Générer et éditer") pour activer la visualisation des demandes.', 'warning');
+                return;
+            }
+            window.open(`/requests?open=${dbId}`, '_blank');
         });
 
         return card;
@@ -1492,107 +1420,6 @@ async function reloadPlanningIfExists(targetDate) {
     }
 }
 
-async function openCourseModal(courseId, requestId) {
-    currentModalCourseId = courseId;
-    const dbId = (requestId && Number.isInteger(Number(requestId))) ? requestId : null;
-
-    if (!dbId) {
-        showAlert('Régénérez le planning (bouton "Générer et éditer") pour activer la visualisation des demandes.', 'warning');
-        return;
-    }
-
-    try {
-        const resp = await fetch(`/api/requests/${dbId}`);
-        if (!resp.ok) throw new Error('Demande introuvable');
-        const r = await resp.json();
-
-        document.getElementById('courseDetailTitle').textContent =
-            r.request_name ? `Visualisation — ${r.request_name}` : 'Visualisation de la demande';
-        document.getElementById('viewTeacher').value = r.teacher_name || '';
-        document.getElementById('viewRequestName').value = r.request_name || '';
-        document.getElementById('viewDate').value = r.request_date || '';
-        document.getElementById('viewHoraire').value = r.horaire || '';
-        document.getElementById('viewClassName').value = r.class_name || '';
-        document.getElementById('viewQuantity').value = r.group_count || r.quantity || 1;
-        document.getElementById('viewComputers').value = r.computers_needed || 0;
-        document.getElementById('viewMaterialDescription').value = r.material_description || '';
-        document.getElementById('viewMaterialProf').value = r.material_prof || '';
-        document.getElementById('viewNotes').value = r.notes || '';
-
-        // Modes spéciaux
-        const specials = [];
-        if (r.selected_materials === 'Absent') specials.push('❌ Enseignant absent');
-        if (r.selected_materials === 'Pas besoin de matériel') specials.push('📚 Pas besoin de matériel');
-        if (r.selected_materials === 'Examen') specials.push('📝 Examen');
-        document.getElementById('viewSpecialModes').innerHTML = specials.length
-            ? `<span class="badge bg-warning text-dark fs-6">${specials.join(' / ')}</span>` : '';
-
-        // Matériels cochés
-        const knownMats = ['Éviers','Hotte','Bancs optiques','Oscilloscopes','Becs électriques','Support de filtration','Imprimante'];
-        const checkedMats = (r.selected_materials || '').split(',').map(s => s.trim()).filter(s => knownMats.includes(s));
-        document.getElementById('viewMaterials').value = checkedMats.join(', ') || '—';
-
-        // Image
-        const imgSection = document.getElementById('viewImageSection');
-        imgSection.innerHTML = r.image_url
-            ? `<img src="${r.image_url}" alt="Image" class="img-thumbnail" style="max-width:200px;max-height:200px;cursor:pointer;" onclick="window.open('${r.image_url}','_blank')">`
-            : '';
-
-        // Bouton préparé
-        const btn = document.getElementById('viewTogglePreparedBtn');
-        if (btn) {
-            btn.textContent = r.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
-            btn.className = r.prepared ? 'btn btn-outline-secondary me-auto' : 'btn btn-success me-auto';
-        }
-
-        // Mettre à jour le state local si le cours est dans planningData
-        const course = planningData?.courses?.find(c => c.id === courseId);
-        if (course) course.prepared = r.prepared;
-
-        (bootstrap.Modal.getInstance(document.getElementById('courseDetailModal'))
-            || new bootstrap.Modal(document.getElementById('courseDetailModal'))).show();
-    } catch(e) {
-        showAlert('Impossible de charger la demande.', 'danger');
-    }
-}
-
-async function togglePreparedFromView() {
-    if (!currentModalCourseId) return;
-    try {
-        const resp = await fetch(`/api/requests/${currentModalCourseId}/toggle-prepared`, { method: 'POST' });
-        if (!resp.ok) throw new Error();
-
-        const course = planningData?.courses?.find(c => c.id === currentModalCourseId);
-        if (course) course.prepared = !course.prepared;
-        const isPrepared = course?.prepared;
-
-        // Mettre à jour le bouton dans la modale
-        const btn = document.getElementById('viewTogglePreparedBtn');
-        if (btn) {
-            btn.textContent = isPrepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
-            btn.className = isPrepared ? 'btn btn-outline-secondary me-auto' : 'btn btn-success me-auto';
-        }
-
-        // Mettre à jour le badge sur la carte (chercher par courseId ou request_id)
-        const course2 = planningData?.courses?.find(c => c.id === currentModalCourseId);
-        const card = document.querySelector(`.course-card[data-course-id="${currentModalCourseId}"]`)
-                  || (course2?.request_id && document.querySelector(`.course-card[data-request-id="${course2.request_id}"]`));
-        if (card) {
-            const existingBadge = card.querySelector('.prepared-badge');
-            if (isPrepared && !existingBadge) {
-                const span = document.createElement('span');
-                span.className = 'prepared-badge';
-                span.textContent = '✓';
-                card.insertBefore(span, card.firstChild);
-            } else if (!isPrepared && existingBadge) {
-                existingBadge.remove();
-            }
-            card.dataset.prepared = isPrepared ? '1' : '0';
-        }
-    } catch(e) {
-        showAlert('Erreur lors de la mise à jour du statut.', 'danger');
-    }
-}
 
 document.addEventListener('DOMContentLoaded', () => {
     // Attach reloadPlanning to the window object to make it globally accessible

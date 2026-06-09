@@ -820,6 +820,15 @@ function loadRequestsWithPendingModifications() {
                 
                 tableBody.appendChild(row);
             });
+
+            // Auto-open a specific request if the URL contains ?open=<id>
+            // (e.g. redirected from the planning editor via double-click)
+            const urlOpenId = parseInt(new URLSearchParams(window.location.search).get('open'));
+            if (urlOpenId && !window._autoOpenDone) {
+                window._autoOpenDone = true;
+                window.history.replaceState({}, '', window.location.pathname);
+                editRequest(urlOpenId);
+            }
         })
         .catch(error => {
             console.error('Error:', error);
