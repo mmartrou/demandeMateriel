@@ -1,22 +1,59 @@
 {% extends "base.html" %}
 
-{% block title %}Gestion des comptes enseignants{% endblock %}
+{% block title %}Gestion des enseignants et comptes{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Gestion des comptes enseignants</h2>
-        <div>
-            <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#linkModal">
-                ➕ Associer un compte
+        <h2>Gestion des enseignants et comptes</h2>
+        <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">← Retour admin</a>
+    </div>
+
+    <!-- Section enseignants -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Enseignants</h5>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTeacherModal">
+                ➕ Nouvel enseignant
             </button>
-            <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">← Retour admin</a>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Nom</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in teachers %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ t.id }}</span></td>
+                        <td>{{ t.name }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger"
+                                onclick="confirmDeleteTeacher({{ t.id }}, '{{ t.name }}')">
+                                🗑️ Supprimer
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 
+    <!-- Section comptes -->
     <div class="card mb-4">
-        <div class="card-body">
-            <table class="table table-striped table-hover">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Comptes Google associés</h5>
+            <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#linkModal">
+                🔗 Associer un compte
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
                 <thead class="table-dark">
                     <tr>
                         <th>Email</th>
@@ -55,7 +92,53 @@
     </div>
 </div>
 
-<!-- Modal association -->
+<!-- Modal nouvel enseignant -->
+<div class="modal fade" id="addTeacherModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un enseignant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nom de l'enseignant</label>
+                    <input type="text" class="form-control" id="newTeacherName" placeholder="Ex : Dupont">
+                    <div class="form-text">Tel qu'il apparaîtra dans les listes.</div>
+                </div>
+                <div id="addTeacherResult" class="mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveNewTeacher()">Créer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmation suppression enseignant -->
+<div class="modal fade" id="deleteTeacherModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Supprimer l'enseignant</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Supprimer <strong id="deleteTeacherName"></strong> ?</p>
+                <div class="alert alert-warning py-2">
+                    Les demandes de matériel existantes de cet enseignant resteront en base mais ne seront plus associées à un nom.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="doDeleteTeacher()">Supprimer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal association compte -->
 <div class="modal fade" id="linkModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -90,12 +173,52 @@
 
 {% block extra_js %}
 <script>
+let teacherToDelete = null;
+
+async function saveNewTeacher() {
+    const name = document.getElementById('newTeacherName').value.trim();
+    const resultEl = document.getElementById('addTeacherResult');
+    if (!name) {
+        resultEl.innerHTML = '<div class="alert alert-danger py-1">Le nom est requis.</div>';
+        return;
+    }
+    const resp = await fetch('/api/admin/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+        resultEl.innerHTML = `<div class="alert alert-success py-1">Enseignant créé avec l'id ${data.id}.</div>`;
+        document.getElementById('newTeacherName').value = '';
+        setTimeout(() => location.reload(), 1200);
+    } else {
+        resultEl.innerHTML = `<div class="alert alert-danger py-1">${data.error}</div>`;
+    }
+}
+
+function confirmDeleteTeacher(id, name) {
+    teacherToDelete = id;
+    document.getElementById('deleteTeacherName').textContent = name;
+    new bootstrap.Modal(document.getElementById('deleteTeacherModal')).show();
+}
+
+async function doDeleteTeacher() {
+    if (!teacherToDelete) return;
+    const resp = await fetch(`/api/admin/teachers/${teacherToDelete}`, { method: 'DELETE' });
+    const data = await resp.json();
+    bootstrap.Modal.getInstance(document.getElementById('deleteTeacherModal')).hide();
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Erreur : ' + data.error);
+    }
+}
+
 function prefillLink(email, teacherId) {
     document.getElementById('linkEmail').value = email;
-    const sel = document.getElementById('linkTeacherId');
-    sel.value = teacherId !== null ? String(teacherId) : '';
+    document.getElementById('linkTeacherId').value = teacherId !== null ? String(teacherId) : '';
     document.getElementById('linkResult').innerHTML = '';
-    bootstrap.Modal.getInstance(document.getElementById('linkModal'))?.hide();
     new bootstrap.Modal(document.getElementById('linkModal')).show();
 }
 
@@ -103,12 +226,10 @@ async function saveLink() {
     const email = document.getElementById('linkEmail').value.trim();
     const teacherId = document.getElementById('linkTeacherId').value;
     const resultEl = document.getElementById('linkResult');
-
     if (!email || !teacherId) {
         resultEl.innerHTML = '<div class="alert alert-danger py-1">Email et enseignant requis.</div>';
         return;
     }
-
     const resp = await fetch('/api/admin/link-teacher', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

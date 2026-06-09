@@ -340,6 +340,37 @@ def init_database():
 
 # Fonctions de base de données SQLite
 
+def add_teacher(name):
+    """Add a new teacher. Returns the new teacher's id."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    if db_type == 'postgresql':
+        cursor.execute(f'INSERT INTO teachers (name) VALUES ({placeholder}) RETURNING id', (name.strip(),))
+        row = cursor.fetchone()
+        new_id = row[0] if row else None
+    else:
+        cursor.execute(f'INSERT INTO teachers (name) VALUES ({placeholder})', (name.strip(),))
+        new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def delete_teacher(teacher_id):
+    """Delete a teacher. Returns number of associated requests (informational)."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT COUNT(*) FROM material_requests WHERE teacher_id = {placeholder}', (teacher_id,))
+    row = cursor.fetchone()
+    request_count = row[0] if row else 0
+    cursor.execute(f'DELETE FROM teachers WHERE id = {placeholder}', (teacher_id,))
+    conn.commit()
+    conn.close()
+    return request_count
+
+
 def get_all_teachers():
     """Get all teachers from the database"""
     conn, db_type = get_db_connection()

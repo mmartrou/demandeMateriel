@@ -23,7 +23,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_rooms, update_room, import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
-                      pre_associate_teacher, get_all_users,
+                      pre_associate_teacher, get_all_users, add_teacher, delete_teacher,
                       get_tp_templates, upsert_tp_template)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
@@ -1149,6 +1149,36 @@ def api_admin_link_teacher():
     try:
         pre_associate_teacher(email, int(teacher_id))
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/teachers', methods=['POST'])
+def api_admin_add_teacher():
+    """Create a new teacher (admin only)."""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 403
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'Le nom est requis'}), 400
+    try:
+        new_id = add_teacher(name)
+        return jsonify({'success': True, 'id': new_id, 'name': name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+def api_admin_delete_teacher(teacher_id):
+    """Delete a teacher (admin only)."""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 403
+    try:
+        request_count = delete_teacher(teacher_id)
+        return jsonify({'success': True, 'requests_affected': request_count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
