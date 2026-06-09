@@ -23,6 +23,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_rooms, update_room, import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
+                      pre_associate_teacher, get_all_users,
                       get_tp_templates, upsert_tp_template)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
@@ -1121,6 +1122,46 @@ def api_update_room_type(request_id):
 def admin():
     """Admin dashboard page"""
     return render_template('admin.html')
+
+
+@app.route('/admin/users')
+def admin_users():
+    """Admin user management page"""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return redirect(url_for('login'))
+    users = get_all_users()
+    teachers = get_all_teachers()
+    return render_template('admin_users.html', users=users, teachers=teachers)
+
+
+@app.route('/api/admin/link-teacher', methods=['POST'])
+def api_admin_link_teacher():
+    """Associate an email with a teacher_id (admin only)."""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 403
+    payload = request.get_json(silent=True) or {}
+    email = str(payload.get('email', '')).strip().lower()
+    teacher_id = payload.get('teacher_id')
+    if not email or teacher_id is None:
+        return jsonify({'error': 'email et teacher_id requis'}), 400
+    try:
+        pre_associate_teacher(email, int(teacher_id))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/debug-email-map')
+def api_admin_debug_email_map():
+    """Debug: show TEACHER_EMAIL_MAP parsing result (admin only)."""
+    user = _get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Non autorisé'}), 403
+    raw = os.getenv('TEACHER_EMAIL_MAP', '')
+    parsed = _parse_teacher_email_map()
+    return jsonify({'raw_length': len(raw), 'parsed': parsed, 'keys': list(parsed.keys())})
 
 @app.route('/admin/rooms')
 def view_rooms():

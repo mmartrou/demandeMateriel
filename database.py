@@ -449,7 +449,63 @@ def upsert_user(google_sub, email, full_name, role='teacher', teacher_id=None):
     conn.close()
     return user_id
 
-def add_material_request(teacher_id, request_date, class_name, material_description, 
+
+def pre_associate_teacher(email, teacher_id):
+    """Admin: associate an email with a teacher_id before first login."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    email_clean = email.strip().lower()
+
+    cursor.execute(f'SELECT id FROM users WHERE email = {placeholder}', (email_clean,))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute(f'UPDATE users SET teacher_id = {placeholder} WHERE email = {placeholder}',
+                       (teacher_id, email_clean))
+    else:
+        fake_sub = f'__admin_link__{email_clean}'
+        if db_type == 'postgresql':
+            cursor.execute(f'''
+                INSERT INTO users (google_sub, email, role, teacher_id)
+                VALUES ({placeholder}, {placeholder}, 'teacher', {placeholder})
+                ON CONFLICT(email) DO UPDATE SET teacher_id = EXCLUDED.teacher_id
+            ''', (fake_sub, email_clean, teacher_id))
+        else:
+            cursor.execute(f'''
+                INSERT OR REPLACE INTO users (google_sub, email, role, teacher_id)
+                VALUES ({placeholder}, {placeholder}, 'teacher', {placeholder})
+            ''', (fake_sub, email_clean, teacher_id))
+
+    conn.commit()
+    conn.close()
+
+
+def get_all_users():
+    """Return all users with their linked teacher name."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.id, u.email, u.full_name, u.role, u.teacher_id, t.name AS teacher_name
+        FROM users u
+        LEFT JOIN teachers t ON t.id = u.teacher_id
+        ORDER BY u.email
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        if isinstance(row, dict):
+            result.append(dict(row))
+        else:
+            result.append({
+                'id': row[0], 'email': row[1], 'full_name': row[2],
+                'role': row[3], 'teacher_id': row[4], 'teacher_name': row[5]
+            })
+    return result
+
+
+def add_material_request(teacher_id, request_date, class_name, material_description,
                         horaire=None, quantity=1, selected_materials='', computers_needed=0, 
                         notes='', exam=False, group_count=1, material_prof='', request_name='', image_url=''):
     """Add a new material request"""

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des comptes enseignants{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Gestion des comptes enseignants</h2>
+        <div>
+            <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#linkModal">
+                ➕ Associer un compte
+            </button>
+            <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">← Retour admin</a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Email</th>
+                        <th>Nom (Google)</th>
+                        <th>Rôle</th>
+                        <th>Enseignant associé</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td>{{ u.email }}</td>
+                        <td>{{ u.full_name or '—' }}</td>
+                        <td><span class="badge bg-{{ 'danger' if u.role == 'admin' else ('warning text-dark' if u.role == 'labo' else 'primary') }}">{{ u.role }}</span></td>
+                        <td>
+                            {% if u.teacher_name %}
+                                {{ u.teacher_name }} <small class="text-muted">(id {{ u.teacher_id }})</small>
+                            {% elif u.teacher_id %}
+                                <span class="text-warning">id {{ u.teacher_id }} (introuvable)</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary"
+                                onclick="prefillLink('{{ u.email }}', {{ u.teacher_id or 'null' }})">
+                                Modifier
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal association -->
+<div class="modal fade" id="linkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Associer un compte enseignant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Email Google de l'enseignant</label>
+                    <input type="email" class="form-control" id="linkEmail" placeholder="prenom.nom@lfmadrid.org">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Enseignant</label>
+                    <select class="form-select" id="linkTeacherId">
+                        <option value="">— sélectionner —</option>
+                        {% for t in teachers %}
+                        <option value="{{ t.id }}">{{ t.name }} (id {{ t.id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="linkResult" class="mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="saveLink()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function prefillLink(email, teacherId) {
+    document.getElementById('linkEmail').value = email;
+    const sel = document.getElementById('linkTeacherId');
+    sel.value = teacherId !== null ? String(teacherId) : '';
+    document.getElementById('linkResult').innerHTML = '';
+    bootstrap.Modal.getInstance(document.getElementById('linkModal'))?.hide();
+    new bootstrap.Modal(document.getElementById('linkModal')).show();
+}
+
+async function saveLink() {
+    const email = document.getElementById('linkEmail').value.trim();
+    const teacherId = document.getElementById('linkTeacherId').value;
+    const resultEl = document.getElementById('linkResult');
+
+    if (!email || !teacherId) {
+        resultEl.innerHTML = '<div class="alert alert-danger py-1">Email et enseignant requis.</div>';
+        return;
+    }
+
+    const resp = await fetch('/api/admin/link-teacher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, teacher_id: parseInt(teacherId) })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+        resultEl.innerHTML = '<div class="alert alert-success py-1">Association enregistrée.</div>';
+        setTimeout(() => location.reload(), 1000);
+    } else {
+        resultEl.innerHTML = `<div class="alert alert-danger py-1">${data.error}</div>`;
+    }
+}
+</script>
+{% endblock %}
