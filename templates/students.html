@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Gestion des Effectifs{% endblock %}
+{% block title %}Gestion des effectifs{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
@@ -8,15 +8,15 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h2>Gestion des Effectifs d'Élèves</h2>
+                    <h2>Gestion des effectifs d'Élèves</h2>
                     <p class="text-muted">Configuration du nombre d'élèves par enseignant et niveau</p>
                 </div>
                 <div class="btn-group">
                     <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">
-                        <i class="fas fa-plus"></i> Ajouter un Effectif
+                        <i class="fas fa-plus"></i> Ajouter un effectif
                     </button>
                     <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left"></i> Retour Admin
+                        <i class="fas fa-arrow-left"></i> Retour admin
                     </a>
                 </div>
             </div>
@@ -30,7 +30,7 @@
                                 <tr>
                                     <th>Enseignant</th>
                                     <th>Niveau</th>
-                                    <th>Nombre d'Élèves</th>
+                                    <th>Nombre d'élèves</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Éditeur de Planning Interactif{% endblock %}
+{% block title %}Éditeur de planning interactif{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -376,13 +376,13 @@
     <div class="row">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fas fa-calendar-alt"></i> Éditeur de Planning Interactif</h2>
+                <h2><i class="fas fa-calendar-alt"></i> Éditeur de planning interactif</h2>
                 <div>
                     <button type="button" class="btn btn-outline-secondary me-2" onclick="resetPlanning()">
                         <i class="fas fa-undo"></i> Réinitialiser
                     </button>
                     <a href="/admin" class="btn btn-secondary me-2">
-                        <i class="fas fa-arrow-left"></i> Retour Admin
+                        <i class="fas fa-arrow-left"></i> Retour admin
                     </a>
                 </div>
             </div>
@@ -401,7 +401,7 @@
                     </div>
                     <div class="col-6 d-flex align-items-end">
                         <button type="button" class="btn btn-primary" onclick="loadPlanningData()">
-                            <i class="fas fa-cogs"></i> Générer et Éditer le Planning
+                            <i class="fas fa-cogs"></i> Générer et éditer le planning
                         </button>
                     </div>
                 </div>
@@ -410,13 +410,13 @@
             <div class="col-md-6">
                 <h5>Actions</h5>
                 <button type="button" class="btn btn-success" onclick="generateFinalPlanning()" id="generate-btn">
-                    <i class="fas fa-file-excel"></i> Générer Planning Excel Final
+                    <i class="fas fa-file-excel"></i> Générer planning Excel final
                 </button>
                 <button type="button" class="btn btn-info" onclick="reloadPlanning()">
-                    <i class="fas fa-sync"></i> Recharger le Planning
+                    <i class="fas fa-sync"></i> Recharger le planning
                 </button>
                 <button type="button" class="btn btn-warning" onclick="savePlanningData()">
-                    <i class="fas fa-save"></i> Enregistrer le Planning
+                    <i class="fas fa-save"></i> Enregistrer le planning
                 </button>
                 <div class="legend mt-2">
                     <strong>Légende:</strong>
@@ -439,7 +439,7 @@
     
     <!-- Panneau de statistiques -->
     <div class="stats-panel" id="stats-panel" style="display: none;">
-        <h5>Statistiques du Planning</h5>
+        <h5>Statistiques du planning</h5>
         <div id="stats-content">
             <!-- Les statistiques seront chargées ici -->
         </div>
@@ -456,7 +456,7 @@
     <div id="no-planning-message" class="text-center py-5">
         <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
         <h4 class="text-muted">Aucun planning chargé</h4>
-        <p class="text-muted">Sélectionnez une date et cliquez sur "Générer et Éditer le Planning" pour que OR-Tools optimise automatiquement les assignations de salles.</p>
+        <p class="text-muted">Sélectionnez une date et cliquez sur "Générer et éditer le planning" pour que OR-Tools optimise automatiquement les assignations de salles.</p>
         <p class="text-muted">Vous pourrez ensuite modifier manuellement le planning avant l'export Excel.</p>
     </div>
 
@@ -528,6 +528,9 @@
                 updateStats();
                 document.getElementById('generate-btn').disabled = false;
                 showAlert('Planning généré et prêt à éditer!', 'success');
+
+                // Enregistrement automatique dès la première génération
+                await savePlanningData();
             } else {
                 throw new Error(data.error || 'Erreur lors de la génération');
             }
@@ -1288,8 +1291,7 @@
         }
     }
 
-    // Appeler savePlanningData après la génération du planning
-    document.getElementById('generate-btn').addEventListener('click', savePlanningData);
+    // Note : savePlanningData() est appelé automatiquement dans loadPlanningData() et après chaque drag.
     
     document.getElementById('target-date').addEventListener('change', function() {
         if (this.value) {

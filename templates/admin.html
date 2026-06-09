@@ -6,61 +6,61 @@
 <div class="container mt-4">
     <div class="row">
         <div class="col-12">
-            <h2 class="mb-4">🔧 Gestion Administrateur</h2>
+            <h2 class="mb-4">🔧 Gestion administrateur</h2>
             <p class="text-muted">Interface de configuration et gestion du système</p>
         </div>
     </div>
-    
+
     <div class="row g-3">
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('view_rooms') }}" class="btn btn-primary btn-lg">
-                    <i class="fas fa-cog"></i> Configurer les Salles
+                    <i class="fas fa-cog"></i> Configurer les salles
                 </a>
             </div>
         </div>
-        
+
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('view_students') }}" class="btn btn-success btn-lg">
-                    <i class="fas fa-edit"></i> Gérer les Effectifs (2nd)
+                    <i class="fas fa-edit"></i> Gérer les effectifs (2nd)
                 </a>
             </div>
         </div>
-        
+
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('planning') }}" class="btn btn-warning btn-lg">
-                    <i class="fas fa-cogs"></i> Générateur de Planning
+                    <i class="fas fa-cogs"></i> Générateur de planning
                 </a>
             </div>
         </div>
-        
+
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('planning_editor') }}" class="btn btn-secondary btn-lg">
-                    <i class="fas fa-edit"></i> Éditeur Interactif de Planning
+                    <i class="fas fa-edit"></i> Éditeur interactif de planning
                 </a>
             </div>
         </div>
-        
+
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('view_working_days') }}" class="btn btn-info btn-lg">
-                    <i class="fas fa-calendar-alt"></i> Configuration Jours Ouvrés
+                    <i class="fas fa-calendar-alt"></i> Configuration jours ouvrés
                 </a>
             </div>
         </div>
-        
+
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
                 <a href="{{ url_for('view_c21_availability') }}" class="btn btn-danger btn-lg">
-                    <i class="fas fa-door-open"></i> Disponibilité Salle C21
+                    <i class="fas fa-door-open"></i> Disponibilité salle C21
                 </a>
             </div>
         </div>
     </div>
-    
+
     <div class="row mt-4">
         <div class="col-12 text-center">
             <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
