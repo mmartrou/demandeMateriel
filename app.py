@@ -939,6 +939,26 @@ def view_requests():
     teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
 
+@app.route('/api/requests/prepared-states', methods=['GET'])
+def api_requests_prepared_states():
+    """Returns {id: prepared} for a comma-separated list of request IDs."""
+    ids_str = request.args.get('ids', '')
+    if not ids_str:
+        return jsonify({})
+    ids = [int(i) for i in ids_str.split(',') if i.strip().isdigit()]
+    if not ids:
+        return jsonify({})
+    conn, db_type = get_db_connection()
+    try:
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        placeholders = ','.join([placeholder] * len(ids))
+        cursor = conn.cursor()
+        cursor.execute(f'SELECT id, prepared FROM material_requests WHERE id IN ({placeholders})', ids)
+        rows = cursor.fetchall()
+        return jsonify({str(row[0]): bool(row[1]) for row in rows})
+    finally:
+        conn.close()
+
 @app.route('/api/requests/<int:request_id>', methods=['GET'])
 def api_get_request_by_id(request_id):
     """API endpoint to get a specific material request by ID"""

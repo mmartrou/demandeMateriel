@@ -532,6 +532,25 @@
     let currentRoomAssignments = {};
     let draggedElement = null;
     let originalPosition = null;
+
+    async function syncPreparedStates() {
+        if (!planningData?.courses) return;
+        const ids = planningData.courses.map(c => c.request_id).filter(id => id != null && Number.isInteger(Number(id)));
+        if (ids.length === 0) return;
+        try {
+            const resp = await fetch(`/api/requests/prepared-states?ids=${ids.join(',')}`);
+            if (!resp.ok) return;
+            const states = await resp.json();
+            planningData.courses.forEach(course => {
+                if (course.request_id != null) {
+                    const s = states[String(course.request_id)];
+                    if (s !== undefined) course.prepared = s;
+                }
+            });
+        } catch (e) {
+            console.warn('syncPreparedStates failed:', e);
+        }
+    }
     const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
     
     // Initialiser la date par défaut (aujourd'hui)
@@ -570,6 +589,7 @@
                 currentAssignments = { ...data.assignments };
                 currentRoomAssignments = { ...data.room_assignments || {} };
 
+                await syncPreparedStates();
                 renderPlanningGrid();
                 updateStats();
                 document.getElementById('generate-btn').disabled = false;
@@ -1390,10 +1410,11 @@ async function reloadPlanning() {
             
             // Update currentRoomAssignments with loaded data
             currentRoomAssignments = { ...planningData.room_assignments || {} };
-            
+
             console.log('🔍 Assigned planningData:', planningData);
             console.log('🔍 planningData.rooms:', planningData.rooms);
             console.log('🔍 Updated currentRoomAssignments:', currentRoomAssignments);
+            await syncPreparedStates();
             renderPlanningGrid(); // Fonction existante pour afficher le planning
             showAlert('Planning chargé avec succès!', 'success');
         } else {
@@ -1433,6 +1454,7 @@ async function reloadPlanningIfExists(targetDate) {
             planningData = data.planning || data;
         }
         currentRoomAssignments = { ...planningData.room_assignments || {} };
+        await syncPreparedStates();
         renderPlanningGrid();
         updateStats();
         document.getElementById('generate-btn').disabled = false;
