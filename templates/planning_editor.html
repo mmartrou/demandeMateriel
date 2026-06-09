@@ -342,6 +342,26 @@
         height: 3rem;
     }
     
+    .prepared-badge {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        background: white;
+        color: #198754;
+        border-radius: 50%;
+        width: 17px;
+        height: 17px;
+        font-size: 11px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
     @media (max-width: 768px) {
         .planning-editor {
             font-size: 0.8em;
@@ -467,6 +487,27 @@
     <div id="loading-container"></div>
 </div>
 
+<!-- Modal détail TP -->
+<div class="modal fade" id="courseDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="courseDetailTitle">Détail du TP</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="courseDetailBody"></div>
+            <div class="modal-footer">
+                {% if current_user and current_user.role in ('admin', 'labo') %}
+                <button type="button" class="btn btn-success" id="togglePreparedBtn" onclick="togglePrepared()">
+                    ✅ Marquer comme préparé
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Overlay de chargement -->
 <div id="loading-overlay" class="loading-overlay" style="display: none;">
     <div class="loading-content">
@@ -487,6 +528,9 @@
     let currentRoomAssignments = {};
     let draggedElement = null;
     let originalPosition = null;
+    let currentModalCourseId = null;
+
+    const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
     
     // Initialiser la date par défaut (aujourd'hui)
     document.addEventListener('DOMContentLoaded', function() {
@@ -813,7 +857,10 @@
         const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
         const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
 
+        const preparedBadge = course.prepared ? '<span class="prepared-badge">✓</span>' : '';
+
         card.innerHTML = `
+            ${preparedBadge}
             <div class="course-title">${filteredSubject}</div>
             <div class="course-level">${course.level}</div>
             <div class="course-teacher">${course.teacher}</div>
@@ -821,12 +868,20 @@
             ${requestNameLine}
             ${equipmentLine}
         `;
-        
+
+        card.dataset.prepared = course.prepared ? '1' : '0';
+
         console.log(`📅 Cours ${course.subject} - Hauteur cumulée: ${totalHeight.toFixed(1)}px (${durationInMinutes}min)`);
-        
+
         // Ajouter les événements de drag
         setupDragEvents(card);
-        
+
+        // Double-clic : ouvrir la modale de détail
+        card.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            openCourseModal(course.id);
+        });
+
         return card;
     }
     
@@ -1377,6 +1432,108 @@ async function reloadPlanningIfExists(targetDate) {
     } catch (error) {
         // Erreur réseau ou parse : on ignore silencieusement
         console.warn('reloadPlanningIfExists:', error);
+    }
+}
+
+function openCourseModal(courseId) {
+    const course = planningData?.courses?.find(c => c.id === courseId);
+    if (!course) return;
+
+    currentModalCourseId = courseId;
+
+    document.getElementById('courseDetailTitle').textContent =
+        course.request_name || course.subject || 'Détail du TP';
+
+    const equipments = [];
+    if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
+    if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
+    if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
+    if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
+    if (course.oscilloscopes > 0) equipments.push(`📊 Oscillo.`);
+    if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
+    if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
+    if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
+    if (course.examen > 0) equipments.push(`📝 Examen`);
+
+    const durationText = course.duration ? formatDuration(course.duration) : '';
+    const assignedRoom = currentRoomAssignments[courseId] || course.room || '—';
+
+    document.getElementById('courseDetailBody').innerHTML = `
+        <div class="row g-3">
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tr><th>Matière</th><td>${course.subject || '—'}</td></tr>
+                    <tr><th>Niveau</th><td>${course.level || '—'}</td></tr>
+                    <tr><th>Enseignant</th><td>${course.teacher || '—'}</td></tr>
+                    <tr><th>Horaire</th><td>${course.time || '—'}${durationText ? ` (${durationText})` : ''}</td></tr>
+                    <tr><th>Salle</th><td>${assignedRoom}</td></tr>
+                    <tr><th>Groupes</th><td>${course.group_count || course.quantity || 1}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                ${course.selected_materials ? `<p><strong>Matériel :</strong><br>${course.selected_materials}</p>` : ''}
+                ${course.material_prof ? `<p><strong>Matériel prof :</strong><br>${course.material_prof}</p>` : ''}
+                ${equipments.length ? `<p><strong>Équipements :</strong><br>${equipments.join(', ')}</p>` : ''}
+                ${course.notes ? `<p><strong>Notes :</strong><br>${course.notes}</p>` : ''}
+            </div>
+        </div>
+        <div class="mt-2">
+            <span class="badge ${course.prepared ? 'bg-success' : 'bg-secondary'}" id="preparedBadgeInModal">
+                ${course.prepared ? '✓ Préparé' : 'Non préparé'}
+            </span>
+        </div>
+    `;
+
+    const btn = document.getElementById('togglePreparedBtn');
+    if (btn) {
+        btn.textContent = course.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
+        btn.className = course.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+    }
+
+    (bootstrap.Modal.getInstance(document.getElementById('courseDetailModal'))
+        || new bootstrap.Modal(document.getElementById('courseDetailModal'))).show();
+}
+
+async function togglePrepared() {
+    if (!currentModalCourseId) return;
+    const course = planningData?.courses?.find(c => c.id === currentModalCourseId);
+    if (!course) return;
+
+    try {
+        const resp = await fetch(`/api/requests/${currentModalCourseId}/toggle-prepared`, { method: 'POST' });
+        if (!resp.ok) throw new Error('Erreur serveur');
+
+        // Mettre à jour l'état local
+        course.prepared = !course.prepared;
+
+        // Mettre à jour la modale
+        const badge = document.getElementById('preparedBadgeInModal');
+        if (badge) {
+            badge.textContent = course.prepared ? '✓ Préparé' : 'Non préparé';
+            badge.className = `badge ${course.prepared ? 'bg-success' : 'bg-secondary'}`;
+        }
+        const btn = document.getElementById('togglePreparedBtn');
+        if (btn) {
+            btn.textContent = course.prepared ? '↩ Marquer comme non préparé' : '✅ Marquer comme préparé';
+            btn.className = course.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+        }
+
+        // Mettre à jour la carte dans la grille
+        const card = document.querySelector(`.course-card[data-course-id="${currentModalCourseId}"]`);
+        if (card) {
+            card.dataset.prepared = course.prepared ? '1' : '0';
+            const existingBadge = card.querySelector('.prepared-badge');
+            if (course.prepared && !existingBadge) {
+                const span = document.createElement('span');
+                span.className = 'prepared-badge';
+                span.textContent = '✓';
+                card.insertBefore(span, card.firstChild);
+            } else if (!course.prepared && existingBadge) {
+                existingBadge.remove();
+            }
+        }
+    } catch (e) {
+        showAlert('Erreur lors de la mise à jour du statut.', 'danger');
     }
 }
 
