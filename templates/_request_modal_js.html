@@ -41,22 +41,16 @@ function setCustomDurationInputs(prefix, minutes) {
     document.getElementById(prefix + '_m').value = minutes % 60;
 }
 function getCustomDurationValue(prefix) {
-    if (!document.getElementById(prefix + '_check').checked) return null;
+    const niveau = document.getElementById('editClassName').value;
     const h = parseInt(document.getElementById(prefix + '_h').value) || 0;
     const m = parseInt(document.getElementById(prefix + '_m').value) || 0;
-    return h * 60 + m;
+    const minutes = h * 60 + m;
+    // On ne renvoie une durée personnalisée que si elle diffère de la durée par défaut du niveau
+    return (minutes !== dureeParNiveau(niveau)) ? minutes : null;
 }
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('editCustomDuration_check').addEventListener('change', function() {
-        document.getElementById('editCustomDuration_inputs').style.display = this.checked ? 'flex' : 'none';
-        if (this.checked) {
-            setCustomDurationInputs('editCustomDuration', dureeParNiveau(document.getElementById('editClassName').value));
-        }
-    });
     document.getElementById('editClassName').addEventListener('change', function() {
-        if (document.getElementById('editCustomDuration_check').checked) {
-            setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
-        }
+        setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
     });
 });
 
@@ -230,8 +224,6 @@ function populateEditForm(request) {
     chk('editExamMode', isExamMode);
 
     const hasCustomDuration = request.custom_duration !== null && request.custom_duration !== undefined;
-    chk('editCustomDuration_check', hasCustomDuration);
-    document.getElementById('editCustomDuration_inputs').style.display = hasCustomDuration ? 'flex' : 'none';
     setCustomDurationInputs('editCustomDuration', hasCustomDuration ? request.custom_duration : dureeParNiveau(request.class_name || ''));
 
     const rawQty = request.group_count ?? request.quantity ?? 1;
