@@ -241,7 +241,21 @@
     
     .drop-zone.drag-over {
         border-color: #007bff;
-        background-color: #e3f2fd;
+        background-color: #b3d7ff;
+        transform: scale(1.08);
+        box-shadow: 0 0 10px rgba(0,123,255,0.6);
+        position: relative;
+        z-index: 35;
+    }
+
+    .room-header-cell.drag-target,
+    .time-cell.drag-target {
+        background: #ffc107;
+        color: #212529;
+        transform: scale(1.08);
+        box-shadow: 0 0 8px rgba(255,193,7,0.8);
+        position: relative;
+        z-index: 40;
     }
     
     .drop-zone:empty::before {
@@ -691,6 +705,7 @@
         rooms.forEach(room => {
             const roomHeaderCell = document.createElement('div');
             roomHeaderCell.className = 'room-header-cell';
+            roomHeaderCell.dataset.room = room.name;
             roomHeaderCell.textContent = room.name;
             headerRow.appendChild(roomHeaderCell);
         });
@@ -724,6 +739,7 @@
             // Cellule de l'horaire
             const timeCell = document.createElement('div');
             timeCell.className = 'time-cell';
+            timeCell.dataset.slot = slot;
             timeCell.textContent = slot;
             timeCell.style.height = `${cellHeight}px`;
             row.appendChild(timeCell);
@@ -1189,25 +1205,43 @@
         
         card.addEventListener('dragend', function(e) {
             this.classList.remove('dragging');
+            clearDragHighlights();
             draggedElement = null;
             originalPosition = null;
         });
     }
     
+    // Effacer toutes les mises en relief de drag (case, ligne d'horaire, colonne de salle)
+    function clearDragHighlights() {
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        document.querySelectorAll('.drag-target').forEach(el => el.classList.remove('drag-target'));
+    }
+
     // Configurer les zones de drop
     function setupDropZone(cell) {
         cell.addEventListener('dragover', function(e) {
             e.preventDefault();
-            this.classList.add('drag-over');
+            if (!this.classList.contains('drag-over')) {
+                clearDragHighlights();
+                this.classList.add('drag-over');
+
+                // Mettre en relief l'horaire et la salle de destination
+                const targetRoom = this.dataset.room;
+                const targetSlot = this.dataset.slot;
+                const headerCell = document.querySelector(`.room-header-cell[data-room="${targetRoom}"]`);
+                if (headerCell) headerCell.classList.add('drag-target');
+                const timeCell = document.querySelector(`.time-cell[data-slot="${targetSlot}"]`);
+                if (timeCell) timeCell.classList.add('drag-target');
+            }
         });
-        
+
         cell.addEventListener('dragleave', function(e) {
             this.classList.remove('drag-over');
         });
-        
+
         cell.addEventListener('drop', function(e) {
             e.preventDefault();
-            this.classList.remove('drag-over');
+            clearDragHighlights();
             
             if (draggedElement) {
                 const courseId = draggedElement.dataset.courseId; // Ne pas convertir en int !
