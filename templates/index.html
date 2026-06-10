@@ -151,8 +151,18 @@
                                 <option value="1ère Spécialité">1ère Spécialité</option>
                                 <option value="Terminale Spécialité">Terminale Spécialité</option>
                             </select>
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" id="custom_duration_check">
+                                <label class="form-check-label" for="custom_duration_check">⏱️ Durée personnalisée</label>
+                            </div>
+                            <div id="custom_duration_inputs" style="display:none;" class="d-flex align-items-center gap-1 mt-1">
+                                <input type="number" min="0" class="form-control form-control-sm" id="custom_duration_h" style="width:65px">
+                                <span>h</span>
+                                <input type="number" min="0" max="59" class="form-control form-control-sm" id="custom_duration_m" style="width:65px">
+                                <span>min</span>
+                            </div>
                         </div>
-                        
+
                         <!-- Sélecteur TP précédent (visible seulement si des templates existent) -->
                         <div class="col-md-4 mb-3" id="tp-template-section" style="display:none;">
                             <label for="tp_template_select" class="form-label">
@@ -420,6 +430,42 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.getElementById('class_name').addEventListener('change', loadTpTemplates);
+
+    // --- Durée personnalisée ---
+    // Doit rester cohérent avec duree_par_niveau() dans planning_generator.py
+    function dureeParNiveau(niveau) {
+        if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
+        if (["AP PP", "1ère ES"].includes(niveau)) return 55;
+        return 85;
+    }
+    function setCustomDurationInputs(prefix, minutes) {
+        document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);
+        document.getElementById(prefix + '_m').value = minutes % 60;
+    }
+    function getCustomDurationValue(prefix) {
+        if (!document.getElementById(prefix + '_check').checked) return null;
+        const h = parseInt(document.getElementById(prefix + '_h').value) || 0;
+        const m = parseInt(document.getElementById(prefix + '_m').value) || 0;
+        return h * 60 + m;
+    }
+
+    document.getElementById('class_name').addEventListener('change', function() {
+        if (document.getElementById('custom_duration_check').checked) {
+            setCustomDurationInputs('custom_duration', dureeParNiveau(this.value));
+        }
+    });
+    document.getElementById('custom_duration_check').addEventListener('change', function() {
+        document.getElementById('custom_duration_inputs').style.display = this.checked ? 'flex' : 'none';
+        if (this.checked) {
+            const niveau = document.getElementById('class_name').value;
+            setCustomDurationInputs('custom_duration', dureeParNiveau(niveau));
+        }
+    });
+    document.getElementById('materialRequestForm').addEventListener('reset', function() {
+        document.getElementById('custom_duration_check').checked = false;
+        document.getElementById('custom_duration_inputs').style.display = 'none';
+        setCustomDurationInputs('custom_duration', 0);
+    });
 
     async function loadTpTemplates() {
         const teacherId = teacherSelect.value;
@@ -713,6 +759,7 @@ document.addEventListener('DOMContentLoaded', function() {
     data.group_count = document.getElementById('quantity').value;
     data.material_prof = document.getElementById('material_prof').value;
     data.request_name = document.getElementById('request_name').value;
+    data.custom_duration = getCustomDurationValue('custom_duration');
         
         // Validation du nom de demande (obligatoire)
         if (!data.request_name || data.request_name.trim() === '') {

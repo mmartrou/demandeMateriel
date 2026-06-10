@@ -29,6 +29,37 @@ function sanitizeImageUrl(url) {
     return '';
 }
 
+// --- Durée personnalisée ---
+// Doit rester cohérent avec duree_par_niveau() dans planning_generator.py
+function dureeParNiveau(niveau) {
+    if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
+    if (["AP PP", "1ère ES"].includes(niveau)) return 55;
+    return 85;
+}
+function setCustomDurationInputs(prefix, minutes) {
+    document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);
+    document.getElementById(prefix + '_m').value = minutes % 60;
+}
+function getCustomDurationValue(prefix) {
+    if (!document.getElementById(prefix + '_check').checked) return null;
+    const h = parseInt(document.getElementById(prefix + '_h').value) || 0;
+    const m = parseInt(document.getElementById(prefix + '_m').value) || 0;
+    return h * 60 + m;
+}
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('editCustomDuration_check').addEventListener('change', function() {
+        document.getElementById('editCustomDuration_inputs').style.display = this.checked ? 'flex' : 'none';
+        if (this.checked) {
+            setCustomDurationInputs('editCustomDuration', dureeParNiveau(document.getElementById('editClassName').value));
+        }
+    });
+    document.getElementById('editClassName').addEventListener('change', function() {
+        if (document.getElementById('editCustomDuration_check').checked) {
+            setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
+        }
+    });
+});
+
 function formatDateToYMD(dateString) {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -198,6 +229,11 @@ function populateEditForm(request) {
     chk('editNoMaterial', isNoMaterial);
     chk('editExamMode', isExamMode);
 
+    const hasCustomDuration = request.custom_duration !== null && request.custom_duration !== undefined;
+    chk('editCustomDuration_check', hasCustomDuration);
+    document.getElementById('editCustomDuration_inputs').style.display = hasCustomDuration ? 'flex' : 'none';
+    setCustomDurationInputs('editCustomDuration', hasCustomDuration ? request.custom_duration : dureeParNiveau(request.class_name || ''));
+
     const rawQty = request.group_count ?? request.quantity ?? 1;
     const qty = Number.isFinite(Number(rawQty)) && Number(rawQty) >= 1 ? Math.trunc(Number(rawQty)) : 1;
     set('editQuantity', String(qty));
@@ -274,7 +310,8 @@ function editRequest(requestId) {
                 horaire: request.horaire || '',
                 group_count: Number(request.group_count ?? request.quantity ?? 1),
                 computers_needed: request.computers_needed || 0,
-                selected_materials: request.selected_materials || ''
+                selected_materials: request.selected_materials || '',
+                custom_duration: request.custom_duration ?? null
             };
 
             const modalEl = document.getElementById('editRequestModal');
@@ -393,6 +430,10 @@ function calculateRequestChanges(requestId, newData) {
         changes.computers_needed = { original: originalRequestData.computers_needed, new: newData.computers_needed,
             diff: `${originalRequestData.computers_needed} → ${newData.computers_needed}` };
     }
+    if ((originalRequestData.custom_duration ?? null) !== (newData.custom_duration ?? null)) {
+        changes.custom_duration = { original: originalRequestData.custom_duration, new: newData.custom_duration,
+            diff: `${originalRequestData.custom_duration ?? '—'} → ${newData.custom_duration ?? '—'}` };
+    }
     if (Object.keys(changes).length > 0) window.modifiedRequests.set(requestId, changes);
     else window.modifiedRequests.delete(requestId);
     return changes;
@@ -412,7 +453,8 @@ function saveRequestChanges() {
         group_count:       parseInt(document.getElementById('editQuantity').value, 10) || 1,
         computers_needed:  parseInt(document.getElementById('editComputersNeeded').value, 10) || 0,
         material_prof:     document.getElementById('editMaterialProf').value,
-        notes:             document.getElementById('editNotes').value
+        notes:             document.getElementById('editNotes').value,
+        custom_duration:   getCustomDurationValue('editCustomDuration')
     };
 
     const formData = {
@@ -424,7 +466,8 @@ function saveRequestChanges() {
         group_count:      currentData.group_count,
         computers_needed: currentData.computers_needed,
         material_prof:    currentData.material_prof,
-        notes:            currentData.notes
+        notes:            currentData.notes,
+        custom_duration:  currentData.custom_duration
     };
 
     if (isAbsent) {

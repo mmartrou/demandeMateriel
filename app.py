@@ -26,7 +26,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       pre_associate_teacher, get_all_users, add_teacher, delete_teacher,
                       get_tp_templates, upsert_tp_template)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
-from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2
+from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
 import json
 
@@ -618,7 +618,8 @@ def api_get_requests():
                 'image_url': req[16] if len(req) > 16 else None,
                 'exam': req[17] if len(req) > 17 else False,
                 'created_at': req[18] if len(req) > 18 else None,
-                'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
+                'teacher_name': req[19] if len(req) > 19 else '',
+                'custom_duration': req[20] if len(req) > 20 else None
             }
             # Debug log
             try:
@@ -827,7 +828,8 @@ def api_add_request():
                     group_count=data.get('group_count', data.get('quantity', 1)),
                     material_prof=data.get('material_prof', ''),
                     request_name=data.get('request_name', ''),
-                    image_url=data.get('image_url', '')
+                    image_url=data.get('image_url', ''),
+                    custom_duration=data.get('custom_duration')
                 )
                 request_ids.append(request_id)
 
@@ -908,7 +910,8 @@ def export_csv():
                 'image_url': req[16] if len(req) > 16 else None,
                 'exam': req[17] if len(req) > 17 else False,
                 'created_at': req[18] if len(req) > 18 else None,
-                'teacher_name': req[-1]  # la dernière colonne de la requête SELECT
+                'teacher_name': req[19] if len(req) > 19 else '',
+                'custom_duration': req[20] if len(req) > 20 else None
             }
         writer.writerow([
             r['id'],
@@ -1066,7 +1069,8 @@ def api_update_request(request_id):
             data.get('notes', ''),
             group_count=data.get('group_count', 1),
             material_prof=data.get('material_prof', ''),
-            request_name=data.get('request_name', '')
+            request_name=data.get('request_name', ''),
+            custom_duration=data.get('custom_duration')
         )
         
         if success:
@@ -1863,6 +1867,19 @@ def api_get_planning_data():
             })
     except Exception as e:
         return api_error('Erreur lors de la récupération des données planning', e)
+
+@app.route('/api/planning-editor/course/<int:request_id>', methods=['GET'])
+def api_planning_editor_course(request_id):
+    """Retourne les données à jour d'une demande au format 'courses_data', pour
+    rafraîchir une carte du planning sans relancer l'optimiseur (et donc sans
+    déplacer les autres cours)."""
+    try:
+        course = build_course_data_entry(request_id)
+        if course is None:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+        return jsonify(course)
+    except Exception as e:
+        return api_error('Erreur lors de la récupération du cours', e)
 
 @app.route('/api/planning-editor/generate', methods=['POST'])
 def api_generate_planning_from_editor():

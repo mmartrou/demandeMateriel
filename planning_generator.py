@@ -28,7 +28,8 @@ def to_dict_request(req):
             'image_url': req[16] if len(req) > 16 else None,
             'exam': req[17] if len(req) > 17 else False,
             'created_at': req[18] if len(req) > 18 else None,
-            'teacher_name': req[-1] if len(req) > 0 else ''
+            'teacher_name': req[19] if len(req) > 19 else '',
+            'custom_duration': req[20] if len(req) > 20 else None
         }
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -196,6 +197,65 @@ def extract_material_needs(selected_materials):
         
     
     return needs
+
+
+def build_course_data_entry(request_id):
+    """
+    Construit, pour une seule demande, le dictionnaire au format 'courses_data'
+    utilisé par l'éditeur de planning (mêmes calculs que la boucle de
+    generer_planning_excel), sans relancer l'optimiseur OR-Tools.
+    Permet de rafraîchir une carte de cours après modification/suppression
+    sans déplacer les autres cours déjà placés.
+    """
+    raw_req = database.get_material_request_by_id(request_id)
+    if not raw_req:
+        return None
+    req = to_dict_request(raw_req)
+
+    material_needs = extract_material_needs(req.get('selected_materials', ''))
+    matiere = "mixte"
+    if req.get('room_type') == 'Physique':
+        matiere = "physique"
+    elif req.get('room_type') == 'Chimie':
+        matiere = "chimie"
+    elif req.get('room_type') == 'Mixte':
+        materials_text = str(req.get('selected_materials', '')).lower()
+        description_text = str(req.get('material_description', '')).lower()
+        combined_text = f"{materials_text} {description_text}"
+        physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
+        chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction', 'molécule', 'ion', 'ph']
+        physics_score = sum(1 for kw in physics_keywords if kw in combined_text)
+        chemistry_score = sum(1 for kw in chemistry_keywords if kw in combined_text)
+        if physics_score > chemistry_score and physics_score > 0:
+            matiere = "physique"
+        elif chemistry_score > physics_score and chemistry_score > 0:
+            matiere = "chimie"
+
+    computers_needed = req.get('computers_needed', 0)
+    if computers_needed and computers_needed > 0:
+        material_needs["ordinateurs"] = max(material_needs["ordinateurs"], computers_needed)
+
+    return {
+        'request_id': req.get('id'),
+        'prepared': bool(req.get('prepared', False)),
+        'subject': matiere,
+        'level': req.get('class_name', ''),
+        'teacher': req.get('teacher_name', 'Unknown'),
+        'time': req.get('horaire', '9h00') or '9h00',
+        'duration': req.get('custom_duration') or duree_par_niveau(req.get('class_name', '')),
+        'students': eleves_par_niveau(req.get('class_name', ''), req.get('teacher_name', 'Unknown')),
+        'request_name': req.get('request_name', ''),
+        'material_description': req.get('material_description', 'N/A'),
+        'ordinateurs': material_needs["ordinateurs"],
+        'eviers': material_needs["eviers"],
+        'hotte': material_needs["hotte"],
+        'bancs_optiques': material_needs["bancs_optiques"],
+        'oscilloscopes': material_needs["oscilloscopes"],
+        'becs_electriques': material_needs["becs_electriques"],
+        'support_filtration': material_needs["support_filtration"],
+        'imprimante': material_needs["imprimante"],
+        'examen': material_needs["examen"],
+    }
 
 
 def est_C21_disponible(cours_info, c21_slots):
@@ -938,7 +998,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "support_filtration": material_needs["support_filtration"],
                 "imprimante": material_needs["imprimante"],
                 "examen": material_needs["examen"],
-                "duree": duree_par_niveau(req.get('class_name', '')),
+                "duree": req.get('custom_duration') or duree_par_niveau(req.get('class_name', '')),
                 "chaises": eleves_par_niveau(req.get('class_name', ''), req.get('teacher_name', 'Unknown')),
                 "materiel_demande": req.get('material_description', 'N/A'),
                 "selected_materials": req.get('selected_materials', ''),

@@ -100,6 +100,7 @@ def init_database():
             room_type {text_type} DEFAULT 'Mixte',
             image_url {text_type},
             exam BOOLEAN DEFAULT FALSE,
+            custom_duration INTEGER,
             created_at {timestamp_default},
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
@@ -117,7 +118,8 @@ def init_database():
         ('group_count', 'INTEGER DEFAULT 1'),
         ('material_prof', 'TEXT'),
         ('request_name', 'TEXT'),
-        ('image_url', 'TEXT')
+        ('image_url', 'TEXT'),
+        ('custom_duration', 'INTEGER')
     ]
     
     for column_name, column_type in columns_to_add:
@@ -537,8 +539,8 @@ def get_all_users():
 
 
 def add_material_request(teacher_id, request_date, class_name, material_description,
-                        horaire=None, quantity=1, selected_materials='', computers_needed=0, 
-                        notes='', exam=False, group_count=1, material_prof='', request_name='', image_url=''):
+                        horaire=None, quantity=1, selected_materials='', computers_needed=0,
+                        notes='', exam=False, group_count=1, material_prof='', request_name='', image_url='', custom_duration=None):
     """Add a new material request"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
@@ -549,15 +551,15 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
             group_count = 1
     except Exception:
         group_count = 1
-    
-    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 14)
+
+    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 15)
     cursor.execute(f'''
-        INSERT INTO material_requests 
-        (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url)
+        INSERT INTO material_requests
+        (teacher_id, request_date, horaire, class_name, material_description, quantity,
+         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration)
         VALUES ({placeholders})
-    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url))
+    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
+          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -574,7 +576,7 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name
+               t.name as teacher_name, mr.custom_duration
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE 1=1
@@ -626,7 +628,7 @@ def get_material_request_by_id(request_id):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name
+               t.name as teacher_name, mr.custom_duration
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.id = {placeholder}
@@ -664,12 +666,13 @@ def get_material_request_by_id(request_id):
             'image_url': request[16],
             'exam': request[17],
             'created_at': request[18],
-            'teacher_name': request[19]
+            'teacher_name': request[19],
+            'custom_duration': request[20] if len(request) > 20 else None
         }
 
-def update_material_request(request_id, teacher_id, request_date, class_name, material_description, 
-                           horaire=None, quantity=1, selected_materials='', computers_needed=0, 
-                           notes='', group_count=1, material_prof='', request_name=''):
+def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
+                           horaire=None, quantity=1, selected_materials='', computers_needed=0,
+                           notes='', group_count=1, material_prof='', request_name='', custom_duration=None):
     """Update an existing material request and mark it as modified"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
@@ -687,14 +690,14 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
     
     cursor.execute(f'''
-        UPDATE material_requests 
-        SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder}, 
-            class_name={placeholder}, material_description={placeholder}, quantity={placeholder}, 
-            selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder}, 
-            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, prepared={false_val}, modified={true_val}
+        UPDATE material_requests
+        SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder},
+            class_name={placeholder}, material_description={placeholder}, quantity={placeholder},
+            selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder},
+            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder}, prepared={false_val}, modified={true_val}
         WHERE id={placeholder}
-    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity, 
-          selected_materials, computers_needed, notes, group_count, material_prof, request_name, request_id))
+    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
+          selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration, request_id))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0

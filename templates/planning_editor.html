@@ -507,8 +507,40 @@
 {% block extra_js %}
 {% include '_request_modal_js.html' %}
 <script>
-    // No-op: planning editor has no request table to reload
-    function loadRequests() {}
+    // Rafraîchit la carte d'une demande modifiée/supprimée via la modale,
+    // sans relancer l'optimiseur (les autres cours ne bougent pas).
+    async function loadRequests() {
+        if (!planningData) return;
+        const requestId = document.getElementById('editRequestId').value;
+        if (!requestId) return;
+
+        const idx = planningData.courses.findIndex(c => String(c.request_id) === String(requestId));
+        if (idx === -1) return;
+
+        const targetDate = document.getElementById('target-date').value;
+        try {
+            const response = await fetch(`/api/planning-editor/course/${requestId}?date=${targetDate}`);
+            if (response.status === 404) {
+                // La demande a été supprimée : retirer la carte et son emplacement
+                const removedId = planningData.courses[idx].id;
+                planningData.courses.splice(idx, 1);
+                delete currentRoomAssignments[removedId];
+                if (planningData.room_assignments) delete planningData.room_assignments[removedId];
+            } else if (response.ok) {
+                const updated = await response.json();
+                const oldId = planningData.courses[idx].id;
+                planningData.courses[idx] = Object.assign({}, planningData.courses[idx], updated, { id: oldId });
+            } else {
+                return;
+            }
+            await syncPreparedStates();
+            renderPlanningGrid();
+            updateStats();
+            await savePlanningData();
+        } catch (e) {
+            console.warn('loadRequests: rafraîchissement impossible:', e);
+        }
+    }
     // Hook: update prepared badge on card when toggled from the modal
     window.onPreparedToggled = function(requestId, isPrepared) {
         const card = document.querySelector(`.course-card[data-request-id="${requestId}"]`);
@@ -553,10 +585,13 @@
     }
     const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
     
-    // Initialiser la date par défaut (aujourd'hui)
+    // Initialiser la date par défaut (demain) et charger le planning correspondant s'il existe
     document.addEventListener('DOMContentLoaded', function() {
-        const today = new Date();
-        document.getElementById('target-date').value = today.toISOString().split('T')[0];
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const targetDate = tomorrow.toISOString().split('T')[0];
+        document.getElementById('target-date').value = targetDate;
+        reloadPlanningIfExists(targetDate);
     });
     
     // Charger les données du planning
