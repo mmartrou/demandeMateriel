@@ -76,12 +76,12 @@ def calculer_score_salle(besoins, equipements_salle, type_salle, matiere):
         # Analyser les équipements réels de la salle
         room_has_chemistry_equipment = (equipements_salle.get("eviers", 0) > 0 or equipements_salle.get("hotte", 0) > 0 or 
                                        equipements_salle.get("becs_electriques", 0) > 0 or equipements_salle.get("support_filtration", 0) > 0)
-        room_has_physics_equipment = (equipements_salle.get("oscilloscopes", 0) > 0 or equipements_salle.get("bancs_optiques", 0) > 0)
-        
+        room_has_physics_equipment = (equipements_salle.get("obscurite_totale", 0) > 0 or equipements_salle.get("bancs_optiques", 0) > 0)
+
         # Vérifier si le cours a des besoins spécifiques
-        has_equipment_needs = (besoins.get("ordinateurs", 0) > 0 or besoins.get("eviers", 0) > 0 or 
-                              besoins.get("hotte", 0) > 0 or besoins.get("bancs_optiques", 0) > 0 or 
-                              besoins.get("oscilloscopes", 0) > 0 or besoins.get("becs_electriques", 0) > 0 or 
+        has_equipment_needs = (besoins.get("ordinateurs", 0) > 0 or besoins.get("eviers", 0) > 0 or
+                              besoins.get("hotte", 0) > 0 or besoins.get("bancs_optiques", 0) > 0 or
+                              besoins.get("obscurite_totale", 0) > 0 or besoins.get("becs_electriques", 0) > 0 or
                               besoins.get("support_filtration", 0) > 0 or besoins.get("imprimante", 0) > 0)
         
         # Score de base selon la matière et les équipements
@@ -115,7 +115,7 @@ def calculer_score_salle(besoins, equipements_salle, type_salle, matiere):
             score *= 0.1
         if besoins.get("hotte", 0) > 0 and equipements_salle.get("hotte", 0) == 0:
             score *= 0.1
-        if besoins.get("oscilloscopes", 0) > 0 and equipements_salle.get("oscilloscopes", 0) == 0:
+        if besoins.get("obscurite_totale", 0) > 0 and equipements_salle.get("obscurite_totale", 0) == 0:
             score *= 0.1
         if besoins.get("bancs_optiques", 0) > 0 and equipements_salle.get("bancs_optiques", 0) == 0:
             score *= 0.1
@@ -141,7 +141,7 @@ def extract_material_needs(selected_materials):
         "eviers": 0,
         "hotte": 0,
         "bancs_optiques": 0,
-        "oscilloscopes": 0,
+        "obscurite_totale": 0,
         "becs_electriques": 0,
         "support_filtration": 0,
         "imprimante": 0,
@@ -178,8 +178,8 @@ def extract_material_needs(selected_materials):
         'hotte': 'hotte',
         'bancs optiques': 'bancs_optiques',
         'banc optique': 'bancs_optiques',
-        'oscilloscopes': 'oscilloscopes', 
-        'oscilloscope': 'oscilloscopes',
+        'obscurité totale': 'obscurite_totale',
+        'obscurite totale': 'obscurite_totale',
         'becs électriques': 'becs_electriques',
         'bec électrique': 'becs_electriques',
         'support de filtration': 'support_filtration',
@@ -250,7 +250,7 @@ def build_course_data_entry(request_id):
         'eviers': material_needs["eviers"],
         'hotte': material_needs["hotte"],
         'bancs_optiques': material_needs["bancs_optiques"],
-        'oscilloscopes': material_needs["oscilloscopes"],
+        'obscurite_totale': material_needs["obscurite_totale"],
         'becs_electriques': material_needs["becs_electriques"],
         'support_filtration': material_needs["support_filtration"],
         'imprimante': material_needs["imprimante"],
@@ -295,10 +295,10 @@ def compatible(salle, besoin, c21_slots=None):
             return False
     
     # Check if this is a theoretical course (no specific equipment needs)
-    has_equipment_needs = (besoin["ordinateurs"] > 0 or besoin["eviers"] > 0 or 
-                          besoin["hotte"] > 0 or besoin["bancs_optiques"] > 0 or 
-                          besoin["oscilloscopes"] > 0 or besoin["becs_electriques"] > 0 or 
-                          besoin["support_filtration"] > 0 or besoin["imprimante"] > 0 or 
+    has_equipment_needs = (besoin["ordinateurs"] > 0 or besoin["eviers"] > 0 or
+                          besoin["hotte"] > 0 or besoin["bancs_optiques"] > 0 or
+                          besoin["obscurite_totale"] > 0 or besoin["becs_electriques"] > 0 or
+                          besoin["support_filtration"] > 0 or besoin["imprimante"] > 0 or
                           besoin["examen"] > 0)
     
     # For theoretical courses (no equipment needs), any room type is acceptable
@@ -326,7 +326,7 @@ def compatible(salle, besoin, c21_slots=None):
         return False
     if besoin["bancs_optiques"] > salle["bancs_optiques"]:
         return False
-    if besoin["oscilloscopes"] > salle["oscilloscopes"]:
+    if besoin["obscurite_totale"] > salle["obscurite_totale"]:
         return False
     if besoin["becs_electriques"] > salle["becs_electriques"]:
         return False
@@ -530,8 +530,8 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                     besoins_txt_techniciens.append("Hotte")
                 if besoins_equipements.get('bancs_optiques', 0) > 0:
                     besoins_txt_techniciens.append("Bancs optiques")
-                if besoins_equipements.get('oscilloscopes', 0) > 0:
-                    besoins_txt_techniciens.append("Oscilloscopes")
+                if besoins_equipements.get('obscurite_totale', 0) > 0:
+                    besoins_txt_techniciens.append("Obscurité totale")
                 if besoins_equipements.get('becs_electriques', 0) > 0:
                     besoins_txt_techniciens.append("Becs électriques")
                 if besoins_equipements.get('support_filtration', 0) > 0:
@@ -938,7 +938,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "eviers": room.get('eviers', 0) or 0,
                 "hotte": room.get('hotte', 0) or 0,
                 "bancs_optiques": room.get('bancs_optiques', 0) or 0,
-                "oscilloscopes": room.get('oscilloscopes', 0) or 0,
+                "obscurite_totale": room.get('obscurite_totale', 0) or 0,
                 "becs_electriques": room.get('becs_electriques', 0) or 0,
                 "support_filtration": room.get('support_filtration', 0) or 0,
                 "imprimante": room.get('imprimante', 0) or 0,
@@ -993,7 +993,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "eviers": material_needs["eviers"],
                 "hotte": material_needs["hotte"],
                 "bancs_optiques": material_needs["bancs_optiques"],
-                "oscilloscopes": material_needs["oscilloscopes"],
+                "obscurite_totale": material_needs["obscurite_totale"],
                 "becs_electriques": material_needs["becs_electriques"],
                 "support_filtration": material_needs["support_filtration"],
                 "imprimante": material_needs["imprimante"],
@@ -1021,10 +1021,10 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                     x[(i,s)] = model.NewBoolVar(f"x_{i}_{s}")
                     
                     # Check if this is a theoretical course (no specific equipment needs)
-                    has_equipment_needs = (c["ordinateurs"] > 0 or c["eviers"] > 0 or 
-                                          c["hotte"] > 0 or c["bancs_optiques"] > 0 or 
-                                          c["oscilloscopes"] > 0 or c["becs_electriques"] > 0 or 
-                                          c["support_filtration"] > 0 or c["imprimante"] > 0 or 
+                    has_equipment_needs = (c["ordinateurs"] > 0 or c["eviers"] > 0 or
+                                          c["hotte"] > 0 or c["bancs_optiques"] > 0 or
+                                          c["obscurite_totale"] > 0 or c["becs_electriques"] > 0 or
+                                          c["support_filtration"] > 0 or c["imprimante"] > 0 or
                                           c["examen"] > 0)
                     
                     # Weight based on room specialization and REAL EQUIPMENT
@@ -1033,7 +1033,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                     # Analyser les équipements réels de la salle
                     room_has_chemistry_equipment = (salles[s]["eviers"] > 0 or salles[s]["hotte"] > 0 or 
                                                    salles[s]["becs_electriques"] > 0 or salles[s]["support_filtration"] > 0)
-                    room_has_physics_equipment = (salles[s]["oscilloscopes"] > 0 or salles[s]["bancs_optiques"] > 0)
+                    room_has_physics_equipment = (salles[s]["obscurite_totale"] > 0 or salles[s]["bancs_optiques"] > 0)
                     
                     # Pondération intelligente basée sur matière + équipements réels
                     if c["matiere"] == "chimie":
@@ -1200,7 +1200,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                         'eviers': course.get('eviers', 0),
                         'hotte': course.get('hotte', 0),
                         'bancs_optiques': course.get('bancs_optiques', 0),
-                        'oscilloscopes': course.get('oscilloscopes', 0),
+                        'obscurite_totale': course.get('obscurite_totale', 0),
                         'becs_electriques': course.get('becs_electriques', 0),
                         'support_filtration': course.get('support_filtration', 0),
                         'imprimante': course.get('imprimante', 0),

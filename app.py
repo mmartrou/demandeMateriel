@@ -1721,7 +1721,7 @@ def api_export_rooms_csv():
         # En-tête
         writer.writerow([
             'nom', 'type', 'ordinateurs', 'chaises', 'eviers', 'hotte',
-            'bancs_optiques', 'oscilloscopes', 'becs_electriques',
+            'bancs_optiques', 'obscurite_totale', 'becs_electriques',
             'support_filtration', 'imprimante', 'examen'
         ])
         
@@ -1741,7 +1741,7 @@ def api_export_rooms_csv():
                     'eviers': room[4],
                     'hotte': room[5],
                     'bancs_optiques': room[6],
-                    'oscilloscopes': room[7],
+                    'obscurite_totale': room[7],
                     'becs_electriques': room[8],
                     'support_filtration': room[9],
                     'imprimante': room[10],
@@ -1749,7 +1749,7 @@ def api_export_rooms_csv():
                 }
             writer.writerow([
                 r['name'], r['type'], r['ordinateurs'], r['chaises'],
-                r['eviers'], r['hotte'], r['bancs_optiques'], r['oscilloscopes'],
+                r['eviers'], r['hotte'], r['bancs_optiques'], r['obscurite_totale'],
                 r['becs_electriques'], r['support_filtration'], r['imprimante'], r['examen']
             ])
         

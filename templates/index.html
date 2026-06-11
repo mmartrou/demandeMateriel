@@ -151,11 +151,8 @@
                                 <option value="1ère Spécialité">1ère Spécialité</option>
                                 <option value="Terminale Spécialité">Terminale Spécialité</option>
                             </select>
-                            <div class="form-check mt-1">
-                                <input class="form-check-input" type="checkbox" id="custom_duration_check">
-                                <label class="form-check-label" for="custom_duration_check">⏱️ Durée personnalisée</label>
-                            </div>
-                            <div id="custom_duration_inputs" style="display:none;" class="d-flex align-items-center gap-1 mt-1">
+                            <div id="custom_duration_inputs" class="d-flex align-items-center gap-1 mt-1">
+                                <span>⏱️ Durée :</span>
                                 <input type="number" min="0" class="form-control form-control-sm" id="custom_duration_h" style="width:65px">
                                 <span>h</span>
                                 <input type="number" min="0" max="59" class="form-control form-control-sm" id="custom_duration_m" style="width:65px">
@@ -203,7 +200,7 @@
                     <!-- Material checkboxes -->
                     <div class="mb-3" id="material-section">
                         <label class="form-label">
-                            🔧 Matériel peu mobile à avoir dans la salle
+                            🔧 Matériel peu mobile à avoir dans la salle *
                         </label>
                         <div class="row">
                             <div class="col-md-6">
@@ -226,9 +223,9 @@
                                     </label>
                                 </div>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="oscilloscopes" name="materials" value="Oscilloscopes">
-                                    <label class="form-check-label" for="oscilloscopes">
-                                        Oscilloscopes
+                                    <input class="form-check-input" type="checkbox" id="obscurite_totale" name="materials" value="Obscurité totale">
+                                    <label class="form-check-label" for="obscurite_totale">
+                                        Obscurité totale
                                     </label>
                                 </div>
                             </div>
@@ -249,6 +246,12 @@
                                     <input class="form-check-input" type="checkbox" id="imprimante" name="materials" value="Imprimante">
                                     <label class="form-check-label" for="imprimante">
                                         Imprimante
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="aucun_materiel_salle" name="materials" value="Pas de matériel spécifique à la salle">
+                                    <label class="form-check-label" for="aucun_materiel_salle">
+                                        Pas de matériel spécifique à la salle
                                     </label>
                                 </div>
                             </div>
@@ -443,29 +446,22 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById(prefix + '_m').value = minutes % 60;
     }
     function getCustomDurationValue(prefix) {
-        if (!document.getElementById(prefix + '_check').checked) return null;
+        const niveau = document.getElementById('class_name').value;
         const h = parseInt(document.getElementById(prefix + '_h').value) || 0;
         const m = parseInt(document.getElementById(prefix + '_m').value) || 0;
-        return h * 60 + m;
+        const minutes = h * 60 + m;
+        // On ne renvoie une durée personnalisée que si elle diffère de la durée par défaut du niveau
+        return (minutes !== dureeParNiveau(niveau)) ? minutes : null;
     }
 
     document.getElementById('class_name').addEventListener('change', function() {
-        if (document.getElementById('custom_duration_check').checked) {
-            setCustomDurationInputs('custom_duration', dureeParNiveau(this.value));
-        }
-    });
-    document.getElementById('custom_duration_check').addEventListener('change', function() {
-        document.getElementById('custom_duration_inputs').style.display = this.checked ? 'flex' : 'none';
-        if (this.checked) {
-            const niveau = document.getElementById('class_name').value;
-            setCustomDurationInputs('custom_duration', dureeParNiveau(niveau));
-        }
+        setCustomDurationInputs('custom_duration', dureeParNiveau(this.value));
     });
     document.getElementById('materialRequestForm').addEventListener('reset', function() {
-        document.getElementById('custom_duration_check').checked = false;
-        document.getElementById('custom_duration_inputs').style.display = 'none';
-        setCustomDurationInputs('custom_duration', 0);
+        setCustomDurationInputs('custom_duration', dureeParNiveau(document.getElementById('class_name').value));
     });
+    // Pré-remplir la durée à l'ouverture du formulaire
+    setCustomDurationInputs('custom_duration', dureeParNiveau(document.getElementById('class_name').value));
 
     async function loadTpTemplates() {
         const teacherId = teacherSelect.value;
@@ -518,10 +514,11 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('eviers').checked = materials.includes('évier') || materials.includes('evier');
         document.getElementById('hotte').checked = materials.includes('hotte');
         document.getElementById('bancs_optiques').checked = materials.includes('bancs optiques');
-        document.getElementById('oscilloscopes').checked = materials.includes('oscilloscope');
+        document.getElementById('obscurite_totale').checked = materials.includes('obscurité totale') || materials.includes('obscurite totale');
         document.getElementById('becs_electriques').checked = materials.includes('becs électriques') || materials.includes('becs electriques');
         document.getElementById('support_filtration').checked = materials.includes('support de filtration');
         document.getElementById('imprimante').checked = materials.includes('imprimante');
+        document.getElementById('aucun_materiel_salle').checked = materials.includes('pas de matériel spécifique') || materials.includes('pas de materiel specifique');
 
         // Pré-charger l'image si disponible
         const imageUrlInput = document.getElementById('image_url');
@@ -653,6 +650,22 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialiser l'état au chargement
     toggleSpecialModes();
+
+    // "Pas de matériel spécifique à la salle" est exclusif des autres cases du matériel peu mobile
+    const aucunMaterielSalle = document.getElementById('aucun_materiel_salle');
+    const autresMaterielsSalle = document.querySelectorAll('input[name="materials"]:not(#aucun_materiel_salle)');
+    aucunMaterielSalle.addEventListener('change', function() {
+        if (this.checked) {
+            autresMaterielsSalle.forEach(cb => { cb.checked = false; });
+        }
+    });
+    autresMaterielsSalle.forEach(cb => {
+        cb.addEventListener('change', function() {
+            if (this.checked) {
+                aucunMaterielSalle.checked = false;
+            }
+        });
+    });
 
     // Gestion des jours/horaires ajoutés
     let daysHoraires = [];
@@ -799,12 +812,19 @@ document.addEventListener('DOMContentLoaded', function() {
             data.group_count = '1';
         } else {
             // Mode normal : récupération du matériel spécifique depuis les checkboxes
-            const specificMaterials = [];
             const materialCheckboxes = document.querySelectorAll('input[name="materials"]:checked');
+            if (materialCheckboxes.length === 0) {
+                showErrorToast('Veuillez cocher au moins une option dans "Matériel peu mobile à avoir dans la salle" (ou "Pas de matériel spécifique à la salle").');
+                return;
+            }
+
+            const specificMaterials = [];
             materialCheckboxes.forEach(checkbox => {
-                specificMaterials.push(checkbox.value);
+                if (checkbox.value !== 'Pas de matériel spécifique à la salle') {
+                    specificMaterials.push(checkbox.value);
+                }
             });
-            
+
             // Récupération du matériel libre depuis la zone de texte
             const freeTextMaterial = document.getElementById('selected_materials').value;
             

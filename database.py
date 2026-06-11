@@ -172,7 +172,7 @@ def init_database():
             eviers INTEGER DEFAULT 0,
             hotte INTEGER DEFAULT 0,
             bancs_optiques INTEGER DEFAULT 0,
-            oscilloscopes INTEGER DEFAULT 0,
+            obscurite_totale INTEGER DEFAULT 0,
             becs_electriques INTEGER DEFAULT 0,
             support_filtration INTEGER DEFAULT 0,
             imprimante INTEGER DEFAULT 0,
@@ -180,7 +180,23 @@ def init_database():
             created_at {timestamp_default}
         )
     ''')
-    
+
+    # Migration : renommer la colonne oscilloscopes en obscurite_totale (matériel peu mobile)
+    if db_type == 'postgresql':
+        cursor.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='rooms' AND column_name='oscilloscopes'
+        """)
+        has_old_column = cursor.fetchone() is not None
+    else:
+        cursor.execute("PRAGMA table_info(rooms)")
+        has_old_column = any(col[1] == 'oscilloscopes' for col in cursor.fetchall())
+    if has_old_column:
+        try:
+            cursor.execute('ALTER TABLE rooms RENAME COLUMN oscilloscopes TO obscurite_totale')
+        except (sqlite3.OperationalError, psycopg2.errors.DuplicateColumn):
+            pass
+
     # Create student numbers table for 2nd level classes
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS student_numbers (
@@ -268,7 +284,7 @@ def init_database():
             # PHYSIQUE (ordre demandé: C23, C25, C27, C22, C24)
             ('C23', 'physique', 10, 53, 0, 0, 0, 0, 0, 0, 0, 1),
             ('C25', 'physique', 20, 40, 0, 0, 1, 0, 0, 0, 0, 0),
-            ('C27', 'physique', 20, 40, 0, 0, 0, 1, 0, 0, 1, 0),
+            ('C27', 'physique', 20, 40, 0, 0, 0, 0, 0, 0, 1, 0),
             ('C22', 'mixte', 10, 29, 5, 1, 0, 0, 0, 0, 0, 0),
             ('C24', 'mixte', 20, 30, 10, 0, 0, 0, 0, 0, 0, 0),
             # CHIMIE (ordre demandé: C32, C33, C31)
@@ -281,9 +297,9 @@ def init_database():
         
         placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 12)
         cursor.executemany(f'''
-            INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
-                             bancs_optiques, oscilloscopes, becs_electriques, 
-                             support_filtration, imprimante, examen) 
+            INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte,
+                             bancs_optiques, obscurite_totale, becs_electriques,
+                             support_filtration, imprimante, examen)
             VALUES ({placeholders})
         ''', sample_rooms)
     
@@ -807,7 +823,7 @@ def get_all_rooms():
             'eviers': room[5],
             'hotte': room[6],
             'bancs_optiques': room[7],
-            'oscilloscopes': room[8],
+            'obscurite_totale': room[8],
             'becs_electriques': room[9],
             'support_filtration': room[10],
             'imprimante': room[11],
@@ -829,8 +845,8 @@ def update_room(room_id, room_data):
             UPDATE rooms SET 
                 name = {placeholder}, type = {placeholder}, ordinateurs = {placeholder}, 
                 chaises = {placeholder}, eviers = {placeholder}, hotte = {placeholder}, 
-                bancs_optiques = {placeholder}, oscilloscopes = {placeholder}, 
-                becs_electriques = {placeholder}, support_filtration = {placeholder}, 
+                bancs_optiques = {placeholder}, obscurite_totale = {placeholder},
+                becs_electriques = {placeholder}, support_filtration = {placeholder},
                 imprimante = {placeholder}, examen = {placeholder}
             WHERE id = {placeholder}
         ''', (
@@ -841,7 +857,7 @@ def update_room(room_id, room_data):
             room_data.get('eviers', 0),
             room_data.get('hotte', 0),
             room_data.get('bancs_optiques', 0),
-            room_data.get('oscilloscopes', 0),
+            room_data.get('obscurite_totale', 0),
             room_data.get('becs_electriques', 0),
             room_data.get('support_filtration', 0),
             room_data.get('imprimante', 0),
@@ -886,7 +902,7 @@ def import_rooms_from_csv_content(csv_content):
                 int(row[4]),  # eviers
                 int(row[5]),  # hotte
                 int(row[6]),  # bancs_optiques
-                int(row[7]),  # oscilloscopes
+                int(row[7]),  # obscurite_totale
                 int(row[8]),  # becs_electriques
                 int(row[9]),  # support_filtration
                 int(row[10]), # imprimante
@@ -899,9 +915,9 @@ def import_rooms_from_csv_content(csv_content):
         
         for room_data in rooms_data:
             cursor.execute(f'''
-                INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte, 
-                                 bancs_optiques, oscilloscopes, becs_electriques, 
-                                 support_filtration, imprimante, examen) 
+                INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte,
+                                 bancs_optiques, obscurite_totale, becs_electriques,
+                                 support_filtration, imprimante, examen)
                 VALUES ({placeholders})
             ''', room_data)
         

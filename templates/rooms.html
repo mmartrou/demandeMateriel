@@ -38,7 +38,7 @@
                                     <th>Éviers</th>
                                     <th>Hotte</th>
                                     <th>Bancs opt.</th>
-                                    <th>Oscillo.</th>
+                                    <th>Obsc. tot.</th>
                                     <th>Becs élec.</th>
                                     <th>Filtration</th>
                                     <th>Imprimante</th>
@@ -71,7 +71,7 @@
                         <label for="csvFile" class="form-label">Fichier CSV</label>
                         <input type="file" class="form-control" id="csvFile" accept=".csv" required>
                         <div class="form-text">
-                            Format attendu: nom,type,ordinateurs,chaises,eviers,hotte,bancs_optiques,oscilloscopes,becs_electriques,support_filtration,imprimante,examen
+                            Format attendu: nom,type,ordinateurs,chaises,eviers,hotte,bancs_optiques,obscurite_totale,becs_electriques,support_filtration,imprimante,examen
                         </div>
                     </div>
                     <div class="alert alert-warning">
@@ -151,8 +151,8 @@
                         </div>
                         <div class="col-md-3">
                             <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="editRoomOscilloscopes">
-                                <label class="form-check-label" for="editRoomOscilloscopes">Oscilloscopes</label>
+                                <input type="checkbox" class="form-check-input" id="editRoomObscuriteTotale">
+                                <label class="form-check-label" for="editRoomObscuriteTotale">Obscurité totale</label>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -225,7 +225,7 @@ function displayRooms() {
                 <td>${room.eviers}</td>
                 <td>${room.hotte ? '✓' : '✗'}</td>
                 <td>${room.bancs_optiques ? '✓' : '✗'}</td>
-                <td>${room.oscilloscopes ? '✓' : '✗'}</td>
+                <td>${room.obscurite_totale ? '✓' : '✗'}</td>
                 <td>${room.becs_electriques ? '✓' : '✗'}</td>
                 <td>${room.support_filtration ? '✓' : '✗'}</td>
                 <td>${room.imprimante ? '✓' : '✗'}</td>
@@ -253,7 +253,7 @@ function editRoom(roomId) {
     document.getElementById('editRoomEviers').value = room.eviers;
     document.getElementById('editRoomHotte').checked = room.hotte;
     document.getElementById('editRoomBancsOptiques').checked = room.bancs_optiques;
-    document.getElementById('editRoomOscilloscopes').checked = room.oscilloscopes;
+    document.getElementById('editRoomObscuriteTotale').checked = room.obscurite_totale;
     document.getElementById('editRoomBecsElectriques').checked = room.becs_electriques;
     document.getElementById('editRoomSupportFiltration').checked = room.support_filtration;
     document.getElementById('editRoomImprimante').checked = room.imprimante;
@@ -273,7 +273,7 @@ async function saveRoom() {
             eviers: parseInt(document.getElementById('editRoomEviers').value),
             hotte: document.getElementById('editRoomHotte').checked ? 1 : 0,
             bancs_optiques: document.getElementById('editRoomBancsOptiques').checked ? 1 : 0,
-            oscilloscopes: document.getElementById('editRoomOscilloscopes').checked ? 1 : 0,
+            obscurite_totale: document.getElementById('editRoomObscuriteTotale').checked ? 1 : 0,
             becs_electriques: document.getElementById('editRoomBecsElectriques').checked ? 1 : 0,
             support_filtration: document.getElementById('editRoomSupportFiltration').checked ? 1 : 0,
             imprimante: document.getElementById('editRoomImprimante').checked ? 1 : 0,

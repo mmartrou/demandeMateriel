@@ -263,8 +263,9 @@ function parseAndSetSpecificMaterials(selectedMaterials) {
     document.querySelectorAll('input[name="editMaterials"]').forEach(cb => { cb.checked = false; });
     const specificMap = {
         'Éviers': 'editEviers', 'Hotte': 'editHotte', 'Bancs optiques': 'editBancsOptiques',
-        'Oscilloscopes': 'editOscilloscopes', 'Becs électriques': 'editBecsElectriques',
-        'Support de filtration': 'editSupportFiltration', 'Imprimante': 'editImprimante'
+        'Obscurité totale': 'editObscuriteTotale', 'Becs électriques': 'editBecsElectriques',
+        'Support de filtration': 'editSupportFiltration', 'Imprimante': 'editImprimante',
+        'Pas de matériel spécifique à la salle': 'editAucunMaterielSalle'
     };
     const remaining = [];
     if (selectedMaterials && selectedMaterials.trim()) {
@@ -472,7 +473,12 @@ function saveRequestChanges() {
         formData.selected_materials = 'Examen';
         formData.material_description = "Surveillance d'examen";
     } else {
-        const specific = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked')).map(cb => cb.value);
+        const checkedMaterials = document.querySelectorAll('input[name="editMaterials"]:checked');
+        if (checkedMaterials.length === 0) {
+            showErrorToast('Veuillez cocher au moins une option dans "Matériel peu mobile à avoir dans la salle" (ou "Pas de matériel spécifique à la salle").');
+            return;
+        }
+        const specific = Array.from(checkedMaterials).map(cb => cb.value).filter(v => v !== 'Pas de matériel spécifique à la salle');
         const freeText = document.getElementById('editMaterialDescription').value;
         let allMats = [...specific];
         if (freeText && freeText.trim()) allMats.push(freeText.trim());
@@ -746,5 +752,23 @@ document.addEventListener('DOMContentLoaded', function() {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', toggleEditSpecialModes);
     });
+
+    // "Pas de matériel spécifique à la salle" est exclusif des autres cases du matériel peu mobile
+    const editAucunMaterielSalle = document.getElementById('editAucunMaterielSalle');
+    const editAutresMaterielsSalle = document.querySelectorAll('input[name="editMaterials"]:not(#editAucunMaterielSalle)');
+    if (editAucunMaterielSalle) {
+        editAucunMaterielSalle.addEventListener('change', function() {
+            if (this.checked) {
+                editAutresMaterielsSalle.forEach(cb => { cb.checked = false; });
+            }
+        });
+        editAutresMaterielsSalle.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.checked) {
+                    editAucunMaterielSalle.checked = false;
+                }
+            });
+        });
+    }
 });
 </script>
