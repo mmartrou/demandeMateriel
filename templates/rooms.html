@@ -219,7 +219,7 @@ function displayRooms() {
         const row = `
             <tr>
                 <td><strong>${room.name}</strong></td>
-                <td><span class="badge bg-${room.type === 'physique' ? 'warning' : room.type === 'chimie' ? 'info' : 'secondary'}">${room.type}</span></td>
+                <td><span class="badge bg-${room.type === 'physique' ? 'success' : room.type === 'chimie' ? 'info' : 'warning'}">${room.type}</span></td>
                 <td>${room.ordinateurs}</td>
                 <td>${room.chaises}</td>
                 <td>${room.eviers}</td>
