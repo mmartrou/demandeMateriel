@@ -151,7 +151,9 @@ def _is_admin_only_route(path, method):
         '/api/students',
         '/api/planning-editor',
         '/api/save-planning',
-        '/api/get-planning'
+        '/api/get-planning',
+        '/planning',
+        '/api/generate-planning',
     )
     return any(path.startswith(prefix) for prefix in admin_prefixes)
 
@@ -1210,6 +1212,29 @@ def api_copy_tp_template():
         return jsonify({'success': True})
     except Exception as e:
         return api_error('Erreur lors de la copie du template TP', e)
+
+
+@app.route('/api/tp-templates/<int:template_id>', methods=['DELETE'])
+def api_delete_tp_template(template_id):
+    """Supprime un template TP."""
+    try:
+        user = _get_current_user()
+        if not user:
+            return jsonify({'error': 'Non autorisé'}), 401
+        template = get_tp_template_by_id(template_id)
+        if not template:
+            return jsonify({'error': 'Template non trouvé'}), 404
+        if not _is_owner_or_admin(template.get('teacher_id')):
+            return jsonify({'error': 'Non autorisé'}), 403
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'DELETE FROM tp_templates WHERE id = {placeholder}', (template_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la suppression du template TP', e)
 
 
 @app.route('/api/tp-templates/<int:template_id>', methods=['PUT'])

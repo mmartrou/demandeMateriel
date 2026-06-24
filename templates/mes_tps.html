@@ -169,7 +169,6 @@
                 const delBtn = modalEl.querySelector('.modal-footer .btn-danger');
                 const prepBtn = document.getElementById('modalPreparedBtn');
                 if (saveBtn) saveBtn.style.display = editable ? '' : 'none';
-                if (delBtn) delBtn.style.display = 'none';
                 if (prepBtn) prepBtn.style.display = 'none';
 
                 // Remplacer le bouton sauvegarder par notre propre logique
@@ -178,6 +177,17 @@
                     newBtn.removeAttribute('onclick');
                     saveBtn.replaceWith(newBtn);
                     newBtn.addEventListener('click', () => saveTpTemplate(templateId));
+                }
+
+                // Remplacer le bouton supprimer
+                if (delBtn && editable) {
+                    const newDelBtn = delBtn.cloneNode(true);
+                    newDelBtn.removeAttribute('onclick');
+                    delBtn.replaceWith(newDelBtn);
+                    newDelBtn.style.display = '';
+                    newDelBtn.addEventListener('click', () => deleteTpTemplate(templateId));
+                } else if (delBtn) {
+                    delBtn.style.display = 'none';
                 }
 
                 (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
@@ -242,6 +252,20 @@
             document.getElementById('levelSelect').dispatchEvent(new Event('change'));
         })
         .catch(err => showErrorToast('Erreur : ' + err.message));
+    }
+
+    function deleteTpTemplate(templateId) {
+        if (!confirm('Supprimer ce TP de vos templates ? Les demandes existantes ne seront pas affectées.')) return;
+        fetch(`/api/tp-templates/${templateId}`, { method: 'DELETE' })
+            .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+            .then(() => {
+                const modalEl = document.getElementById('editRequestModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                showSuccessToast('Template TP supprimé');
+                document.getElementById('levelSelect').dispatchEvent(new Event('change'));
+            })
+            .catch(err => showErrorToast('Erreur : ' + err.message));
     }
 
     function copyTpTemplate(templateId) {
