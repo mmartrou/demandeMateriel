@@ -1666,7 +1666,35 @@ def upsert_tp_template(teacher_id, level, request_name, material_description,
     except Exception as e:
         logger.error(f"Erreur upsert_tp_template: {e}")
         return False
-
+    
+def get_tp_template_by_id(template_id):
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'''
+            SELECT id, teacher_id, level, request_name, material_description,
+                   selected_materials, material_prof, computers_needed,
+                   group_count, notes, image_url, room_type
+            FROM tp_templates
+            WHERE id = {placeholder}
+        ''', (template_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return row
+        return {
+            'id': row[0], 'teacher_id': row[1], 'level': row[2], 'request_name': row[3],
+            'material_description': row[4], 'selected_materials': row[5],
+            'material_prof': row[6], 'computers_needed': row[7],
+            'group_count': row[8], 'notes': row[9], 'image_url': row[10],
+            'room_type': row[11]
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_tp_template_by_id: {e}")
+        return None
 
 if __name__ == '__main__':
     init_database()

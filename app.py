@@ -24,7 +24,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
                       pre_associate_teacher, get_all_users, add_teacher, delete_teacher,
-                      get_tp_templates, upsert_tp_template)
+                      get_tp_templates, upsert_tp_template, get_tp_template_by_id)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
@@ -942,6 +942,15 @@ def view_requests():
     teachers = get_all_teachers()
     return render_template('requests.html', teachers=teachers)
 
+@app.route('/mes-tps')
+def mes_tps():
+    """Page pour voir les TP enregistrés par l'enseignant connecté"""
+    user = _get_current_user()
+    if not user or not user.get('teacher_id'):
+        return redirect(url_for('login'))
+    teachers = get_all_teachers()
+    return render_template('mes_tps.html', teachers=teachers)
+
 @app.route('/api/requests/prepared-states', methods=['GET'])
 def api_requests_prepared_states():
     """Returns {id: prepared} for a comma-separated list of request IDs."""
@@ -1123,6 +1132,17 @@ def api_get_tp_templates():
         return jsonify(templates)
     except Exception as e:
         return api_error('Erreur lors de la récupération des templates TP', e)
+    
+@app.route('/api/tp-templates/<int:template_id>', methods=['GET'])
+def api_get_tp_template_by_id(template_id):
+    """Retourne un template TP par son ID."""
+    try:
+        template = get_tp_template_by_id(template_id)
+        if not template:
+            return jsonify({'error': 'Template non trouvé'}), 404
+        return jsonify(template)
+    except Exception as e:
+        return api_error('Erreur lors de la récupération du template TP', e)
 
 @app.route('/api/requests/<int:request_id>/room-type', methods=['PUT'])
 def api_update_room_type(request_id):

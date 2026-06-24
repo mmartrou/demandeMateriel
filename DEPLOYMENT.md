@@ -74,7 +74,28 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
-## 5) Service systemd (Gunicorn)
+## 5) Lancement local (développement)
+
+Pour tester l'application sur votre machine avant de déployer :
+
+```bash
+# Activer l'environnement virtuel
+# Linux / macOS
+source .venv/bin/activate
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Lancer le serveur de développement Flask (port 8080)
+python app.py
+```
+
+L'application est accessible sur `http://localhost:8080`.
+
+Flask recharge automatiquement le code quand un fichier est modifié (mode debug activé par défaut dans `app.py`).
+
+> **Note :** un fichier `.env` valide est nécessaire (cf. section 4). Pour un test rapide en local avec SQLite, seuls `FLASK_SECRET_KEY` et `GOOGLE_CLIENT_ID` sont indispensables.
+
+## 6) Service systemd (Gunicorn)
 
 Copier le modèle fourni dans ce repo:
 
@@ -96,7 +117,7 @@ Logs en direct:
 sudo journalctl -u demande-materiel -f
 ```
 
-## 6) Nginx reverse proxy
+## 7) Nginx reverse proxy
 
 Copier le modèle:
 
@@ -116,7 +137,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 7) HTTPS avec Let's Encrypt
+## 8) HTTPS avec Let's Encrypt
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
@@ -129,14 +150,14 @@ Tester le renouvellement auto:
 sudo certbot renew --dry-run
 ```
 
-## 8) Vérifications rapides
+## 9) Vérifications rapides
 
 - `https://example.com` charge bien la page
 - `sudo systemctl status demande-materiel`
 - `sudo nginx -t`
 - `curl -I https://example.com`
 
-## 9) Déploiement des mises à jour
+## 10) Déploiement des mises à jour
 
 ### Étape 1 — Pousser les changements vers GitHub (depuis votre machine locale)
 
@@ -168,7 +189,7 @@ sudo systemctl restart demande-materiel
 sudo systemctl status demande-materiel --no-pager
 ```
 
-## 10) Notes importantes pour ce projet
+## 11) Notes importantes pour ce projet
 
 - Les routes admin/API sensibles exigent `ADMIN_TOKEN` si défini.
 - Depuis un client JS, envoyer le token via:

@@ -39,6 +39,11 @@
                                 🗓️ Calendrier
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('mes_tps') }}">
+                                📚 Mes TPs
+                            </a>
+                        </li>
                         {% if current_user.role in ('admin', 'labo') %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('planning') }}">
