@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>Mes demandes de TP</h3>
+    
+    <!-- Sélecteur de niveau -->
+    <select id="levelSelect" class="form-select w-auto mb-3">
+        <option value="">-- Choisir un niveau --</option>
+        <!-- Mêmes options que _request_modal.html lignes 64-78 -->
+        <option value="6ème">6ème</option>
+        <option value="5ème">5ème</option>
+        <option value="4ème">4ème</option>
+        <option value="3ème">3ème</option>
+        <option value="SNT">SNT</option>
+        <option value="SI">SI</option>
+        <option value="2nd Classe">2nd Classe</option>
+        <option value="2nd TP">2nd TP</option>
+        <option value="AP PP">AP PP</option>
+        <option value="AP 2nd">AP 2nd</option>
+        <option value="1ère ES">1ère ES</option>
+        <option value="Terminale ES">Terminale ES</option>
+        <option value="1ère Spécialité">1ère Spécialité</option>
+        <option value="Terminale Spécialité">Terminale Spécialité</option>
+    </select>
+    
+    <!-- Liste de mes TPs -->
+    <div id="tp-list"></div>
+    
+    <hr>
+    
+    <!-- Section autres enseignants (cachée par défaut) -->
+    <button id="btnVoirAutres" class="btn btn-outline-secondary">
+        Voir les TPs des autres enseignants
+    </button>
+    
+    <div id="autres-section" style="display:none">
+        <select id="otherTeacherSelect" class="form-select w-auto mb-2">
+            {% for t in teachers %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+        </select>
+        <select id="otherLevelSelect" class="form-select w-auto mb-3">
+            <option value="">-- Choisir un niveau --</option>
+            <option value="6ème">6ème</option>
+            <option value="5ème">5ème</option>
+            <option value="4ème">4ème</option>
+            <option value="3ème">3ème</option>
+            <option value="SNT">SNT</option>
+            <option value="SI">SI</option>
+            <option value="2nd Classe">2nd Classe</option>
+            <option value="2nd TP">2nd TP</option>
+            <option value="AP PP">AP PP</option>
+            <option value="AP 2nd">AP 2nd</option>
+            <option value="1ère ES">1ère ES</option>
+            <option value="Terminale ES">Terminale ES</option>
+            <option value="1ère Spécialité">1ère Spécialité</option>
+            <option value="Terminale Spécialité">Terminale Spécialité</option>
+        </select>
+        <div id="autres-tp-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% include '_request_modal.html' %}
+{% include '_request_modal_js.html' %}
+<script>
+    const myTeacherId = {{ current_user.teacher_id | tojson }};
+
+    document.getElementById('levelSelect').addEventListener('change', function() {
+        if (!this.value) return;
+        fetch('/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}')
+            .then(r => r.json())
+            .then(templates => renderTpList('tp-list', templates, true));  // true = éditable
+    });
+
+    function renderTpList(containerId, templates, editable) {
+        const container = document.getElementById(containerId);
+        if (!templates.length) {
+            container.innerHTML = '<p class="text-muted">Aucun TP trouvé pour ce niveau.</p>';
+            return;
+        }
+        let html = '<div class="list-group">';
+        for (const tp of templates) {
+            html += `
+                <div class="list-group-itm list-group-item-action"
+                    ondblclick="openTpDetail(${tp.id}, ${editable})"
+                    style="cursor: pointer;">
+                    <strong>${tp.request_name}</strong>
+                    <small class="text-muted ms-2">${tp.room_type || 'Mixte'}</small>
+                </div>`;
+        }
+        html += '</div>'; 
+        container.innerHTML = html;
+    }
+
+    function openTpDetail(templateId, editable) {
+        // Charge le template TP et ouvre la modale
+        // Si !editable -> désactiver les champs et cacher les boutons sauvegarder/supprimer
+        fetch('/api/tp-templates/${templateId}')
+            .then(r => r.json())
+            .then(tp => {
+                // Remplir la modale avec les données du TP
+                // Si !editable : désactiver tous les inputs
+                document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea').forEach(el => el.disabled = !editable);
+            // Cacher les boutons sauvegarder et supprimer si lecture seule
+            document.getElementById('btnSave').style.display = editable ? '' : 'none';
+            document.getElementById('btnDelete').style.display = editable ? '' : 'none';
+            
+            new bootstrap.Modal(document.getElementById('editRequestModal')).show();
+            });
+    }
+
+</script>
+{% endblock %}
