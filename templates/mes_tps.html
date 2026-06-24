@@ -70,7 +70,7 @@
 
     document.getElementById('levelSelect').addEventListener('change', function() {
         if (!this.value) return;
-        fetch('/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}')
+        fetch(`/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}`)
             .then(r => r.json())
             .then(templates => renderTpList('tp-list', templates, true));  // true = éditable
     });
@@ -98,7 +98,7 @@
     function openTpDetail(templateId, editable) {
         // Charge le template TP et ouvre la modale
         // Si !editable -> désactiver les champs et cacher les boutons sauvegarder/supprimer
-        fetch('/api/tp-templates/${templateId}')
+        fetch(`/api/tp-templates/${templateId}`)
             .then(r => r.json())
             .then(tp => {
                 // Remplir la modale avec les données du TP
@@ -112,5 +112,17 @@
             });
     }
 
+    document.getElementById('btnVoirAutres').addEventListener('click', function() {
+        document.getElementById('autres-section').style.display = ''
+        this.style.display = 'none';
+    });
+
+    document.getElementById('otherLevelSelect').addEventListener('change', function() {
+        const otherId = document.getElementById('otherTeacherSelect').value;
+        if (!this.value || !otherId) return;
+        fetch(`/api/tp-templates?teacher_id=${otherId}&level=${encodeURIComponent(this.value)}`)
+            .then(r => r.json())
+            .then(templates => renderTpList('autres-tp-list', templates, false));  // false = lecture seule
+    });
 </script>
 {% endblock %}
