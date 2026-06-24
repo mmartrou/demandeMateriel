@@ -174,6 +174,8 @@ def _is_public_route(path):
         '/logout',
         '/api/me',
     }
+    if path == '/dev-login' and os.environ.get('FLASK_ENV') == 'development':
+        return True
     return path in public_routes or path.startswith('/static/')
 
 # Middleware pour gérer les erreurs d'encodage dans les requêtes
@@ -349,6 +351,38 @@ def logout():
     if request.path.startswith('/api/'):
         return jsonify({'success': True})
     return redirect(url_for('login'))
+
+
+if os.environ.get('FLASK_ENV') == 'development' and not os.environ.get('RAILWAY_ENVIRONMENT'):
+    @app.route('/dev-login')
+    def dev_login():
+        """Connexion rapide sans Google OAuth (dev uniquement)."""
+        if request.host.split(':')[0] not in ('127.0.0.1', 'localhost'):
+            abort(404)
+        teachers = get_all_teachers()
+        teacher_id = request.args.get('teacher_id', type=int)
+        role = request.args.get('role', 'teacher')
+        if teacher_id:
+            teacher = next((t for t in teachers if int(t['id']) == teacher_id), None)
+            if not teacher:
+                return f"Teacher id {teacher_id} introuvable", 404
+            session.clear()
+            session.permanent = True
+            session['user'] = {
+                'id': teacher_id,
+                'email': f"dev-{teacher_id}@local",
+                'full_name': teacher['name'],
+                'role': role,
+                'teacher_id': teacher_id,
+                'teacher_name': teacher['name']
+            }
+            session['acting_mode'] = 'admin' if role == 'admin' else 'teacher'
+            return redirect(url_for('index'))
+        return '<h3>Dev Login</h3><ul>' + ''.join(
+            f'<li><a href="?teacher_id={t["id"]}&role=teacher">{t["name"]}</a>'
+            f' — <a href="?teacher_id={t["id"]}&role=admin">(admin)</a></li>'
+            for t in teachers
+        ) + '</ul>'
 
 
 @app.route('/api/me', methods=['GET'])
@@ -1143,6 +1177,71 @@ def api_get_tp_template_by_id(template_id):
         return jsonify(template)
     except Exception as e:
         return api_error('Erreur lors de la récupération du template TP', e)
+
+@app.route('/api/tp-templates/copy', methods=['POST'])
+def api_copy_tp_template():
+    """Copie un template TP d'un autre enseignant vers l'enseignant connecté."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        data = request.get_json(silent=True) or {}
+        source_id = data.get('source_id')
+        new_name = (data.get('request_name') or '').strip()
+        level = (data.get('level') or '').strip()
+        if not source_id or not new_name or not level:
+            return jsonify({'error': 'source_id, request_name et level sont requis'}), 400
+        source = get_tp_template_by_id(source_id)
+        if not source:
+            return jsonify({'error': 'Template source non trouvé'}), 404
+        upsert_tp_template(
+            teacher_id=user['teacher_id'],
+            level=level,
+            request_name=new_name,
+            material_description=source.get('material_description', ''),
+            selected_materials=source.get('selected_materials', ''),
+            material_prof=source.get('material_prof', ''),
+            computers_needed=source.get('computers_needed', 0),
+            group_count=source.get('group_count', 1),
+            notes=source.get('notes', ''),
+            image_url=source.get('image_url', ''),
+            room_type=source.get('room_type', 'Mixte')
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la copie du template TP', e)
+
+
+@app.route('/api/tp-templates/<int:template_id>', methods=['PUT'])
+def api_update_tp_template(template_id):
+    """Met à jour un template TP existant."""
+    try:
+        user = _get_current_user()
+        if not user:
+            return jsonify({'error': 'Non autorisé'}), 401
+        template = get_tp_template_by_id(template_id)
+        if not template:
+            return jsonify({'error': 'Template non trouvé'}), 404
+        if not _is_owner_or_admin(template.get('teacher_id')):
+            return jsonify({'error': 'Non autorisé'}), 403
+        data = request.get_json(silent=True) or {}
+        upsert_tp_template(
+            teacher_id=template['teacher_id'],
+            level=template.get('level', ''),
+            request_name=data.get('request_name', template.get('request_name', '')),
+            material_description=data.get('material_description', ''),
+            selected_materials=data.get('selected_materials', ''),
+            material_prof=data.get('material_prof', ''),
+            computers_needed=int(data.get('computers_needed', 0)),
+            group_count=int(data.get('group_count', 1)),
+            notes=data.get('notes', ''),
+            image_url=data.get('image_url', ''),
+            room_type=data.get('room_type', 'Mixte')
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la mise à jour du template TP', e)
+
 
 @app.route('/api/requests/<int:request_id>/room-type', methods=['PUT'])
 def api_update_room_type(request_id):

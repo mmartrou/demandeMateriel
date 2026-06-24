@@ -66,13 +66,26 @@
 {% include '_request_modal.html' %}
 {% include '_request_modal_js.html' %}
 <script>
-    const myTeacherId = {{ current_user.teacher_id | tojson }};
-
+    console.log('mes_tps.js chargé, myTeacherId =', myTeacherId);
     document.getElementById('levelSelect').addEventListener('change', function() {
         if (!this.value) return;
-        fetch(`/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}`)
-            .then(r => r.json())
-            .then(templates => renderTpList('tp-list', templates, true));  // true = éditable
+        const url = `/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}`;
+        console.log('Fetching:', url);
+        fetch(url)
+            .then(r => {
+                if (!r.ok) return r.json().then(err => { throw new Error(err.error || r.statusText); });
+                return r.json();
+            })
+            .then(templates => {
+                if (!Array.isArray(templates)) {
+                    document.getElementById('tp-list').innerHTML = '<p class="text-danger">Réponse inattendue du serveur.</p>';
+                    return;
+                }
+                renderTpList('tp-list', templates, true);
+            })
+            .catch(err => {
+                document.getElementById('tp-list').innerHTML = `<p class="text-danger">Erreur : ${err.message}</p>`;
+            });
     });
 
     function renderTpList(containerId, templates, editable) {
@@ -83,46 +96,258 @@
         }
         let html = '<div class="list-group">';
         for (const tp of templates) {
+            const action = editable
+                ? `ondblclick="openTpDetail(${tp.id}, true)"`
+                : `ondblclick="copyTpTemplate(${tp.id})"`;
             html += `
-                <div class="list-group-itm list-group-item-action"
-                    ondblclick="openTpDetail(${tp.id}, ${editable})"
-                    style="cursor: pointer;">
+                <div class="list-group-item list-group-item-action"
+                    ${action} style="cursor: pointer;">
                     <strong>${tp.request_name}</strong>
                     <small class="text-muted ms-2">${tp.room_type || 'Mixte'}</small>
+                    ${!editable ? '<span class="badge bg-outline-secondary float-end">Double-clic pour copier</span>' : ''}
                 </div>`;
         }
-        html += '</div>'; 
+        html += '</div>';
         container.innerHTML = html;
     }
 
+    let currentTpTemplateId = null;
+
     function openTpDetail(templateId, editable) {
-        // Charge le template TP et ouvre la modale
-        // Si !editable -> désactiver les champs et cacher les boutons sauvegarder/supprimer
         fetch(`/api/tp-templates/${templateId}`)
             .then(r => r.json())
             .then(tp => {
-                // Remplir la modale avec les données du TP
-                // Si !editable : désactiver tous les inputs
-                document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea').forEach(el => el.disabled = !editable);
-            // Cacher les boutons sauvegarder et supprimer si lecture seule
-            document.getElementById('btnSave').style.display = editable ? '' : 'none';
-            document.getElementById('btnDelete').style.display = editable ? '' : 'none';
-            
-            new bootstrap.Modal(document.getElementById('editRequestModal')).show();
-            });
+                currentTpTemplateId = templateId;
+
+                const fakeRequest = {
+                    id: null,
+                    teacher_id: tp.teacher_id || myTeacherId,
+                    request_name: tp.request_name || '',
+                    request_date: '',
+                    horaire: '',
+                    class_name: tp.level || '',
+                    material_description: tp.material_description || '',
+                    selected_materials: tp.selected_materials || '',
+                    material_prof: tp.material_prof || '',
+                    computers_needed: tp.computers_needed || 0,
+                    group_count: tp.group_count || 1,
+                    notes: tp.notes || '',
+                    image_url: tp.image_url || '',
+                    room_type: tp.room_type || 'Mixte',
+                    prepared: false
+                };
+
+                const modalEl = document.getElementById('editRequestModal');
+                populateEditForm(fakeRequest);
+
+                // Cacher les champs non pertinents pour un template
+                ['editDate', 'editHoraire'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+                });
+                const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
+                if (relatedCard) relatedCard.style.display = 'none';
+
+                // Ajouter un champ d'upload d'image
+                const imageSection = document.getElementById('editImageSection');
+                if (imageSection && editable) {
+                    const existingImg = imageSection.querySelector('img');
+                    const previewHtml = existingImg ? existingImg.outerHTML : '';
+                    imageSection.innerHTML = `
+                        ${previewHtml ? `<div class="mb-2 text-center">${previewHtml}</div>` : ''}
+                        <label class="form-label">📷 Image du TP</label>
+                        <input type="file" class="form-control" id="tpImageUpload" accept="image/*">
+                        <input type="hidden" id="tpImageUrl" value="${tp.image_url || ''}">
+                        <div id="tpImageStatus" class="mt-1"></div>`;
+                    document.getElementById('tpImageUpload').addEventListener('change', handleTpImageUpload);
+                }
+
+                document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
+                    .forEach(el => el.disabled = !editable);
+
+                const saveBtn = modalEl.querySelector('.modal-footer .btn-primary');
+                const delBtn = modalEl.querySelector('.modal-footer .btn-danger');
+                const prepBtn = document.getElementById('modalPreparedBtn');
+                if (saveBtn) saveBtn.style.display = editable ? '' : 'none';
+                if (delBtn) delBtn.style.display = 'none';
+                if (prepBtn) prepBtn.style.display = 'none';
+
+                // Remplacer le bouton sauvegarder par notre propre logique
+                if (saveBtn && editable) {
+                    const newBtn = saveBtn.cloneNode(true);
+                    newBtn.removeAttribute('onclick');
+                    saveBtn.replaceWith(newBtn);
+                    newBtn.addEventListener('click', () => saveTpTemplate(templateId));
+                }
+
+                (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+            })
+            .catch(err => console.error('Erreur chargement TP:', err));
+    }
+
+    function handleTpImageUpload() {
+        const file = this.files[0];
+        if (!file) return;
+        const status = document.getElementById('tpImageStatus');
+        status.innerHTML = '<span class="text-info">⏳ Upload en cours...</span>';
+        const formData = new FormData();
+        formData.append('image', file);
+        fetch('/api/upload-image', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.url) {
+                    document.getElementById('tpImageUrl').value = data.url;
+                    status.innerHTML = '<span class="text-success">✅ Image uploadée</span>';
+                    const section = document.getElementById('editImageSection');
+                    const oldPreview = section.querySelector('.text-center');
+                    if (oldPreview) oldPreview.innerHTML = `<img src="${data.url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                } else {
+                    status.innerHTML = `<span class="text-danger">❌ ${data.error || 'Erreur'}</span>`;
+                }
+            })
+            .catch(() => { status.innerHTML = '<span class="text-danger">❌ Erreur réseau</span>'; });
+    }
+
+    function saveTpTemplate(templateId) {
+        const checkedMaterials = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked'))
+            .map(cb => cb.value).filter(v => v !== 'Pas de matériel spécifique à la salle');
+        const freeText = (document.getElementById('editMaterialDescription')?.value || '').trim();
+        let allMats = [...checkedMaterials];
+        if (freeText) allMats.push(freeText);
+
+        const data = {
+            request_name:        document.getElementById('editRequestName')?.value || '',
+            material_description: freeText ? `Matériel requis: ${freeText}` : 'Cours sans matériel spécifique',
+            selected_materials:  allMats.length ? '- ' + allMats.join('\n- ') : '',
+            material_prof:       document.getElementById('editMaterialProf')?.value || '',
+            computers_needed:    parseInt(document.getElementById('editComputersNeeded')?.value, 10) || 0,
+            group_count:         parseInt(document.getElementById('editQuantity')?.value, 10) || 1,
+            notes:               document.getElementById('editNotes')?.value || '',
+            image_url:           document.getElementById('tpImageUrl')?.value || '',
+            room_type:           'Mixte'
+        };
+
+        fetch(`/api/tp-templates/${templateId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) throw new Error('Erreur serveur'); return r.json(); })
+        .then(() => {
+            const modalEl = document.getElementById('editRequestModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            showSuccessToast('Template TP sauvegardé');
+            // Recharger la liste
+            document.getElementById('levelSelect').dispatchEvent(new Event('change'));
+        })
+        .catch(err => showErrorToast('Erreur : ' + err.message));
+    }
+
+    function copyTpTemplate(templateId) {
+        fetch(`/api/tp-templates/${templateId}`)
+            .then(r => r.json())
+            .then(tp => {
+                const fakeRequest = {
+                    id: null,
+                    teacher_id: tp.teacher_id,
+                    request_name: tp.request_name || '',
+                    request_date: '',
+                    horaire: '',
+                    class_name: tp.level || '',
+                    material_description: tp.material_description || '',
+                    selected_materials: tp.selected_materials || '',
+                    material_prof: tp.material_prof || '',
+                    computers_needed: tp.computers_needed || 0,
+                    group_count: tp.group_count || 1,
+                    notes: tp.notes || '',
+                    image_url: tp.image_url || '',
+                    room_type: tp.room_type || 'Mixte',
+                    prepared: false
+                };
+
+                const modalEl = document.getElementById('editRequestModal');
+                populateEditForm(fakeRequest);
+
+                ['editDate', 'editHoraire'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+                });
+                const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
+                if (relatedCard) relatedCard.style.display = 'none';
+
+                // Tout en lecture seule
+                document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
+                    .forEach(el => el.disabled = true);
+
+                const prepBtn = document.getElementById('modalPreparedBtn');
+                if (prepBtn) prepBtn.style.display = 'none';
+                const delBtn = modalEl.querySelector('.modal-footer .btn-danger');
+                if (delBtn) delBtn.style.display = 'none';
+
+                // Remplacer le bouton sauvegarder par "Copier vers mes TPs"
+                const saveBtn = modalEl.querySelector('.modal-footer .btn-primary');
+                if (saveBtn) {
+                    const newBtn = saveBtn.cloneNode(true);
+                    newBtn.removeAttribute('onclick');
+                    newBtn.textContent = '📋 Copier vers mes TPs';
+                    newBtn.disabled = false;
+                    saveBtn.replaceWith(newBtn);
+                    newBtn.addEventListener('click', () => {
+                        const name = prompt('Nom pour votre copie de ce TP :', tp.request_name || '');
+                        if (!name || !name.trim()) return;
+                        const level = document.getElementById('otherLevelSelect').value;
+                        fetch('/api/tp-templates/copy', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ source_id: templateId, request_name: name.trim(), level: level })
+                        })
+                        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+                        .then(() => {
+                            const modal = bootstrap.Modal.getInstance(modalEl);
+                            if (modal) modal.hide();
+                            showSuccessToast(`TP "${name.trim()}" copié dans vos TPs`);
+                            const myLevel = document.getElementById('levelSelect');
+                            if (myLevel.value === level) myLevel.dispatchEvent(new Event('change'));
+                        })
+                        .catch(err => showErrorToast('Erreur : ' + err.message));
+                    });
+                }
+
+                (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+            })
+            .catch(err => console.error('Erreur chargement TP:', err));
     }
 
     document.getElementById('btnVoirAutres').addEventListener('click', function() {
-        document.getElementById('autres-section').style.display = ''
-        this.style.display = 'none';
+        const section = document.getElementById('autres-section');
+        const visible = section.style.display !== 'none';
+        section.style.display = visible ? 'none' : '';
+        this.textContent = visible ? 'Voir les TPs des autres enseignants' : 'Masquer les TPs des autres enseignants';
+    });
+
+    document.getElementById('otherTeacherSelect').addEventListener('change', function() {
+        document.getElementById('otherLevelSelect').dispatchEvent(new Event('change'));
     });
 
     document.getElementById('otherLevelSelect').addEventListener('change', function() {
         const otherId = document.getElementById('otherTeacherSelect').value;
         if (!this.value || !otherId) return;
         fetch(`/api/tp-templates?teacher_id=${otherId}&level=${encodeURIComponent(this.value)}`)
-            .then(r => r.json())
-            .then(templates => renderTpList('autres-tp-list', templates, false));  // false = lecture seule
+            .then(r => {
+                if (!r.ok) return r.json().then(err => { throw new Error(err.error || r.statusText); });
+                return r.json();
+            })
+            .then(templates => {
+                if (!Array.isArray(templates)) {
+                    document.getElementById('autres-tp-list').innerHTML = '<p class="text-danger">Réponse inattendue du serveur.</p>';
+                    return;
+                }
+                renderTpList('autres-tp-list', templates, false);
+            })
+            .catch(err => {
+                document.getElementById('autres-tp-list').innerHTML = `<p class="text-danger">Erreur : ${err.message}</p>`;
+            });
     });
 </script>
 {% endblock %}
