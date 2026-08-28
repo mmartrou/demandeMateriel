@@ -10,6 +10,21 @@
                 <form id="editRequestForm">
                     <input type="hidden" id="editRequestId">
 
+                    <div class="mb-3" id="draftTpPickerSection" style="display:none;">
+                        <div class="card border-info">
+                            <div class="card-body py-2">
+                                <label for="draftTpSelect" class="form-label fw-bold mb-1">
+                                    📚 Ce cours vient de votre emploi du temps — le remplacer par un TP de votre base ?
+                                </label>
+                                <div class="d-flex gap-2">
+                                    <select id="draftTpSelect" class="form-select"></select>
+                                    <button type="button" class="btn btn-outline-info text-nowrap" onclick="applyTpTemplateToDraft(document.getElementById('draftTpSelect').value)">Appliquer</button>
+                                </div>
+                                <small class="text-muted">Ou modifiez directement les champs ci-dessous si aucun TP ne correspond.</small>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row mb-3">
                         <div class="col-md-4">
                             <label for="editTeacher" class="form-label">👨‍🏫 Enseignant *</label>

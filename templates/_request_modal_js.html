@@ -239,6 +239,8 @@ function resetEditForm() {
 
 function showRequestInReadOnlyMode(request) {
     populateEditForm(request);
+    const pickerSection = document.getElementById('draftTpPickerSection');
+    if (pickerSection) pickerSection.style.display = 'none';
     document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
         .forEach(el => { el.disabled = true; });
     const saveBtn = document.querySelector('#editRequestModal .btn-primary');
@@ -283,7 +285,7 @@ function populateEditForm(request) {
     setCustomDurationInputs('editCustomDuration', hasCustomDuration ? request.custom_duration : dureeParNiveau(request.class_name || ''));
 
     const rawQty = request.group_count ?? request.quantity ?? 1;
-    const qty = Number.isFinite(Number(rawQty)) && Number(rawQty) >= 1 ? Math.trunc(Number(rawQty)) : 1;
+    const qty = Number.isFinite(Number(rawQty)) && Number(rawQty) >= 0 ? Math.trunc(Number(rawQty)) : 1;
     set('editQuantity', String(qty));
     set('editComputersNeeded', request.computers_needed || 0);
     set('editMaterialProf', request.material_prof || '');
@@ -313,6 +315,57 @@ function populateEditForm(request) {
             imageSection.innerHTML = '<em class="text-muted">Aucune image associée</em>';
         }
     }
+}
+
+// --- Cours réguliers (brouillon) : remplacer par un TP de la base de l'enseignant ---
+function loadDraftTpOptions(teacherId, level) {
+    const select = document.getElementById('draftTpSelect');
+    if (!select) return;
+    select.innerHTML = '<option value="">Chargement...</option>';
+    fetch(`/api/tp-templates?teacher_id=${teacherId}&level=${encodeURIComponent(level || '')}`)
+        .then(r => r.json())
+        .then(templates => {
+            if (!Array.isArray(templates) || templates.length === 0) {
+                select.innerHTML = '<option value="">Aucun TP enregistré pour ce niveau</option>';
+                return;
+            }
+            select.innerHTML = '<option value="">-- Choisir un TP --</option>' +
+                templates.map(t => `<option value="${t.id}">${escapeHtml(t.request_name)}</option>`).join('');
+        })
+        .catch(() => {
+            select.innerHTML = '<option value="">Erreur de chargement</option>';
+        });
+}
+
+function applyTpTemplateToDraft(tpId) {
+    if (!tpId) {
+        showErrorToast('Choisissez un TP dans la liste.');
+        return;
+    }
+    fetch(`/api/tp-templates/${tpId}`)
+        .then(r => r.json())
+        .then(tp => {
+            const merged = {
+                id: document.getElementById('editRequestId').value,
+                teacher_id: document.getElementById('editTeacher').value,
+                request_date: document.getElementById('editDate').value,
+                horaire: document.getElementById('editHoraire').value,
+                class_name: document.getElementById('editClassName').value,
+                request_name: tp.request_name || '',
+                material_description: tp.material_description || '',
+                selected_materials: tp.selected_materials || '',
+                material_prof: tp.material_prof || '',
+                computers_needed: tp.computers_needed || 0,
+                group_count: tp.group_count ?? 1,
+                notes: tp.notes || '',
+                image_url: tp.image_url || '',
+                prepared: false
+            };
+            populateEditForm(merged);
+            toggleEditSpecialModes();
+            showSuccessToast(`TP "${tp.request_name}" appliqué — vérifiez puis enregistrez.`);
+        })
+        .catch(err => showErrorToast('Erreur lors du chargement du TP : ' + err.message));
 }
 
 function parseAndSetSpecificMaterials(selectedMaterials) {
@@ -370,6 +423,16 @@ function editRequest(requestOrId) {
             modalEl.removeAttribute('data-readonly');
 
             populateEditForm(request);
+
+            const pickerSection = document.getElementById('draftTpPickerSection');
+            if (pickerSection) {
+                if (request.is_draft) {
+                    pickerSection.style.display = '';
+                    loadDraftTpOptions(request.teacher_id, request.class_name);
+                } else {
+                    pickerSection.style.display = 'none';
+                }
+            }
 
             const saveBtn = document.querySelector('#editRequestModal .btn-primary');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.style.display = ''; }
