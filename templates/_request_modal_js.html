@@ -112,12 +112,13 @@ function generateDiffDisplay(originalText, newText) {
 }
 
 // --- Edit permission ---
-function canEditRequest(request) {
-    if (['admin', 'labo'].includes('{{ effective_user_mode }}')) return true;
+// Retourne null si l'édition est possible, sinon une raison : 'not_owner' ou 'deadline'
+function getEditBlockReason(request) {
+    if (['admin', 'labo'].includes('{{ effective_user_mode }}')) return null;
     if (isTeacherMode && myTeacherId) {
-        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) return false;
+        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) return 'not_owner';
     }
-    if (!request.request_date) return true;
+    if (!request.request_date) return null;
     try {
         let requestDate;
         const dateStr = request.request_date.toString();
@@ -129,7 +130,7 @@ function canEditRequest(request) {
         } else {
             requestDate = new Date(dateStr + 'T00:00:00');
         }
-        if (isNaN(requestDate.getTime())) return true;
+        if (isNaN(requestDate.getTime())) return null;
 
         const now = new Date();
         let checkDate = new Date(now);
@@ -144,10 +145,21 @@ function canEditRequest(request) {
             if (d >= 1 && d <= 5) workingDaysCount++;
             checkDate.setDate(checkDate.getDate() + 1);
         }
-        return workingDaysCount >= 2;
+        return workingDaysCount >= 2 ? null : 'deadline';
     } catch (e) {
-        return true;
+        return null;
     }
+}
+
+function canEditRequest(request) {
+    return getEditBlockReason(request) === null;
+}
+
+function getEditBlockMessage(request) {
+    const reason = getEditBlockReason(request);
+    if (reason === 'not_owner') return 'modification impossible - vous n\'êtes pas à l\'origine de cette demande';
+    if (reason === 'deadline') return 'modification impossible - moins de 2 jours ouvrés';
+    return '';
 }
 
 // --- Modal display helpers ---
@@ -286,10 +298,10 @@ function parseAndSetSpecificMaterials(selectedMaterials) {
 }
 
 // --- Open modal ---
-function editRequest(requestId) {
-    fetch(`/api/requests/${requestId}`)
-        .then(r => r.json())
-        .then(request => {
+function editRequest(requestOrId) {
+    // Si l'appelant a déjà les données de la demande (ex: double-clic sur une ligne
+    // déjà chargée), on évite l'aller-retour réseau et on ouvre la modale immédiatement.
+    const openWith = (request) => {
             if (!canEditRequest(request)) {
                 showRequestInReadOnlyMode(request);
                 return;
@@ -356,7 +368,22 @@ function editRequest(requestId) {
 
             toggleEditSpecialModes();
             (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
-        })
+    };
+
+    if (requestOrId && typeof requestOrId === 'object') {
+        openWith(requestOrId);
+        return;
+    }
+
+    const cached = window.allRequests && window.allRequests.find(r => String(r.id) === String(requestOrId));
+    if (cached) {
+        openWith(cached);
+        return;
+    }
+
+    fetch(`/api/requests/${requestOrId}`)
+        .then(r => r.json())
+        .then(openWith)
         .catch(err => {
             console.error('Error loading request:', err);
             showErrorToast('Erreur lors du chargement de la demande: ' + err.message);

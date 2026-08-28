@@ -286,12 +286,12 @@ function loadRequestsWithPendingModifications() {
                 row.style.cursor = canEdit ? 'pointer' : 'not-allowed';
                 
                 // Toujours permettre le double-clic pour ouvrir la modale (en lecture seule si nécessaire)
-                row.addEventListener('dblclick', () => editRequest(request.id));
+                row.addEventListener('dblclick', () => editRequest(request));
                 
                 if (canEdit) {
                     row.title = 'Double-cliquez pour modifier';
                 } else {
-                    row.title = 'Double-cliquez pour visualiser (modification impossible - moins de 2 jours ouvrés)';
+                    row.title = `Double-cliquez pour visualiser (${getEditBlockMessage(request)})`;
                     row.style.opacity = '0.7';
                 }
                 
@@ -382,7 +382,7 @@ function loadRequestsWithPendingModifications() {
                 // Vérifier si la demande peut être modifiée
                 const canEditRow = canEditRequest(request);
                 const rowStyle = canEditRow ? 'cursor: pointer;' : 'cursor: pointer; opacity: 0.7;';
-                const tooltip = canEditRow ? 'Double-cliquez pour modifier' : 'Double-cliquez pour visualiser (modification impossible - moins de 2 jours ouvrés)';
+                const tooltip = canEditRow ? 'Double-cliquez pour modifier' : `Double-cliquez pour visualiser (${getEditBlockMessage(request)})`;
                 
                 row.innerHTML = `
                     <td>${request.id}</td>
@@ -408,7 +408,7 @@ function loadRequestsWithPendingModifications() {
                 // Ajouter le style et le double-clic à la ligne
                 row.style.cssText = rowStyle;
                 row.title = tooltip;
-                row.addEventListener('dblclick', () => editRequest(request.id));
+                row.addEventListener('dblclick', () => editRequest(request));
                 
                 tableBody.appendChild(row);
             });
