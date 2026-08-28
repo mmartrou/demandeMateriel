@@ -293,9 +293,21 @@
                                         </div>
                                     </div>
                                     <div class="col-md-3 col-6 mb-2">
-                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #20c997; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #6f42c1; color: white; border-radius: 8px; font-size: 0.75rem;">
                                             <span class="me-2">📚</span>
                                             <span>Pas besoin de matériel</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #fd7e14; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">🧪</span>
+                                            <span>Test labo (pas de salle)</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-2">
+                                        <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #adb5bd; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                            <span class="me-2">⏳</span>
+                                            <span>Cours régulier à vérifier</span>
                                         </div>
                                     </div>
                                 </div>
@@ -340,7 +352,7 @@ let events = [];
 
 // Plage horaire affichée dans la grille (correspond aux horaires proposés dans le formulaire de demande)
 const PT_DAY_START_MIN = 9 * 60;   // 9h00
-const PT_DAY_END_MIN = 19 * 60;    // 19h00 (marge après le dernier créneau possible : 17h15 + 110 min)
+const PT_DAY_END_MIN = 20 * 60 + 15; // 20h15 (marge après le dernier créneau possible : 18h15 + 110 min)
 const PT_PX_PER_MIN = 1;           // 1 minute = 1px de hauteur (soit 60px/heure, cf. --pt-hour-px)
 const PT_GAP_PX = 2;
 
@@ -685,7 +697,9 @@ function renderWeekView() {
 
 function eventLabel(ev) {
     const tpName = ev.request_name ? ` "${ev.request_name}"` : '';
-    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}${tpName}. ${ev.description}`;
+    const labTest = ev.is_lab_test ? ' (Test au labo, pas de salle)' : '';
+    const draft = ev.is_draft ? ' (Cours régulier, à vérifier)' : '';
+    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}${tpName}${labTest}${draft}. ${ev.description}`;
 }
 
 function buildEventHtml(ev, showTeacherName, styleObj) {
@@ -698,7 +712,7 @@ function buildEventHtml(ev, showTeacherName, styleObj) {
              style="${styleStr};background-color:${bgColor};"
              role="button" tabindex="0" title="Double-cliquez pour modifier"
              aria-label="Détails de la demande: ${eventLabel(ev).replace(/"/g, '&quot;')}">
-            <span class="ev-time">${ev.horaire || ''}</span>
+            <span class="ev-time">${ev.horaire || ''}${ev.is_lab_test ? ' 🧪' : ''}${ev.is_draft ? ' ⏳' : ''}</span>
             ${showTeacherName ? `<span class="ev-teacher">${teacherName}</span>` : ''}
             <span class="ev-class">${className}</span>
             ${ev.request_name ? `<span class="ev-name">${escapeHtml(ev.request_name)}</span>` : ''}

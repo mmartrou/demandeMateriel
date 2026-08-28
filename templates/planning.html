@@ -146,12 +146,18 @@
                                 <span>Pas besoin de matériel</span>
                             </div>
                         </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="badge d-flex align-items-center justify-content-center py-2 px-3" style="background-color: #fd7e14; color: white; border-radius: 8px; font-size: 0.75rem;">
+                                <span class="me-2">🧪</span>
+                                <span>Test labo (pas de salle)</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
+
     <div id="planningResults">
         <div id="planningDay" class="planning-day-view" style="display: none;">
             <div class="card shadow">
@@ -279,8 +285,10 @@ function createPlanningRequestElement(request) {
     
     // Déterminer la couleur de fond selon le statut
     let bgColor = '#007bff'; // Bleu par défaut (demande normale)
-    
-    if (request.selected_materials === 'Absent') {
+
+    if (request.is_lab_test) {
+        bgColor = '#fd7e14'; // Orange pour test au labo (pas de salle attribuée)
+    } else if (request.selected_materials === 'Absent') {
         bgColor = '#dc3545'; // Rouge pour absent
     } else if (request.selected_materials === 'Pas besoin de matériel') {
         bgColor = '#20c997'; // Vert clair pour pas besoin de matériel (NOUVELLE COULEUR)
@@ -289,21 +297,22 @@ function createPlanningRequestElement(request) {
     } else if (request.modified) {
         bgColor = '#ffc107'; // Jaune pour modifié
     }
-    
+
     console.log(`Demande ${request.id}: ${request.selected_materials} → Couleur: ${bgColor}`);
-    
+
     requestDiv.style.backgroundColor = bgColor;
-    
+
     const roomType = request.room_type || 'Mixte';
-    
+
     requestDiv.innerHTML = `
         <div class="request-header">
             <span class="request-time">🕒 ${request.horaire || 'Non spécifié'}</span>
             <span class="request-class">${request.class_name}</span>
         </div>
+        ${request.is_lab_test ? `<div class="mb-2"><span class="badge bg-dark">🧪 Test au labo — aucune salle ne sera attribuée</span></div>` : ''}
         <div class="request-details">
             <div><strong>Matériel:</strong> ${request.material_description}</div>
-            <div><strong>Quantité:</strong> ${request.quantity || 1}</div>
+            <div><strong>Quantité:</strong> ${request.quantity ?? 1}</div>
             ${request.computers_needed ? `<div><strong>Ordinateurs:</strong> ${request.computers_needed}</div>` : ''}
             ${request.notes ? `<div><strong>Notes:</strong> ${request.notes}</div>` : ''}
         </div>

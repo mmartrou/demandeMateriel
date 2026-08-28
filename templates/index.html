@@ -61,7 +61,7 @@
                                 </thead>
                                 <tbody>
                                     {% set horaires_matin = ["9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45"] %}
-                                    {% set horaires_aprem = ["13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15"] %}
+                                    {% set horaires_aprem = ["13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15", "18h15"] %}
                                     {% for i in range([horaires_matin|length, horaires_aprem|length]|max) %}
                                     <tr>
                                         <td class="text-center">
@@ -128,7 +128,17 @@
                         </div>
                         <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="lab_test" name="lab_test" value="true">
+                            <label class="form-check-label fw-bold" for="lab_test">
+                                🧪 Test au labo (pas de classe – à préparer au labo, aucune salle ne sera attribuée)
+                            </label>
+                        </div>
+                        <small class="text-muted">À cocher pour tester un TP au labo de physique/chimie avant de le donner en classe. Le matériel demandé ci-dessous reste à préciser normalement.</small>
+                    </div>
+
                     <div class="row" id="main-content">
                         <div class="col-md-4 mb-3">
                             <label for="class_name" class="form-label">
@@ -150,6 +160,7 @@
                                 <option value="Terminale ES">Terminale ES</option>
                                 <option value="1ère Spécialité">1ère Spécialité</option>
                                 <option value="Terminale Spécialité">Terminale Spécialité</option>
+                                <option value="Autre">Autre</option>
                             </select>
                             <div id="custom_duration_inputs" class="d-flex align-items-center gap-1 mt-1">
                                 <span>⏱️ Durée :</span>
@@ -192,8 +203,8 @@
                             <label for="quantity" class="form-label">
                                 🔢 Nombre de groupes
                             </label>
-                            <input type="number" class="form-control" id="quantity" name="quantity" 
-                                   min="1" value="1">
+                            <input type="number" class="form-control" id="quantity" name="quantity"
+                                   min="0" value="1">
                         </div>
                     </div>
                     
@@ -438,8 +449,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Doit rester cohérent avec duree_par_niveau() dans planning_generator.py
     function dureeParNiveau(niveau) {
         if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
-        if (["AP PP", "1ère ES"].includes(niveau)) return 55;
+        if (["AP PP", "1ère ES", "Autre"].includes(niveau)) return 55;
         return 85;
+    }
+    // Nombre de groupes par défaut selon le niveau
+    function groupesParNiveau(niveau) {
+        if (niveau === '2nd TP') return 8;
+        if (["6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES", "Terminale ES", "1ère Spécialité", "Terminale Spécialité"].includes(niveau)) return 10;
+        if (["2nd Classe", "AP 2nd", "Autre"].includes(niveau)) return 0;
+        return 1;
     }
     function setCustomDurationInputs(prefix, minutes) {
         document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);
@@ -456,12 +474,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('class_name').addEventListener('change', function() {
         setCustomDurationInputs('custom_duration', dureeParNiveau(this.value));
+        document.getElementById('quantity').value = groupesParNiveau(this.value);
     });
     document.getElementById('materialRequestForm').addEventListener('reset', function() {
         setCustomDurationInputs('custom_duration', dureeParNiveau(document.getElementById('class_name').value));
+        document.getElementById('quantity').value = groupesParNiveau(document.getElementById('class_name').value);
     });
-    // Pré-remplir la durée à l'ouverture du formulaire
+    // Pré-remplir la durée et le nombre de groupes à l'ouverture du formulaire
     setCustomDurationInputs('custom_duration', dureeParNiveau(document.getElementById('class_name').value));
+    document.getElementById('quantity').value = groupesParNiveau(document.getElementById('class_name').value);
 
     async function loadTpTemplates() {
         const teacherId = teacherSelect.value;
@@ -506,7 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('selected_materials').value = t.selected_materials || '';
         document.getElementById('material_prof').value = t.material_prof || '';
         document.getElementById('computers_needed').value = t.computers_needed || 0;
-        document.getElementById('quantity').value = t.group_count || 1;
+        document.getElementById('quantity').value = t.group_count ?? 1;
         document.getElementById('notes').value = t.notes || '';
 
         // Remettre les cases matériaux
@@ -785,7 +806,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const isAbsent = document.getElementById('absent').checked;
         const isNoMaterial = document.getElementById('no_material').checked;
         const isExamMode = document.getElementById('exam_mode').checked;
-        
+
+        // Test au labo : indépendant des modes ci-dessus, le matériel reste à préciser normalement
+        data.is_lab_test = document.getElementById('lab_test').checked;
+        delete data.lab_test;
+
         if (isAbsent) {
             // En mode absent, on met des valeurs par défaut
             data.selected_materials = 'Absent';

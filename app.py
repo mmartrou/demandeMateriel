@@ -24,7 +24,9 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
                       pre_associate_teacher, get_all_users, add_teacher, delete_teacher,
-                      get_tp_templates, upsert_tp_template, get_tp_template_by_id)
+                      get_tp_templates, upsert_tp_template, get_tp_template_by_id,
+                      get_recurring_courses, add_recurring_course, delete_recurring_course,
+                      generate_draft_requests_for_week, confirm_draft_request)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
@@ -655,7 +657,9 @@ def api_get_requests():
                 'exam': req[17] if len(req) > 17 else False,
                 'created_at': req[18] if len(req) > 18 else None,
                 'teacher_name': req[19] if len(req) > 19 else '',
-                'custom_duration': req[20] if len(req) > 20 else None
+                'custom_duration': req[20] if len(req) > 20 else None,
+                'is_lab_test': bool(req[21]) if len(req) > 21 and req[21] is not None else False,
+                'is_draft': bool(req[22]) if len(req) > 22 and req[22] is not None else False
             }
             # Debug log
             try:
@@ -707,7 +711,9 @@ def api_calendar_events():
                 'exam': req[17] if len(req) > 17 else False,
                 'created_at': req[18] if len(req) > 18 else None,
                 'teacher_name': req[19] if len(req) > 19 else '',
-                'custom_duration': req[20] if len(req) > 20 else None
+                'custom_duration': req[20] if len(req) > 20 else None,
+                'is_lab_test': bool(req[21]) if len(req) > 21 and req[21] is not None else False,
+                'is_draft': bool(req[22]) if len(req) > 22 and req[22] is not None else False
             }
 
     requests = [to_dict(req) for req in requests]
@@ -745,7 +751,11 @@ def api_calendar_events():
         # Choose color based on status and type
         bg_color = '#007bff'  # Default blue
 
-        if req['selected_materials'] == 'Absent':
+        if req.get('is_draft'):
+            bg_color = '#adb5bd'  # Grey for auto-generated draft (not yet reviewed by the teacher)
+        elif req.get('is_lab_test'):
+            bg_color = '#fd7e14'  # Orange for lab test (no room assigned)
+        elif req['selected_materials'] == 'Absent':
             bg_color = '#dc3545'  # Red for absent
         elif req['selected_materials'] == 'Pas besoin de matériel':
             bg_color = '#6f42c1'  # Purple for no material
@@ -765,6 +775,8 @@ def api_calendar_events():
             # Champs bruts pour le positionnement dans la grille horaire (type Pronote)
             'teacher_name': req.get('teacher_name'),
             'class_name': req.get('class_name'),
+            'is_lab_test': req.get('is_lab_test', False),
+            'is_draft': req.get('is_draft', False),
             'request_name': req.get('request_name'),
             'horaire': req.get('horaire'),
             'custom_duration': req.get('custom_duration'),
@@ -877,7 +889,8 @@ def api_add_request():
                     material_prof=data.get('material_prof', ''),
                     request_name=data.get('request_name', ''),
                     image_url=data.get('image_url', ''),
-                    custom_duration=data.get('custom_duration')
+                    custom_duration=data.get('custom_duration'),
+                    is_lab_test=bool(data.get('is_lab_test', False))
                 )
                 request_ids.append(request_id)
 
@@ -998,6 +1011,14 @@ def mes_tps():
         return redirect(url_for('login'))
     teachers = get_all_teachers()
     return render_template('mes_tps.html', teachers=teachers)
+
+@app.route('/mon-emploi-du-temps')
+def mon_emploi_du_temps():
+    """Page pour définir son emploi du temps type et générer les demandes de la semaine"""
+    user = _get_current_user()
+    if not user or not user.get('teacher_id'):
+        return redirect(url_for('login'))
+    return render_template('mon_emploi_du_temps.html')
 
 @app.route('/api/requests/prepared-states', methods=['GET'])
 def api_requests_prepared_states():
@@ -1127,7 +1148,8 @@ def api_update_request(request_id):
             group_count=data.get('group_count', 1),
             material_prof=data.get('material_prof', ''),
             request_name=data.get('request_name', ''),
-            custom_duration=data.get('custom_duration')
+            custom_duration=data.get('custom_duration'),
+            is_lab_test=bool(data.get('is_lab_test', False))
         )
         
         if success:
@@ -1311,6 +1333,100 @@ def api_update_tp_template(template_id):
         return jsonify({'success': True})
     except Exception as e:
         return api_error('Erreur lors de la mise à jour du template TP', e)
+
+
+@app.route('/api/recurring-courses', methods=['GET'])
+def api_get_recurring_courses():
+    """Retourne l'emploi du temps type de l'enseignant connecté."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        return jsonify(get_recurring_courses(user['teacher_id']))
+    except Exception as e:
+        return api_error('Erreur lors de la récupération de l\'emploi du temps', e)
+
+
+@app.route('/api/recurring-courses', methods=['POST'])
+def api_add_recurring_course():
+    """Ajoute (ou remplace) un créneau récurrent pour l'enseignant connecté."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        data = request.get_json(silent=True) or {}
+        try:
+            day_of_week = int(data.get('day_of_week'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Jour de la semaine invalide'}), 400
+        if day_of_week < 0 or day_of_week > 4:
+            return jsonify({'error': 'Le jour doit être entre Lundi (0) et Vendredi (4)'}), 400
+        horaire = (data.get('horaire') or '').strip()
+        class_name = (data.get('class_name') or '').strip()
+        if not horaire or not class_name:
+            return jsonify({'error': 'horaire et class_name sont requis'}), 400
+        course_id = add_recurring_course(user['teacher_id'], day_of_week, horaire, class_name)
+        if course_id is None:
+            return jsonify({'error': 'Erreur lors de l\'ajout du créneau'}), 500
+        return jsonify({'success': True, 'id': course_id})
+    except Exception as e:
+        return api_error('Erreur lors de l\'ajout du créneau récurrent', e)
+
+
+@app.route('/api/recurring-courses/<int:course_id>', methods=['DELETE'])
+def api_delete_recurring_course(course_id):
+    """Supprime un créneau récurrent de l'enseignant connecté."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        deleted = delete_recurring_course(course_id, user['teacher_id'])
+        if not deleted:
+            return jsonify({'error': 'Créneau non trouvé'}), 404
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la suppression du créneau récurrent', e)
+
+
+@app.route('/api/recurring-courses/generate', methods=['POST'])
+def api_generate_recurring_courses():
+    """Génère les demandes 'brouillon' de la semaine indiquée à partir de l'emploi du temps type."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        data = request.get_json(silent=True) or {}
+        week_start = (data.get('week_start') or '').strip()
+        if not week_start:
+            return jsonify({'error': 'week_start (date du lundi) est requis'}), 400
+        try:
+            week_start_date = datetime.strptime(week_start, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Format de date invalide (attendu YYYY-MM-DD)'}), 400
+        if week_start_date.weekday() != 0:
+            return jsonify({'error': 'La date doit être un lundi'}), 400
+        created, skipped = generate_draft_requests_for_week(user['teacher_id'], week_start)
+        return jsonify({'success': True, 'created': created, 'skipped': skipped})
+    except Exception as e:
+        return api_error('Erreur lors de la génération des cours de la semaine', e)
+
+
+@app.route('/api/requests/<int:request_id>/confirm-draft', methods=['POST'])
+def api_confirm_draft_request(request_id):
+    """Confirme une demande brouillon (cours récurrent auto-généré) sans autre modification."""
+    try:
+        current_request = get_material_request_by_id(request_id)
+        if not current_request:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+        if not _is_owner_or_admin(current_request.get('teacher_id')):
+            return jsonify({'error': 'Non autorisé'}), 403
+        success = confirm_draft_request(request_id)
+        if success:
+            return jsonify({'message': 'Demande confirmée avec succès'})
+        else:
+            return jsonify({'error': 'Demande non trouvée'}), 404
+    except Exception as e:
+        return api_error('Erreur lors de la confirmation de la demande', e)
 
 
 @app.route('/api/requests/<int:request_id>/room-type', methods=['PUT'])

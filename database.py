@@ -101,6 +101,8 @@ def init_database():
             image_url {text_type},
             exam BOOLEAN DEFAULT FALSE,
             custom_duration INTEGER,
+            is_lab_test BOOLEAN DEFAULT FALSE,
+            is_draft BOOLEAN DEFAULT FALSE,
             created_at {timestamp_default},
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
@@ -119,7 +121,9 @@ def init_database():
         ('material_prof', 'TEXT'),
         ('request_name', 'TEXT'),
         ('image_url', 'TEXT'),
-        ('custom_duration', 'INTEGER')
+        ('custom_duration', 'INTEGER'),
+        ('is_lab_test', 'BOOLEAN DEFAULT FALSE'),
+        ('is_draft', 'BOOLEAN DEFAULT FALSE')
     ]
     
     for column_name, column_type in columns_to_add:
@@ -275,7 +279,22 @@ def init_database():
             FOREIGN KEY (teacher_id) REFERENCES teachers(id)
         )
     ''')
-    
+
+    # Table de l'emploi du temps type (cours récurrents) d'un enseignant : jour de semaine (0=Lundi..4=Vendredi)
+    # + horaire + niveau. Sert de base pour générer automatiquement des demandes "brouillon" chaque semaine.
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS recurring_courses (
+            id {auto_increment},
+            teacher_id INTEGER NOT NULL,
+            day_of_week INTEGER NOT NULL,
+            horaire {text_type} NOT NULL,
+            class_name {text_type} NOT NULL,
+            created_at {timestamp_default},
+            UNIQUE (teacher_id, day_of_week, horaire),
+            FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+        )
+    ''')
+
     # Insert sample data if tables are empty
     cursor.execute('SELECT COUNT(*) FROM rooms')
     row = cursor.fetchone()
@@ -556,26 +575,27 @@ def get_all_users():
 
 def add_material_request(teacher_id, request_date, class_name, material_description,
                         horaire=None, quantity=1, selected_materials='', computers_needed=0,
-                        notes='', exam=False, group_count=1, material_prof='', request_name='', image_url='', custom_duration=None):
+                        notes='', exam=False, group_count=1, material_prof='', request_name='', image_url='', custom_duration=None,
+                        is_lab_test=False, is_draft=False):
     """Add a new material request"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    # Coerce group_count to an integer with a safe default
+    # Coerce group_count to an integer with a safe default (0 autorisé : niveaux sans répartition en groupes)
     try:
         group_count = int(group_count) if group_count is not None else 1
-        if group_count < 1:
-            group_count = 1
+        if group_count < 0:
+            group_count = 0
     except Exception:
         group_count = 1
 
-    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 15)
+    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 17)
     cursor.execute(f'''
         INSERT INTO material_requests
         (teacher_id, request_date, horaire, class_name, material_description, quantity,
-         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration)
+         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, is_lab_test, is_draft)
         VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
-          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration))
+          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, bool(is_lab_test), bool(is_draft)))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -592,7 +612,7 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration
+               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE 1=1
@@ -644,17 +664,17 @@ def get_material_request_by_id(request_id):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration
+               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.id = {placeholder}
     ''', (request_id,))
     request = cursor.fetchone()
     conn.close()
-    
+
     if not request:
         return None
-    
+
     # Normaliser en dictionnaire pour compatibilité PostgreSQL/SQLite
     if isinstance(request, dict):
         return request
@@ -683,37 +703,42 @@ def get_material_request_by_id(request_id):
             'exam': request[17],
             'created_at': request[18],
             'teacher_name': request[19],
-            'custom_duration': request[20] if len(request) > 20 else None
+            'custom_duration': request[20] if len(request) > 20 else None,
+            'is_lab_test': bool(request[21]) if len(request) > 21 and request[21] is not None else False,
+            'is_draft': bool(request[22]) if len(request) > 22 and request[22] is not None else False
         }
 
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
                            horaire=None, quantity=1, selected_materials='', computers_needed=0,
-                           notes='', group_count=1, material_prof='', request_name='', custom_duration=None):
+                           notes='', group_count=1, material_prof='', request_name='', custom_duration=None,
+                           is_lab_test=False):
     """Update an existing material request and mark it as modified"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    # Coerce group_count to an integer with a safe default
+    # Coerce group_count to an integer with a safe default (0 autorisé : niveaux sans répartition en groupes)
     try:
         group_count = int(group_count) if group_count is not None else 1
-        if group_count < 1:
-            group_count = 1
+        if group_count < 0:
+            group_count = 0
     except Exception:
         group_count = 1
-    
+
     placeholder = '%s' if db_type == 'postgresql' else '?'
     # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
     false_val = 'FALSE' if db_type == 'postgresql' else '0'
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
-    
+
     cursor.execute(f'''
         UPDATE material_requests
         SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder},
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder},
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder},
-            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder}, prepared={false_val}, modified={true_val}
+            group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder},
+            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}
         WHERE id={placeholder}
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
-          selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration, request_id))
+          selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
+          bool(is_lab_test), request_id))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0
@@ -753,6 +778,18 @@ def toggle_prepared_status(request_id):
     conn.commit()
     conn.close()
     return True
+
+def confirm_draft_request(request_id):
+    """Retire le statut 'brouillon' (cours récurrent auto-généré) d'une demande, sans autre changement."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+    cursor.execute(f'UPDATE material_requests SET is_draft={false_val} WHERE id={placeholder}', (request_id,))
+    conn.commit()
+    updated = cursor.rowcount > 0
+    conn.close()
+    return updated
 
 def delete_material_request(request_id):
     """Delete a material request"""
@@ -1033,9 +1070,10 @@ def get_planning_data(date_str):
     """Get all material requests for planning generation on a specific date"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    
+
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    
+    false_val = 'FALSE' if db_type == 'postgresql' else '0'
+
     cursor.execute(f'''
         SELECT mr.id, mr.teacher_id, mr.request_date, mr.horaire, mr.class_name,
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
@@ -1045,7 +1083,8 @@ def get_planning_data(date_str):
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.request_date = {placeholder}
-        AND mr.selected_materials != 'Enseignant absent'
+        AND mr.selected_materials != 'Absent'
+        AND (mr.is_lab_test = {false_val} OR mr.is_lab_test IS NULL)
         ORDER BY mr.horaire, mr.created_at
     ''', (date_str,))
     requests = cursor.fetchall()
@@ -1695,6 +1734,141 @@ def get_tp_template_by_id(template_id):
     except Exception as e:
         logger.error(f"Erreur get_tp_template_by_id: {e}")
         return None
+
+
+# === EMPLOI DU TEMPS RÉCURRENT ===
+
+def get_recurring_courses(teacher_id):
+    """Retourne les cours récurrents (emploi du temps type) d'un enseignant, triés par jour puis horaire."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'''
+            SELECT id, teacher_id, day_of_week, horaire, class_name
+            FROM recurring_courses
+            WHERE teacher_id = {placeholder}
+            ORDER BY day_of_week, horaire
+        ''', (teacher_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            if isinstance(row, dict):
+                result.append(row)
+            else:
+                result.append({
+                    'id': row[0], 'teacher_id': row[1], 'day_of_week': row[2],
+                    'horaire': row[3], 'class_name': row[4]
+                })
+        return result
+    except Exception as e:
+        logger.error(f"Erreur get_recurring_courses: {e}")
+        return []
+
+
+def add_recurring_course(teacher_id, day_of_week, horaire, class_name):
+    """Ajoute un cours récurrent (ou remplace le niveau si le créneau jour+horaire existe déjà)."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        if db_type == 'postgresql':
+            cursor.execute('''
+                INSERT INTO recurring_courses (teacher_id, day_of_week, horaire, class_name)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (teacher_id, day_of_week, horaire)
+                DO UPDATE SET class_name = EXCLUDED.class_name
+                RETURNING id
+            ''', (teacher_id, day_of_week, horaire, class_name))
+            row = cursor.fetchone()
+            new_id = (row['id'] if isinstance(row, dict) else row[0]) if row else None
+        else:
+            cursor.execute('''
+                INSERT INTO recurring_courses (teacher_id, day_of_week, horaire, class_name)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(teacher_id, day_of_week, horaire)
+                DO UPDATE SET class_name = excluded.class_name
+            ''', (teacher_id, day_of_week, horaire, class_name))
+            cursor.execute(
+                'SELECT id FROM recurring_courses WHERE teacher_id = ? AND day_of_week = ? AND horaire = ?',
+                (teacher_id, day_of_week, horaire)
+            )
+            row = cursor.fetchone()
+            new_id = (row['id'] if isinstance(row, dict) else row[0]) if row else None
+        conn.commit()
+        conn.close()
+        return new_id
+    except Exception as e:
+        logger.error(f"Erreur add_recurring_course: {e}")
+        return None
+
+
+def delete_recurring_course(course_id, teacher_id):
+    """Supprime un cours récurrent (scoping par teacher_id pour éviter de supprimer celui d'un autre)."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(
+            f'DELETE FROM recurring_courses WHERE id = {placeholder} AND teacher_id = {placeholder}',
+            (course_id, teacher_id)
+        )
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
+    except Exception as e:
+        logger.error(f"Erreur delete_recurring_course: {e}")
+        return False
+
+
+def generate_draft_requests_for_week(teacher_id, week_start_date):
+    """
+    Crée une demande "brouillon" (is_draft=True, 'Pas besoin de matériel') pour chaque cours
+    récurrent de l'enseignant, sur la semaine commençant à week_start_date (un lundi).
+    Idempotent : si une demande existe déjà pour ce teacher_id + cette date + cet horaire,
+    elle n'est pas recréée.
+    Retourne (nb_crees, nb_ignores).
+    """
+    from datetime import datetime, timedelta
+    if isinstance(week_start_date, str):
+        week_start = datetime.strptime(week_start_date, '%Y-%m-%d').date()
+    else:
+        week_start = week_start_date
+
+    courses = get_recurring_courses(teacher_id)
+    if not courses:
+        return 0, 0
+
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+
+    created = 0
+    skipped = 0
+    for course in courses:
+        target_date = (week_start + timedelta(days=int(course['day_of_week']))).strftime('%Y-%m-%d')
+        cursor.execute(f'''
+            SELECT 1 FROM material_requests
+            WHERE teacher_id = {placeholder} AND request_date = {placeholder} AND horaire = {placeholder}
+        ''', (teacher_id, target_date, course['horaire']))
+        if cursor.fetchone():
+            skipped += 1
+            continue
+        add_material_request(
+            teacher_id=teacher_id,
+            request_date=target_date,
+            class_name=course['class_name'],
+            material_description='Cours théorique sans matériel',
+            horaire=course['horaire'],
+            selected_materials='Pas besoin de matériel',
+            request_name=f"{course['class_name']} (cours régulier)",
+            is_draft=True
+        )
+        created += 1
+    conn.close()
+    return created, skipped
+
 
 if __name__ == '__main__':
     init_database()

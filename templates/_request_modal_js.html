@@ -7,6 +7,7 @@ window.modifiedRequests = window.modifiedRequests || new Map();
 
 let originalRequestData = {};
 let currentValidationRequestId = null;
+let currentRelatedCount = 0;
 
 // Jinja2-injected role context
 const isTeacherMode = '{{ effective_user_mode }}' === 'teacher';
@@ -33,8 +34,20 @@ function sanitizeImageUrl(url) {
 // Doit rester cohérent avec duree_par_niveau() dans planning_generator.py
 function dureeParNiveau(niveau) {
     if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
-    if (["AP PP", "1ère ES"].includes(niveau)) return 55;
+    if (["AP PP", "1ère ES", "Autre"].includes(niveau)) return 55;
     return 85;
+}
+// Nombre de groupes par défaut selon le niveau (identique à index.html)
+function groupesParNiveau(niveau) {
+    if (niveau === '2nd TP') return 8;
+    if (["6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES", "Terminale ES", "1ère Spécialité", "Terminale Spécialité"].includes(niveau)) return 10;
+    if (["2nd Classe", "AP 2nd", "Autre"].includes(niveau)) return 0;
+    return 1;
+}
+// Parse le nombre de groupes en préservant 0 comme valeur valide (contrairement à `parseInt(x) || 1`)
+function parseGroupCount(value) {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 1;
 }
 function setCustomDurationInputs(prefix, minutes) {
     document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);
@@ -51,8 +64,38 @@ function getCustomDurationValue(prefix) {
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('editClassName').addEventListener('change', function() {
         setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
+        const qtyField = document.getElementById('editQuantity');
+        if (qtyField) qtyField.value = groupesParNiveau(this.value);
     });
+    document.getElementById('editDate').addEventListener('change', updateBulkEditAvailability);
 });
+
+// Un changement de date ne doit jamais s'appliquer aux autres demandes liées (ex: un TP reporté
+// à un autre jour ne concerne que ce TP) : on désactive "modifier toutes les demandes liées" dès
+// que la date diffère de la date d'origine.
+function updateBulkEditAvailability() {
+    const relatedInfo = document.getElementById('relatedRequestsInfo');
+    const bulkCb = document.getElementById('editAllRelated');
+    const dateField = document.getElementById('editDate');
+    if (!relatedInfo || !bulkCb || !dateField) return;
+
+    const dateChanged = dateField.value !== (originalRequestData.request_date || '');
+    const requestName = document.getElementById('editRequestId')?.getAttribute('data-request-name') || '';
+
+    if (currentRelatedCount > 1 && dateChanged) {
+        bulkCb.checked = false; bulkCb.disabled = true;
+        relatedInfo.textContent = `La date a été modifiée : ce changement ne s'appliquera qu'à ce TP, pas aux ${currentRelatedCount} demandes liées (même enseignant + même nom "${requestName}").`;
+        relatedInfo.className = 'text-warning fw-bold';
+    } else if (currentRelatedCount > 1) {
+        bulkCb.checked = true; bulkCb.disabled = false;
+        relatedInfo.textContent = `${currentRelatedCount} demandes seront modifiées simultanément (même enseignant + même nom "${requestName}").`;
+        relatedInfo.className = 'text-info fw-bold';
+    } else {
+        bulkCb.checked = false; bulkCb.disabled = true;
+        relatedInfo.textContent = 'Aucune autre demande liée trouvée. Seule cette demande sera modifiée.';
+        relatedInfo.className = 'text-muted';
+    }
+}
 
 function formatDateToYMD(dateString) {
     if (!dateString) return '';
@@ -234,6 +277,7 @@ function populateEditForm(request) {
     chk('editAbsent', isAbsent);
     chk('editNoMaterial', isNoMaterial);
     chk('editExamMode', isExamMode);
+    chk('editLabTest', !!request.is_lab_test);
 
     const hasCustomDuration = request.custom_duration !== null && request.custom_duration !== undefined;
     setCustomDurationInputs('editCustomDuration', hasCustomDuration ? request.custom_duration : dureeParNiveau(request.class_name || ''));
@@ -313,10 +357,12 @@ function editRequest(requestOrId) {
                 material_prof: request.material_prof || '',
                 notes: request.notes || '',
                 horaire: request.horaire || '',
+                request_date: formatDateToYMD(request.request_date),
                 group_count: Number(request.group_count ?? request.quantity ?? 1),
                 computers_needed: request.computers_needed || 0,
                 selected_materials: request.selected_materials || '',
-                custom_duration: request.custom_duration ?? null
+                custom_duration: request.custom_duration ?? null,
+                is_lab_test: !!request.is_lab_test
             };
 
             const modalEl = document.getElementById('editRequestModal');
@@ -338,23 +384,13 @@ function editRequest(requestOrId) {
             const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
             const isExamMode   = request.selected_materials === 'Examen'                 && request.material_description === "Surveillance d'examen";
 
-            let relatedCount = 0;
+            currentRelatedCount = 0;
             if (window.allRequests && request.request_name) {
-                relatedCount = window.allRequests.filter(r =>
+                currentRelatedCount = window.allRequests.filter(r =>
                     r.teacher_id === request.teacher_id && r.request_name === request.request_name && r.request_name
                 ).length;
             }
-            const relatedInfo = document.getElementById('relatedRequestsInfo');
-            const bulkCb = document.getElementById('editAllRelated');
-            if (relatedCount > 1) {
-                relatedInfo.textContent = `${relatedCount} demandes seront modifiées simultanément (même enseignant + même nom "${request.request_name}").`;
-                relatedInfo.className = 'text-info fw-bold';
-                bulkCb.checked = true; bulkCb.disabled = false;
-            } else {
-                relatedInfo.textContent = 'Aucune autre demande liée trouvée. Seule cette demande sera modifiée.';
-                relatedInfo.className = 'text-muted';
-                bulkCb.checked = false; bulkCb.disabled = true;
-            }
+            updateBulkEditAvailability();
 
             const descField = document.getElementById('editMaterialDescription');
             if (!descField) throw new Error('Champ description du matériel manquant');
@@ -434,7 +470,7 @@ async function savePendingModifications(requestId, changes) {
 
 function calculateRequestChanges(requestId, newData) {
     const changes = {};
-    for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire']) {
+    for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire', 'request_date']) {
         const orig = originalRequestData[field] || '';
         const next = newData[field] || '';
         if (orig !== next) changes[field] = { original: orig, new: next, diff: generateDiffDisplay(orig, next) };
@@ -443,8 +479,8 @@ function calculateRequestChanges(requestId, newData) {
     const nextMat = newData.selected_materials || '';
     if (origMat !== nextMat) changes.selected_materials = { original: origMat, new: nextMat, diff: generateDiffDisplay(origMat, nextMat) };
     if (originalRequestData.group_count !== newData.group_count) {
-        changes.group_count = { original: originalRequestData.group_count || 1, new: newData.group_count || 1,
-            diff: `${originalRequestData.group_count || 1} → ${newData.group_count || 1}` };
+        changes.group_count = { original: originalRequestData.group_count ?? 1, new: newData.group_count ?? 1,
+            diff: `${originalRequestData.group_count ?? 1} → ${newData.group_count ?? 1}` };
     }
     if (originalRequestData.computers_needed !== newData.computers_needed) {
         changes.computers_needed = { original: originalRequestData.computers_needed, new: newData.computers_needed,
@@ -453,6 +489,10 @@ function calculateRequestChanges(requestId, newData) {
     if ((originalRequestData.custom_duration ?? null) !== (newData.custom_duration ?? null)) {
         changes.custom_duration = { original: originalRequestData.custom_duration, new: newData.custom_duration,
             diff: `${originalRequestData.custom_duration ?? '—'} → ${newData.custom_duration ?? '—'}` };
+    }
+    if (!!originalRequestData.is_lab_test !== !!newData.is_lab_test) {
+        changes.is_lab_test = { original: !!originalRequestData.is_lab_test, new: !!newData.is_lab_test,
+            diff: `${originalRequestData.is_lab_test ? 'Test au labo' : 'Cours normal'} → ${newData.is_lab_test ? 'Test au labo' : 'Cours normal'}` };
     }
     if (Object.keys(changes).length > 0) window.modifiedRequests.set(requestId, changes);
     else window.modifiedRequests.delete(requestId);
@@ -469,12 +509,14 @@ function saveRequestChanges() {
     const currentData = {
         request_name:      document.getElementById('editRequestName').value,
         horaire:           document.getElementById('editHoraire').value,
+        request_date:      document.getElementById('editDate').value,
         class_name:        document.getElementById('editClassName').value,
-        group_count:       parseInt(document.getElementById('editQuantity').value, 10) || 1,
+        group_count:       parseGroupCount(document.getElementById('editQuantity').value),
         computers_needed:  parseInt(document.getElementById('editComputersNeeded').value, 10) || 0,
         material_prof:     document.getElementById('editMaterialProf').value,
         notes:             document.getElementById('editNotes').value,
-        custom_duration:   getCustomDurationValue('editCustomDuration')
+        custom_duration:   getCustomDurationValue('editCustomDuration'),
+        is_lab_test:       document.getElementById('editLabTest').checked
     };
 
     const formData = {
@@ -487,7 +529,8 @@ function saveRequestChanges() {
         computers_needed: currentData.computers_needed,
         material_prof:    currentData.material_prof,
         notes:            currentData.notes,
-        custom_duration:  currentData.custom_duration
+        custom_duration:  currentData.custom_duration,
+        is_lab_test:      currentData.is_lab_test
     };
 
     if (isAbsent) {
@@ -529,7 +572,11 @@ function saveRequestChanges() {
     let savePromise;
     let relatedCount = 1;
 
-    if (bulkEdit) {
+    // Un changement de date ne s'applique jamais aux autres demandes liées (filet de sécurité :
+    // la case est normalement déjà décochée/désactivée par updateBulkEditAvailability()).
+    const effectiveBulkEdit = bulkEdit && !changes.request_date;
+
+    if (effectiveBulkEdit) {
         const origTeacherId  = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
         const origRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
         if (!window.allRequests || window.allRequests.length === 0) {
@@ -537,14 +584,14 @@ function saveRequestChanges() {
         } else {
             const related = window.allRequests.filter(r => r.teacher_id === origTeacherId && r.request_name === origRequestName);
             relatedCount = related.length;
-            const changedFields = Object.fromEntries(Object.entries(changes).map(([k,v]) => [k, v.new]));
+            const changedFields = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]));
             savePromise = Promise.all(related.map(r => saveRequestDirect(r.id, Object.assign({
                 teacher_id: r.teacher_id, request_date: normalizeDateStr(r.request_date),
                 class_name: r.class_name, horaire: r.horaire || '',
                 material_description: r.material_description || '', selected_materials: r.selected_materials || '',
                 computers_needed: r.computers_needed || 0, notes: r.notes || '',
-                group_count: r.group_count || 1, material_prof: r.material_prof || '',
-                request_name: r.request_name || ''
+                group_count: r.group_count ?? 1, material_prof: r.material_prof || '',
+                request_name: r.request_name || '', is_lab_test: !!r.is_lab_test
             }, changedFields))));
         }
     } else {
@@ -563,7 +610,7 @@ function saveRequestChanges() {
         }, 100);
 
         if (typeof loadRequests === 'function') loadRequests();
-        showSuccessToast(bulkEdit ? `${relatedCount} demandes modifiées avec succès` : 'Demande modifiée avec succès');
+        showSuccessToast(effectiveBulkEdit ? `${relatedCount} demandes modifiées avec succès` : 'Demande modifiée avec succès');
     }).catch(err => {
         console.error('Error:', err);
         showErrorToast('Erreur lors de la sauvegarde: ' + err.message);

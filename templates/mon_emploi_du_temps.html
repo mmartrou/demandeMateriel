@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>🗓️ Mon emploi du temps type</h3>
+    <p class="text-muted">
+        Déclarez ici les cours que vous avez chaque semaine (jour + horaire + niveau).
+        Vous pourrez ensuite générer automatiquement, semaine par semaine, une demande "Pas besoin de matériel"
+        pour chacun — à vérifier et compléter uniquement si un TP est prévu.
+    </p>
+
+    <div class="card mb-4">
+        <div class="card-header">➕ Ajouter un cours récurrent</div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label for="dayOfWeek" class="form-label">Jour</label>
+                    <select id="dayOfWeek" class="form-select">
+                        <option value="0">Lundi</option>
+                        <option value="1">Mardi</option>
+                        <option value="2">Mercredi</option>
+                        <option value="3">Jeudi</option>
+                        <option value="4">Vendredi</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="courseHoraire" class="form-label">Horaire</label>
+                    <select id="courseHoraire" class="form-select">
+                        <option value="">Sélectionner un horaire</option>
+                        <optgroup label="🌅 Matin">
+                            <option value="9h00">9h00</option>
+                            <option value="9h30">9h30</option>
+                            <option value="10h00">10h00</option>
+                            <option value="10h45">10h45</option>
+                            <option value="11h15">11h15</option>
+                            <option value="11h45">11h45</option>
+                            <option value="12h15">12h15</option>
+                            <option value="12h45">12h45</option>
+                        </optgroup>
+                        <optgroup label="🌇 Après-midi">
+                            <option value="13h15">13h15</option>
+                            <option value="13h45">13h45</option>
+                            <option value="14h15">14h15</option>
+                            <option value="14h45">14h45</option>
+                            <option value="15h15">15h15</option>
+                            <option value="15h45">15h45</option>
+                            <option value="16h15">16h15</option>
+                            <option value="16h45">16h45</option>
+                            <option value="17h15">17h15</option>
+                            <option value="18h15">18h15</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="courseClassName" class="form-label">Niveau</label>
+                    <select id="courseClassName" class="form-select">
+                        <option value="">Sélectionner un niveau</option>
+                        <option value="6ème">6ème</option>
+                        <option value="5ème">5ème</option>
+                        <option value="4ème">4ème</option>
+                        <option value="3ème">3ème</option>
+                        <option value="SNT">SNT</option>
+                        <option value="SI">SI</option>
+                        <option value="2nd Classe">2nd Classe</option>
+                        <option value="2nd TP">2nd TP</option>
+                        <option value="AP PP">AP PP</option>
+                        <option value="AP 2nd">AP 2nd</option>
+                        <option value="1ère ES">1ère ES</option>
+                        <option value="Terminale ES">Terminale ES</option>
+                        <option value="1ère Spécialité">1ère Spécialité</option>
+                        <option value="Terminale Spécialité">Terminale Spécialité</option>
+                        <option value="Autre">Autre</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button id="btnAddCourse" class="btn btn-primary w-100">Ajouter</button>
+                </div>
+            </div>
+            <small class="text-muted d-block mt-2">Un seul cours par jour+horaire : en ajouter un sur un créneau déjà utilisé le remplace.</small>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">📋 Mes créneaux réguliers</div>
+        <div class="card-body">
+            <div id="coursesList"><p class="text-muted mb-0">Aucun cours récurrent défini pour l'instant.</p></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">⚡ Générer les cours d'une semaine</div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label for="weekStart" class="form-label">Semaine du (lundi)</label>
+                    <input type="date" id="weekStart" class="form-control">
+                    <small class="text-muted">N'importe quelle date fonctionne : elle est automatiquement ramenée au lundi de sa semaine.</small>
+                </div>
+                <div class="col-md-4">
+                    <button id="btnGenerate" class="btn btn-success">Générer les cours de cette semaine</button>
+                </div>
+            </div>
+            <div id="generateResult" class="mt-3"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+
+function showSuccessToast(message) {
+    if (typeof window.showToast === 'function') window.showToast('success', 'Succès', message);
+    else alert(message);
+}
+function showErrorToast(message) {
+    if (typeof window.showToast === 'function') window.showToast('error', 'Erreur', message);
+    else alert(message);
+}
+
+function loadRecurringCourses() {
+    fetch('/api/recurring-courses')
+        .then(r => r.json())
+        .then(courses => {
+            const container = document.getElementById('coursesList');
+            if (!Array.isArray(courses) || courses.length === 0) {
+                container.innerHTML = '<p class="text-muted mb-0">Aucun cours récurrent défini pour l\'instant.</p>';
+                return;
+            }
+            const byDay = {};
+            courses.forEach(c => {
+                if (!byDay[c.day_of_week]) byDay[c.day_of_week] = [];
+                byDay[c.day_of_week].push(c);
+            });
+            let html = '<div class="list-group">';
+            Object.keys(byDay).sort((a, b) => a - b).forEach(day => {
+                html += `<div class="list-group-item bg-light fw-bold">${dayNames[day]}</div>`;
+                byDay[day].forEach(c => {
+                    html += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>⏰ ${c.horaire} — ${escapeHtmlLocal(c.class_name)}</span>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteRecurringCourse(${c.id})">🗑️ Supprimer</button>
+                        </div>`;
+                });
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById('coursesList').innerHTML = `<p class="text-danger">Erreur : ${err.message}</p>`;
+        });
+}
+
+function escapeHtmlLocal(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.getElementById('btnAddCourse').addEventListener('click', function() {
+    const day_of_week = document.getElementById('dayOfWeek').value;
+    const horaire = document.getElementById('courseHoraire').value;
+    const class_name = document.getElementById('courseClassName').value;
+    if (!horaire || !class_name) {
+        showErrorToast('Choisissez un horaire et un niveau.');
+        return;
+    }
+    fetch('/api/recurring-courses', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ day_of_week: parseInt(day_of_week, 10), horaire, class_name })
+    })
+    .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+    .then(() => {
+        showSuccessToast('Créneau ajouté');
+        loadRecurringCourses();
+    })
+    .catch(err => showErrorToast('Erreur : ' + err.message));
+});
+
+function deleteRecurringCourse(id) {
+    if (!confirm('Supprimer ce créneau de votre emploi du temps type ?')) return;
+    fetch(`/api/recurring-courses/${id}`, { method: 'DELETE' })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+        .then(() => {
+            showSuccessToast('Créneau supprimé');
+            loadRecurringCourses();
+        })
+        .catch(err => showErrorToast('Erreur : ' + err.message));
+}
+
+// Ramène une date quelconque au lundi de sa semaine
+function mondayOf(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+}
+
+function setDefaultWeekStart() {
+    const today = new Date();
+    const nextMonday = new Date(today);
+    const day = today.getDay();
+    const daysUntilMonday = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    const ymd = `${nextMonday.getFullYear()}-${String(nextMonday.getMonth() + 1).padStart(2, '0')}-${String(nextMonday.getDate()).padStart(2, '0')}`;
+    document.getElementById('weekStart').value = ymd;
+}
+
+document.getElementById('btnGenerate').addEventListener('click', function() {
+    const picked = document.getElementById('weekStart').value;
+    if (!picked) {
+        showErrorToast('Choisissez une date.');
+        return;
+    }
+    const week_start = mondayOf(picked);
+    const btn = this;
+    btn.disabled = true;
+    fetch('/api/recurring-courses/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ week_start })
+    })
+    .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+    .then(data => {
+        const resultDiv = document.getElementById('generateResult');
+        resultDiv.innerHTML = `<div class="alert alert-info mb-0">
+            ✅ ${data.created} cours créé(s) pour la semaine du ${week_start}.
+            ${data.skipped > 0 ? `${data.skipped} créneau(x) déjà existant(s), ignoré(s).` : ''}
+        </div>`;
+    })
+    .catch(err => showErrorToast('Erreur : ' + err.message))
+    .finally(() => { btn.disabled = false; });
+});
+
+loadRecurringCourses();
+setDefaultWeekStart();
+</script>
+{% endblock %}

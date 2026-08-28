@@ -43,7 +43,7 @@ def duree_par_niveau(niveau):
     """Get duration by level"""
     if niveau in ("Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"):
         return 110
-    elif niveau in ("AP PP", "1ère ES"):
+    elif niveau in ("AP PP", "1ère ES", "Autre"):
         return 55
     else:
         return 85

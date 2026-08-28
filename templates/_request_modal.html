@@ -55,6 +55,7 @@
                                     <option value="16h15">16h15</option>
                                     <option value="16h45">16h45</option>
                                     <option value="17h15">17h15</option>
+                                    <option value="18h15">18h15</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -76,6 +77,7 @@
                                 <option value="Terminale ES">Terminale ES</option>
                                 <option value="1ère Spécialité">1ère Spécialité</option>
                                 <option value="Terminale Spécialité">Terminale Spécialité</option>
+                                <option value="Autre">Autre</option>
                             </select>
                             <div id="editCustomDuration_inputs" class="d-flex align-items-center gap-1 mt-1">
                                 <span>⏱️ Durée :</span>
@@ -117,10 +119,20 @@
                         <small class="text-muted">Si absent, pas besoin de matériel, ou examen, seule la sélection du niveau sera nécessaire.</small>
                     </div>
 
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editLabTest" name="editLabTest">
+                            <label class="form-check-label fw-bold" for="editLabTest">
+                                🧪 Test au labo (pas de classe – à préparer au labo, aucune salle ne sera attribuée)
+                            </label>
+                        </div>
+                        <small class="text-muted">À cocher pour tester un TP au labo de physique/chimie avant de le donner en classe. Le matériel demandé ci-dessous reste à préciser normalement.</small>
+                    </div>
+
                     <div class="row mb-3" id="editQuantitySection">
                         <div class="col-md-4">
                             <label for="editQuantity" class="form-label">🔢 Nombre de groupes</label>
-                            <input type="number" class="form-control" id="editQuantity" min="1" value="1">
+                            <input type="number" class="form-control" id="editQuantity" min="0" value="1">
                         </div>
                         <div class="col-md-4">
                             <label for="editComputersNeeded" class="form-label">💻 Nombre d'ordinateurs</label>

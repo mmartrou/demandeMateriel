@@ -297,6 +297,7 @@ function loadRequestsWithPendingModifications() {
                 
                 const statusBadge = getStatusBadge(request);
                 const preparedButton = getPreparedButton(request);
+                const confirmDraftButton = getConfirmDraftButton(request);
                 const validationButton = getValidationButton(request);
                 
                 // Trouver les autres demandes du même enseignant avec le même nom
@@ -400,6 +401,7 @@ function loadRequestsWithPendingModifications() {
                     <td>${statusBadge}</td>
                     <td>
                         ${preparedButton}
+                        ${confirmDraftButton ? `<br class="d-block d-sm-none">${confirmDraftButton}` : ''}
                         ${validationButton ? `<br class="d-block d-sm-none">${validationButton}` : ''}
                     </td>
                     <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
@@ -466,6 +468,12 @@ function formatDateTime(dateTimeString) {
 
 function getStatusBadge(request) {
     let badges = [];
+    if (request.is_draft) {
+        badges.push('<span class="badge" style="background-color:#adb5bd;">⏳ Cours régulier à vérifier</span>');
+    }
+    if (request.is_lab_test) {
+        badges.push('<span class="badge" style="background-color:#fd7e14;">🧪 Test labo</span>');
+    }
     if (request.prepared) {
         badges.push('<span class="badge bg-success">✅ Préparée</span>');
     } else {
@@ -482,6 +490,21 @@ function getPreparedButton(request) {
     const buttonClass = request.prepared ? 'btn-outline-success' : 'btn-outline-secondary';
     const buttonText = request.prepared ? '✅ Préparée' : '⏳ Marquer préparée';
     return `<button class="btn btn-sm ${buttonClass}" onclick="togglePrepared(${request.id}); event.stopPropagation();">${buttonText}</button>`;
+}
+
+function getConfirmDraftButton(request) {
+    if (!request.is_draft) return '';
+    return `<button class="btn btn-sm btn-outline-dark" title="Confirmer que ce cours régulier n'a pas besoin de matériel (ou ouvrez-le pour en ajouter)" onclick="confirmDraftRequest(${request.id}); event.stopPropagation();">✅ Confirmer</button>`;
+}
+
+function confirmDraftRequest(requestId) {
+    fetch(`/api/requests/${requestId}/confirm-draft`, { method: 'POST' })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+        .then(() => {
+            showSuccessToast('Cours confirmé');
+            loadRequests();
+        })
+        .catch(err => showErrorToast('Erreur : ' + err.message));
 }
 
 function getValidationButton(request) {
