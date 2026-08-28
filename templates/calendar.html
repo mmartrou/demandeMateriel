@@ -327,49 +327,22 @@
     </div>
 </div>
 
-<!-- Event Details Modal -->
-<div class="modal fade" id="eventModal" tabindex="-1" aria-labelledby="eventModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="eventModalLabel">
-                    📝 Détails de la demande
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer la modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="eventDetails" role="document">
-                    <!-- Event details will be shown here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
+{% include '_request_modal.html' %}
+{% include '_request_modal_js.html' %}
 <script>
 let currentWeekStart = getStartOfWeek(new Date());
 let events = [];
 
-// Enseignant lié au compte connecté (le cas échéant), pour le présélectionner par défaut
-const myTeacherId = {% if current_user and current_user.get('teacher_id') %}{{ current_user.get('teacher_id') }}{% else %}null{% endif %};
+// myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par _request_modal_js.html (inclus plus haut)
 
 // Plage horaire affichée dans la grille (correspond aux horaires proposés dans le formulaire de demande)
 const PT_DAY_START_MIN = 9 * 60;   // 9h00
 const PT_DAY_END_MIN = 19 * 60;    // 19h00 (marge après le dernier créneau possible : 17h15 + 110 min)
 const PT_PX_PER_MIN = 1;           // 1 minute = 1px de hauteur (soit 60px/heure, cf. --pt-hour-px)
 const PT_GAP_PX = 2;
-
-// Durée par défaut d'un TP selon le niveau (identique à _request_modal_js.html)
-function dureeParNiveau(niveau) {
-    if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
-    if (["AP PP", "1ère ES"].includes(niveau)) return 55;
-    return 85;
-}
 
 function parseHoraireToMinutes(horaire) {
     if (!horaire) return null;
@@ -491,11 +464,16 @@ function loadCalendar() {
     if (statusFilter) params.append('status', statusFilter);
     if (typeFilter) params.append('type', typeFilter);
 
-    // Load events from API with filters
-    fetch(`/api/calendar-events?${params.toString()}`)
-        .then(response => response.json())
-        .then(data => {
-            events = data;
+    // Charge les événements affichés dans la grille, ainsi que les demandes complètes de cet
+    // enseignant (utilisées par la modale d'édition : pré-remplissage instantané + détection
+    // des demandes liées, comme sur la page "Voir les demandes").
+    Promise.all([
+        fetch(`/api/calendar-events?${params.toString()}`).then(r => r.json()),
+        fetch(`/api/requests?teacher_id=${encodeURIComponent(teacherId)}`).then(r => r.json())
+    ])
+        .then(([calendarEvents, fullRequests]) => {
+            events = calendarEvents;
+            window.allRequests = Array.isArray(fullRequests) ? fullRequests : [];
             renderWeekView();
         })
         .catch(error => {
@@ -691,24 +669,18 @@ function renderWeekView() {
         ${hasUntimed ? `<div class="pronote-noh-row">${noHorRowHtml}</div>` : ''}
     `;
 
-    // Rattacher les gestionnaires de clic/clavier (CSP-friendly, pas d'attributs inline)
+    // Rattacher les gestionnaires de double-clic/clavier (CSP-friendly, pas d'attributs inline)
+    // Un double-clic sur un créneau ouvre la modale de modification (cohérent avec le reste du site).
     document.querySelectorAll('#pronoteTimetable [data-event-id]').forEach(el => {
         const eventId = el.getAttribute('data-event-id');
-        const ev = events.find(e => String(e.id) === eventId);
-        if (!ev) return;
-        el.addEventListener('click', () => showEventDetails(ev));
+        el.addEventListener('dblclick', () => editRequest(eventId));
         el.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                showEventDetails(ev);
+                editRequest(eventId);
             }
         });
     });
-}
-
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function eventLabel(ev) {
@@ -724,7 +696,7 @@ function buildEventHtml(ev, showTeacherName, styleObj) {
     return `
         <div class="pronote-event" data-event-id="${ev.id}"
              style="${styleStr};background-color:${bgColor};"
-             role="button" tabindex="0"
+             role="button" tabindex="0" title="Double-cliquez pour modifier"
              aria-label="Détails de la demande: ${eventLabel(ev).replace(/"/g, '&quot;')}">
             <span class="ev-time">${ev.horaire || ''}</span>
             ${showTeacherName ? `<span class="ev-teacher">${teacherName}</span>` : ''}
@@ -742,7 +714,7 @@ function buildChipHtml(ev, showTeacherName) {
     return `
         <span class="pronote-noh-chip" data-event-id="${ev.id}"
               style="background-color:${bgColor};"
-              role="button" tabindex="0"
+              role="button" tabindex="0" title="Double-cliquez pour modifier"
               aria-label="Détails de la demande: ${eventLabel(ev).replace(/"/g, '&quot;')}">
             ${label}
         </span>`;
@@ -756,68 +728,6 @@ function previousWeek() {
 function nextWeek() {
     currentWeekStart.setDate(currentWeekStart.getDate() + 7);
     renderWeekView();
-}
-
-function showEventDetails(event) {
-    const modalElement = document.getElementById('eventModal');
-    const modal = new bootstrap.Modal(modalElement);
-    const details = document.getElementById('eventDetails');
-
-    details.innerHTML = `
-        <div class="row">
-            <div class="col-sm-4"><strong>Enseignant:</strong></div>
-            <div class="col-sm-8">${event.teacher_name || event.title.split(' - ')[0]}</div>
-        </div>
-        <div class="row mt-2">
-            <div class="col-sm-4"><strong>Classe:</strong></div>
-            <div class="col-sm-8">${event.class_name || event.title.split(' - ')[1]}</div>
-        </div>
-        ${event.request_name ? `
-        <div class="row mt-2">
-            <div class="col-sm-4"><strong>Nom du TP:</strong></div>
-            <div class="col-sm-8">${escapeHtml(event.request_name)}</div>
-        </div>` : ''}
-        <div class="row mt-2">
-            <div class="col-sm-4"><strong>Date:</strong></div>
-            <div class="col-sm-8">${formatDate(event.start)}</div>
-        </div>
-        <div class="row mt-2">
-            <div class="col-sm-4"><strong>Horaire:</strong></div>
-            <div class="col-sm-8">${event.horaire || 'Non spécifié'}</div>
-        </div>
-        <div class="row mt-2">
-            <div class="col-sm-4"><strong>Description:</strong></div>
-            <div class="col-sm-8">${event.description}</div>
-        </div>
-    `;
-
-    // Écouter les événements d'ouverture/fermeture pour l'accessibilité
-    modalElement.addEventListener('shown.bs.modal', function () {
-        // Focus sur le premier élément focusable dans la modal
-        const firstFocusableElement = modalElement.querySelector('button[data-bs-dismiss], .btn-close');
-        if (firstFocusableElement) {
-            firstFocusableElement.focus();
-        }
-    });
-
-    modalElement.addEventListener('hidden.bs.modal', function () {
-        // Remettre le focus sur l'élément qui a ouvert la modal si possible
-        const activeElement = document.querySelector('[data-event-id]:focus');
-        if (activeElement) {
-            activeElement.focus();
-        }
-    });
-
-    modal.show();
-}
-
-function formatDate(dateString) {
-    // Utiliser la normalisation pour gérer tous les formats
-    const normalizedDate = normalizeDateToYMD(dateString);
-    if (!normalizedDate) return 'Date invalide';
-
-    const [year, month, day] = normalizedDate.split('-');
-    return `${day}/${month}/${year}`;
 }
 
 // Toast functions
