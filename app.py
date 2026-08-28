@@ -1180,6 +1180,39 @@ def api_get_tp_template_by_id(template_id):
     except Exception as e:
         return api_error('Erreur lors de la récupération du template TP', e)
 
+@app.route('/api/tp-templates', methods=['POST'])
+def api_create_tp_template():
+    """Crée un nouveau template TP pour l'enseignant connecté, sans l'affecter à une date."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        data = request.get_json(silent=True) or {}
+        level = (data.get('level') or '').strip()
+        request_name = (data.get('request_name') or '').strip()
+        if not level or not request_name:
+            return jsonify({'error': 'level et request_name sont requis'}), 400
+        existing = get_tp_templates(user['teacher_id'], level)
+        if any(t.get('request_name') == request_name for t in existing):
+            return jsonify({'error': f'Un TP nommé "{request_name}" existe déjà pour ce niveau'}), 409
+        upsert_tp_template(
+            teacher_id=user['teacher_id'],
+            level=level,
+            request_name=request_name,
+            material_description=data.get('material_description', ''),
+            selected_materials=data.get('selected_materials', ''),
+            material_prof=data.get('material_prof', ''),
+            computers_needed=int(data.get('computers_needed', 0)),
+            group_count=int(data.get('group_count', 1)),
+            notes=data.get('notes', ''),
+            image_url=data.get('image_url', ''),
+            room_type=data.get('room_type', 'Mixte')
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la création du template TP', e)
+
+
 @app.route('/api/tp-templates/copy', methods=['POST'])
 def api_copy_tp_template():
     """Copie un template TP d'un autre enseignant vers l'enseignant connecté."""

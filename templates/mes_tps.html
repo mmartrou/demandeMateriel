@@ -5,25 +5,28 @@
     <h3>Mes demandes de TP</h3>
     
     <!-- Sélecteur de niveau -->
-    <select id="levelSelect" class="form-select w-auto mb-3">
-        <option value="">-- Choisir un niveau --</option>
-        <!-- Mêmes options que _request_modal.html lignes 64-78 -->
-        <option value="6ème">6ème</option>
-        <option value="5ème">5ème</option>
-        <option value="4ème">4ème</option>
-        <option value="3ème">3ème</option>
-        <option value="SNT">SNT</option>
-        <option value="SI">SI</option>
-        <option value="2nd Classe">2nd Classe</option>
-        <option value="2nd TP">2nd TP</option>
-        <option value="AP PP">AP PP</option>
-        <option value="AP 2nd">AP 2nd</option>
-        <option value="1ère ES">1ère ES</option>
-        <option value="Terminale ES">Terminale ES</option>
-        <option value="1ère Spécialité">1ère Spécialité</option>
-        <option value="Terminale Spécialité">Terminale Spécialité</option>
-    </select>
-    
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <select id="levelSelect" class="form-select w-auto">
+            <option value="">-- Choisir un niveau --</option>
+            <!-- Mêmes options que _request_modal.html lignes 64-78 -->
+            <option value="6ème">6ème</option>
+            <option value="5ème">5ème</option>
+            <option value="4ème">4ème</option>
+            <option value="3ème">3ème</option>
+            <option value="SNT">SNT</option>
+            <option value="SI">SI</option>
+            <option value="2nd Classe">2nd Classe</option>
+            <option value="2nd TP">2nd TP</option>
+            <option value="AP PP">AP PP</option>
+            <option value="AP 2nd">AP 2nd</option>
+            <option value="1ère ES">1ère ES</option>
+            <option value="Terminale ES">Terminale ES</option>
+            <option value="1ère Spécialité">1ère Spécialité</option>
+            <option value="Terminale Spécialité">Terminale Spécialité</option>
+        </select>
+        <button id="btnNewTp" class="btn btn-success">+ Nouveau TP</button>
+    </div>
+
     <!-- Liste de mes TPs -->
     <div id="tp-list"></div>
     
@@ -193,6 +196,134 @@
                 (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
             })
             .catch(err => console.error('Erreur chargement TP:', err));
+    }
+
+    document.getElementById('btnNewTp').addEventListener('click', function() {
+        const level = document.getElementById('levelSelect').value;
+        if (!level) {
+            showErrorToast('Choisissez d\'abord un niveau pour votre nouveau TP.');
+            return;
+        }
+        openNewTpModal(level);
+    });
+
+    function openNewTpModal(level) {
+        currentTpTemplateId = null;
+
+        const fakeRequest = {
+            id: null,
+            teacher_id: myTeacherId,
+            request_name: '',
+            request_date: '',
+            horaire: '',
+            class_name: level,
+            material_description: '',
+            selected_materials: '',
+            material_prof: '',
+            computers_needed: 0,
+            group_count: 1,
+            notes: '',
+            image_url: '',
+            room_type: 'Mixte',
+            prepared: false
+        };
+
+        const modalEl = document.getElementById('editRequestModal');
+        populateEditForm(fakeRequest);
+
+        // Cacher les champs non pertinents pour un template (pas de date fixe)
+        ['editDate', 'editHoraire'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+        });
+        const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
+        if (relatedCard) relatedCard.style.display = 'none';
+
+        // Ajouter un champ d'upload d'image
+        const imageSection = document.getElementById('editImageSection');
+        if (imageSection) {
+            imageSection.innerHTML = `
+                <label class="form-label">📷 Image du TP</label>
+                <input type="file" class="form-control" id="tpImageUpload" accept="image/*">
+                <input type="hidden" id="tpImageUrl" value="">
+                <div id="tpImageStatus" class="mt-1"></div>`;
+            document.getElementById('tpImageUpload').addEventListener('change', handleTpImageUpload);
+        }
+
+        document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
+            .forEach(el => el.disabled = false);
+
+        // Le niveau est fixé par le sélecteur au-dessus de la liste : pas modifiable ici.
+        const classNameField = document.getElementById('editClassName');
+        if (classNameField) classNameField.disabled = true;
+
+        const saveBtn = modalEl.querySelector('.modal-footer .btn-primary');
+        const delBtn = modalEl.querySelector('.modal-footer .btn-danger');
+        const prepBtn = document.getElementById('modalPreparedBtn');
+        if (prepBtn) prepBtn.style.display = 'none';
+        if (delBtn) delBtn.style.display = 'none';
+
+        const title = document.querySelector('#editRequestModal .modal-title');
+        if (title) title.textContent = `Nouveau TP (${level})`;
+
+        if (saveBtn) {
+            const newBtn = saveBtn.cloneNode(true);
+            newBtn.removeAttribute('onclick');
+            newBtn.textContent = 'Créer le TP';
+            newBtn.disabled = false;
+            newBtn.style.display = '';
+            saveBtn.replaceWith(newBtn);
+            newBtn.addEventListener('click', () => createTpTemplate(level));
+        }
+
+        (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+    }
+
+    function createTpTemplate(level) {
+        const requestName = (document.getElementById('editRequestName')?.value || '').trim();
+        if (!requestName) {
+            showErrorToast('Le nom du TP est obligatoire.');
+            return;
+        }
+        const checkedMaterials = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked'))
+            .map(cb => cb.value).filter(v => v !== 'Pas de matériel spécifique à la salle');
+        const freeText = (document.getElementById('editMaterialDescription')?.value || '').trim();
+        let allMats = [...checkedMaterials];
+        if (freeText) allMats.push(freeText);
+
+        const data = {
+            level:                level,
+            request_name:         requestName,
+            material_description: freeText ? `Matériel requis: ${freeText}` : 'Cours sans matériel spécifique',
+            selected_materials:   allMats.length ? '- ' + allMats.join('\n- ') : '',
+            material_prof:        document.getElementById('editMaterialProf')?.value || '',
+            computers_needed:     parseInt(document.getElementById('editComputersNeeded')?.value, 10) || 0,
+            group_count:          parseInt(document.getElementById('editQuantity')?.value, 10) || 1,
+            notes:                document.getElementById('editNotes')?.value || '',
+            image_url:            document.getElementById('tpImageUrl')?.value || '',
+            room_type:            'Mixte'
+        };
+
+        fetch('/api/tp-templates', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+        .then(() => {
+            const modalEl = document.getElementById('editRequestModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            showSuccessToast(`TP "${requestName}" créé`);
+            const levelSelect = document.getElementById('levelSelect');
+            if (levelSelect.value === level) {
+                levelSelect.dispatchEvent(new Event('change'));
+            } else {
+                levelSelect.value = level;
+                levelSelect.dispatchEvent(new Event('change'));
+            }
+        })
+        .catch(err => showErrorToast('Erreur : ' + err.message));
     }
 
     function handleTpImageUpload() {
