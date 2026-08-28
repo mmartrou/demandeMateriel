@@ -1,5 +1,117 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<style>
+/* ---- Grille type Pronote (identique à Calendrier) ---- */
+:root {
+    --pt-hour-px: 60px;
+    --pt-time-col: 56px;
+}
+
+.pronote-wrap {
+    overflow-x: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.pronote-timetable {
+    min-width: 760px;
+}
+
+.pronote-head,
+.pronote-body {
+    display: grid;
+    grid-template-columns: var(--pt-time-col) repeat(5, 1fr);
+}
+
+.pronote-head {
+    border-bottom: 2px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+.pronote-head-cell {
+    padding: 0.5rem 0.25rem;
+    text-align: center;
+    font-weight: 600;
+    color: #495057;
+    border-left: 1px solid #dee2e6;
+}
+
+.pronote-head-cell:first-child {
+    border-left: none;
+}
+
+.pronote-body {
+    position: relative;
+}
+
+.pronote-time-col {
+    position: relative;
+    border-right: 1px solid #dee2e6;
+}
+
+.pronote-time-label {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 0.72rem;
+    color: #adb5bd;
+    white-space: nowrap;
+}
+
+.pronote-day-col {
+    position: relative;
+    border-left: 1px solid #eef0f2;
+    background-image: linear-gradient(#eef0f2 1px, transparent 1px);
+    background-size: 100% var(--pt-hour-px);
+    background-position: 0 0;
+}
+
+.pronote-event {
+    position: absolute;
+    border-radius: 0.35rem;
+    padding: 0.2rem 0.35rem;
+    color: #fff !important;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    transition: box-shadow 0.15s, filter 0.15s;
+    background-color: #007bff;
+}
+
+.pronote-event:hover,
+.pronote-event:focus {
+    filter: brightness(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 5;
+    outline: none;
+}
+
+.pronote-event .ev-time {
+    font-weight: 700;
+    display: block;
+}
+
+.pronote-event .ev-class {
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-empty-week {
+    padding: 2rem;
+    text-align: center;
+    color: #6c757d;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <h3>🗓️ Mon emploi du temps type</h3>
@@ -81,9 +193,13 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header">📋 Mes créneaux réguliers</div>
+        <div class="card-header">🗓️ Mon emploi du temps</div>
         <div class="card-body">
-            <div id="coursesList"><p class="text-muted mb-0">Aucun cours récurrent défini pour l'instant.</p></div>
+            <div class="pronote-wrap">
+                <div class="pronote-timetable" id="scheduleGrid"></div>
+            </div>
+            <div id="scheduleEmpty" class="pronote-empty-week d-none">Aucun cours récurrent défini pour l'instant.</div>
+            <small class="text-muted d-block mt-2">Cliquez sur un cours pour le supprimer.</small>
         </div>
     </div>
 
@@ -110,6 +226,26 @@
 <script>
 const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
+// Plage horaire affichée (identique à Calendrier)
+const PT_DAY_START_MIN = 9 * 60;
+const PT_DAY_END_MIN = 20 * 60 + 15;
+const PT_PX_PER_MIN = 1;
+
+function dureeParNiveau(niveau) {
+    if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
+    if (["AP PP", "1ère ES", "Autre"].includes(niveau)) return 55;
+    return 85;
+}
+
+function parseHoraireToMinutes(horaire) {
+    if (!horaire) return null;
+    const match = String(horaire).match(/(\d{1,2})h(\d{0,2})/);
+    if (!match) return null;
+    const hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    return hours * 60 + minutes;
+}
+
 function showSuccessToast(message) {
     if (typeof window.showToast === 'function') window.showToast('success', 'Succès', message);
     else alert(message);
@@ -119,43 +255,88 @@ function showErrorToast(message) {
     else alert(message);
 }
 
-function loadRecurringCourses() {
-    fetch('/api/recurring-courses')
-        .then(r => r.json())
-        .then(courses => {
-            const container = document.getElementById('coursesList');
-            if (!Array.isArray(courses) || courses.length === 0) {
-                container.innerHTML = '<p class="text-muted mb-0">Aucun cours récurrent défini pour l\'instant.</p>';
-                return;
-            }
-            const byDay = {};
-            courses.forEach(c => {
-                if (!byDay[c.day_of_week]) byDay[c.day_of_week] = [];
-                byDay[c.day_of_week].push(c);
-            });
-            let html = '<div class="list-group">';
-            Object.keys(byDay).sort((a, b) => a - b).forEach(day => {
-                html += `<div class="list-group-item bg-light fw-bold">${dayNames[day]}</div>`;
-                byDay[day].forEach(c => {
-                    html += `
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <span>⏰ ${c.horaire} — ${escapeHtmlLocal(c.class_name)}</span>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteRecurringCourse(${c.id})">🗑️ Supprimer</button>
-                        </div>`;
-                });
-            });
-            html += '</div>';
-            container.innerHTML = html;
-        })
-        .catch(err => {
-            document.getElementById('coursesList').innerHTML = `<p class="text-danger">Erreur : ${err.message}</p>`;
-        });
-}
-
 function escapeHtmlLocal(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+let currentCourses = [];
+
+function loadRecurringCourses() {
+    fetch('/api/recurring-courses')
+        .then(r => r.json())
+        .then(courses => {
+            currentCourses = Array.isArray(courses) ? courses : [];
+            renderScheduleGrid();
+        })
+        .catch(err => {
+            document.getElementById('scheduleGrid').innerHTML = `<p class="text-danger p-3">Erreur : ${err.message}</p>`;
+        });
+}
+
+function renderScheduleGrid() {
+    const gridEl = document.getElementById('scheduleGrid');
+    const emptyEl = document.getElementById('scheduleEmpty');
+    emptyEl.classList.toggle('d-none', currentCourses.length !== 0);
+    gridEl.classList.toggle('d-none', currentCourses.length === 0);
+    if (currentCourses.length === 0) {
+        gridEl.innerHTML = '';
+        return;
+    }
+
+    const gridHeight = (PT_DAY_END_MIN - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+
+    let headHtml = `<div class="pronote-head-cell"></div>`;
+    dayNames.forEach(name => {
+        headHtml += `<div class="pronote-head-cell">${name}</div>`;
+    });
+
+    let timeColHtml = '';
+    for (let m = PT_DAY_START_MIN; m <= PT_DAY_END_MIN; m += 60) {
+        const top = (m - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+        timeColHtml += `<div class="pronote-time-label" style="top:${top}px;">${Math.floor(m / 60)}h</div>`;
+    }
+
+    let dayColsHtml = '';
+    for (let day = 0; day < 5; day++) {
+        let colHtml = '';
+        currentCourses.filter(c => c.day_of_week === day).forEach(c => {
+            const startMin = parseHoraireToMinutes(c.horaire);
+            if (startMin === null) return;
+            const durationMin = dureeParNiveau(c.class_name);
+            const clampedStart = Math.max(startMin, PT_DAY_START_MIN);
+            const clampedEnd = Math.min(startMin + durationMin, PT_DAY_END_MIN);
+            const top = (clampedStart - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+            const height = Math.max(18, (clampedEnd - clampedStart) * PT_PX_PER_MIN - 2);
+            colHtml += `
+                <div class="pronote-event" data-course-id="${c.id}"
+                     style="top:${top}px;height:${height}px;left:2px;right:2px;"
+                     role="button" tabindex="0" title="Cliquez pour supprimer"
+                     aria-label="Supprimer ${escapeHtmlLocal(c.horaire)} ${escapeHtmlLocal(c.class_name)}">
+                    <span class="ev-time">${c.horaire}</span>
+                    <span class="ev-class">${escapeHtmlLocal(c.class_name)}</span>
+                </div>`;
+        });
+        dayColsHtml += `<div class="pronote-day-col" style="height:${gridHeight}px;">${colHtml}</div>`;
+    }
+
+    gridEl.innerHTML = `
+        <div class="pronote-head">${headHtml}</div>
+        <div class="pronote-body" style="height:${gridHeight}px;">
+            <div class="pronote-time-col">${timeColHtml}</div>
+            ${dayColsHtml}
+        </div>
+    `;
+
+    gridEl.querySelectorAll('[data-course-id]').forEach(el => {
+        const courseId = el.getAttribute('data-course-id');
+        const activate = () => deleteRecurringCourse(courseId);
+        el.addEventListener('click', activate);
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+        });
+    });
 }
 
 document.getElementById('btnAddCourse').addEventListener('click', function() {
