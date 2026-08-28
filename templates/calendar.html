@@ -166,6 +166,15 @@
     text-overflow: ellipsis;
 }
 
+.pronote-event .ev-name {
+    font-style: italic;
+    opacity: 0.95;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .pronote-noh-row {
     border-top: 1px solid #dee2e6;
     background: #fbfbfb;
@@ -697,8 +706,14 @@ function renderWeekView() {
     });
 }
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function eventLabel(ev) {
-    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}. ${ev.description}`;
+    const tpName = ev.request_name ? ` "${ev.request_name}"` : '';
+    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}${tpName}. ${ev.description}`;
 }
 
 function buildEventHtml(ev, showTeacherName, styleObj) {
@@ -714,6 +729,7 @@ function buildEventHtml(ev, showTeacherName, styleObj) {
             <span class="ev-time">${ev.horaire || ''}</span>
             ${showTeacherName ? `<span class="ev-teacher">${teacherName}</span>` : ''}
             <span class="ev-class">${className}</span>
+            ${ev.request_name ? `<span class="ev-name">${escapeHtml(ev.request_name)}</span>` : ''}
         </div>`;
 }
 
@@ -721,7 +737,8 @@ function buildChipHtml(ev, showTeacherName) {
     const bgColor = ev.backgroundColor || '#007bff';
     const className = ev.class_name || (ev.title || '').split(' - ')[1] || '';
     const teacherName = ev.teacher_name || (ev.title || '').split(' - ')[0] || '';
-    const label = showTeacherName ? `${teacherName} - ${className}` : className;
+    const namePart = ev.request_name ? ` — ${escapeHtml(ev.request_name)}` : '';
+    const label = (showTeacherName ? `${teacherName} - ${className}` : className) + namePart;
     return `
         <span class="pronote-noh-chip" data-event-id="${ev.id}"
               style="background-color:${bgColor};"
@@ -755,6 +772,11 @@ function showEventDetails(event) {
             <div class="col-sm-4"><strong>Classe:</strong></div>
             <div class="col-sm-8">${event.class_name || event.title.split(' - ')[1]}</div>
         </div>
+        ${event.request_name ? `
+        <div class="row mt-2">
+            <div class="col-sm-4"><strong>Nom du TP:</strong></div>
+            <div class="col-sm-8">${escapeHtml(event.request_name)}</div>
+        </div>` : ''}
         <div class="row mt-2">
             <div class="col-sm-4"><strong>Date:</strong></div>
             <div class="col-sm-8">${formatDate(event.start)}</div>

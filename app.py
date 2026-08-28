@@ -765,6 +765,7 @@ def api_calendar_events():
             # Champs bruts pour le positionnement dans la grille horaire (type Pronote)
             'teacher_name': req.get('teacher_name'),
             'class_name': req.get('class_name'),
+            'request_name': req.get('request_name'),
             'horaire': req.get('horaire'),
             'custom_duration': req.get('custom_duration'),
             'material_description': req.get('material_description'),
