@@ -706,7 +706,8 @@ def api_calendar_events():
                 'image_url': req[16] if len(req) > 16 else None,
                 'exam': req[17] if len(req) > 17 else False,
                 'created_at': req[18] if len(req) > 18 else None,
-                'teacher_name': req[-1]
+                'teacher_name': req[19] if len(req) > 19 else '',
+                'custom_duration': req[20] if len(req) > 20 else None
             }
 
     requests = [to_dict(req) for req in requests]
@@ -760,7 +761,17 @@ def api_calendar_events():
             'description': f"Matériel: {req['material_description']} (Quantité: {req['quantity'] if req['quantity'] else 1})",
             'backgroundColor': bg_color,
             'borderColor': bg_color,
-            'textColor': '#ffffff'
+            'textColor': '#ffffff',
+            # Champs bruts pour le positionnement dans la grille horaire (type Pronote)
+            'teacher_name': req.get('teacher_name'),
+            'class_name': req.get('class_name'),
+            'horaire': req.get('horaire'),
+            'custom_duration': req.get('custom_duration'),
+            'material_description': req.get('material_description'),
+            'selected_materials': req.get('selected_materials'),
+            'room_type': req.get('room_type'),
+            'prepared': req.get('prepared'),
+            'modified': req.get('modified')
         })
 
     return jsonify(events)

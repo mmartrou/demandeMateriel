@@ -2,48 +2,9 @@
 
 {% block extra_css %}
 <style>
-.calendar-container {
-    background-color: white;
-    border-radius: 0.5rem;
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-}
-
 .calendar-header {
     padding: 1rem;
     border-bottom: 1px solid #dee2e6;
-}
-
-.week-view {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
-}
-
-.week-day {
-    border: 1px solid #dee2e6;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    background-color: #f8f9fa;
-}
-
-.week-day-header {
-    font-weight: bold;
-    font-size: 1.1rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid #dee2e6;
-    color: #495057;
-}
-
-.week-day-events {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.teacher-group {
-    margin-bottom: 1rem;
 }
 
 .teacher-name {
@@ -54,19 +15,193 @@
     border-left: 3px solid #007bff;
 }
 
-.calendar-event {
-    color: white !important;
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-    margin-bottom: 0.25rem;
-    transition: background-color 0.2s;
-    /* La couleur de fond sera définie par le JavaScript avec !important */
+/* ---- Grille type Pronote ---- */
+:root {
+    --pt-hour-px: 60px;   /* hauteur d'une heure dans la grille */
+    --pt-time-col: 56px;  /* largeur de la colonne des heures */
 }
 
-.calendar-event:hover {
-    background-color: #0056b3;
+.pronote-wrap {
+    overflow-x: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.pronote-timetable {
+    min-width: 760px;
+}
+
+.pronote-head,
+.pronote-body,
+.pronote-noh-row {
+    display: grid;
+    grid-template-columns: var(--pt-time-col) repeat(5, 1fr);
+}
+
+.pronote-head {
+    border-bottom: 2px solid #dee2e6;
+    background: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.pronote-head-cell {
+    padding: 0.5rem 0.25rem;
+    text-align: center;
+    font-weight: 600;
+    color: #495057;
+    border-left: 1px solid #dee2e6;
+}
+
+.pronote-head-cell:first-child {
+    border-left: none;
+}
+
+.pronote-head-cell.today {
+    background: #e7f1ff;
+    color: #0d6efd;
+}
+
+.pronote-head-daynum {
+    display: block;
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.pronote-body {
+    position: relative;
+}
+
+.pronote-time-col {
+    position: relative;
+    border-right: 1px solid #dee2e6;
+}
+
+.pronote-time-label {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 0.72rem;
+    color: #adb5bd;
+    white-space: nowrap;
+}
+
+.pronote-day-col {
+    position: relative;
+    border-left: 1px solid #eef0f2;
+    background-image: linear-gradient(#eef0f2 1px, transparent 1px);
+    background-size: 100% var(--pt-hour-px);
+    background-position: 0 0;
+}
+
+.pronote-day-col.today {
+    background-color: #f5f9ff;
+}
+
+.pronote-now-line {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    height: 2px;
+    background: #dc3545;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.pronote-now-line::before {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dc3545;
+}
+
+.pronote-event {
+    position: absolute;
+    border-radius: 0.35rem;
+    padding: 0.2rem 0.35rem;
+    color: #fff !important;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    transition: box-shadow 0.15s, filter 0.15s;
+}
+
+.pronote-event:hover,
+.pronote-event:focus {
+    filter: brightness(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 5;
+    outline: none;
+}
+
+.pronote-event .ev-time {
+    font-weight: 700;
+    display: block;
+}
+
+.pronote-event .ev-teacher {
+    opacity: 0.9;
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-event .ev-class {
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-noh-row {
+    border-top: 1px solid #dee2e6;
+    background: #fbfbfb;
+}
+
+.pronote-noh-label {
+    font-size: 0.68rem;
+    color: #6c757d;
+    padding: 0.4rem 0.25rem;
+    text-align: right;
+}
+
+.pronote-noh-cell {
+    padding: 0.3rem;
+    border-left: 1px solid #eef0f2;
+    min-height: 2.2rem;
+}
+
+.pronote-noh-chip {
+    display: inline-block;
+    color: #fff !important;
+    font-size: 0.68rem;
+    border-radius: 0.3rem;
+    padding: 0.15rem 0.4rem;
+    margin: 0.1rem;
+    cursor: pointer;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-empty-week {
+    padding: 2rem;
+    text-align: center;
+    color: #6c757d;
 }
 </style>
 {% endblock %}
@@ -94,7 +229,6 @@
                     <div class="col-md-4">
                         <label for="calendarFilterTeacher" class="form-label">👨‍🏫 Enseignant</label>
                         <select class="form-select" id="calendarFilterTeacher">
-                            <option value="">Tous les enseignants</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -115,7 +249,7 @@
                         </select>
                     </div>
                 </div>
-                
+
                 <!-- Légende des couleurs -->
                 <div class="row mb-4">
                     <div class="col-12">
@@ -160,8 +294,8 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Vue semaine -->
+
+                <!-- Vue semaine type "emploi du temps" -->
                 <div class="row">
                     <div class="col-12">
                         <div class="week-calendar">
@@ -170,9 +304,12 @@
                                 <h5 id="currentWeek" class="d-inline mx-4 mb-0"></h5>
                                 <button class="btn btn-outline-primary btn-sm" onclick="nextWeek()">Semaine suivante ›</button>
                             </div>
-                            <div class="week-view" id="weekView">
-                                <!-- Week view will be generated here -->
+                            <div class="pronote-wrap">
+                                <div class="pronote-timetable" id="pronoteTimetable">
+                                    <!-- La grille horaire type Pronote est générée ici -->
+                                </div>
                             </div>
+                            <div id="noPlanningResults" class="pronote-empty-week d-none">Aucune demande cette semaine.</div>
                         </div>
                     </div>
                 </div>
@@ -209,6 +346,37 @@
 let currentWeekStart = getStartOfWeek(new Date());
 let events = [];
 
+// Enseignant lié au compte connecté (le cas échéant), pour le présélectionner par défaut
+const myTeacherId = {% if current_user and current_user.get('teacher_id') %}{{ current_user.get('teacher_id') }}{% else %}null{% endif %};
+
+// Plage horaire affichée dans la grille (correspond aux horaires proposés dans le formulaire de demande)
+const PT_DAY_START_MIN = 9 * 60;   // 9h00
+const PT_DAY_END_MIN = 19 * 60;    // 19h00 (marge après le dernier créneau possible : 17h15 + 110 min)
+const PT_PX_PER_MIN = 1;           // 1 minute = 1px de hauteur (soit 60px/heure, cf. --pt-hour-px)
+const PT_GAP_PX = 2;
+
+// Durée par défaut d'un TP selon le niveau (identique à _request_modal_js.html)
+function dureeParNiveau(niveau) {
+    if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
+    if (["AP PP", "1ère ES"].includes(niveau)) return 55;
+    return 85;
+}
+
+function parseHoraireToMinutes(horaire) {
+    if (!horaire) return null;
+    const match = String(horaire).match(/(\d{1,2})h(\d{0,2})/);
+    if (!match) return null;
+    const hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    return hours * 60 + minutes;
+}
+
+function getEventDurationMinutes(event) {
+    const custom = Number(event.custom_duration);
+    if (Number.isFinite(custom) && custom > 0) return custom;
+    return dureeParNiveau(event.class_name || '');
+}
+
 function getStartOfWeek(date) {
     const d = new Date(date);
     const day = d.getDay();
@@ -224,6 +392,10 @@ function getWeekDays(startDate) {
         days.push(day);
     }
     return days;
+}
+
+function ymd(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 // Gestion des cookies
@@ -245,34 +417,44 @@ function getCookie(name) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Load teachers for filter
+    // Load teachers for filter (un seul enseignant affiché à la fois)
     fetch('/api/teachers')
         .then(response => response.json())
         .then(teachers => {
             const teacherFilter = document.getElementById('calendarFilterTeacher');
-            teacherFilter.innerHTML = '<option value="">Tous les enseignants</option>';
-            teachers.forEach(teacher => {
+            teacherFilter.innerHTML = '';
+            const sortedTeachers = [...teachers].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
+            sortedTeachers.forEach(teacher => {
                 const option = document.createElement('option');
                 option.value = teacher.id;
                 option.textContent = teacher.name;
                 teacherFilter.appendChild(option);
             });
-            
-            // Restore selected teacher from cookie
+
+            // Par défaut : l'enseignant du compte connecté. Sinon, le dernier consulté, sinon le premier de la liste.
             const savedTeacher = getCookie('selectedTeacher');
-            if (savedTeacher) {
-                teacherFilter.value = savedTeacher;
+            let defaultTeacherId = null;
+            if (myTeacherId && sortedTeachers.some(t => String(t.id) === String(myTeacherId))) {
+                defaultTeacherId = String(myTeacherId);
+            } else if (savedTeacher && sortedTeachers.some(t => String(t.id) === savedTeacher)) {
+                defaultTeacherId = savedTeacher;
+            } else if (sortedTeachers.length > 0) {
+                defaultTeacherId = String(sortedTeachers[0].id);
             }
-            
+            if (defaultTeacherId) {
+                teacherFilter.value = defaultTeacherId;
+                setCookie('selectedTeacher', defaultTeacherId);
+            }
+
             // Load calendar after teacher filter is restored
             loadCalendar();
         });
-    
+
     // Set up filter change handlers
     document.getElementById('calendarFilterTeacher').addEventListener('change', loadCalendar);
     document.getElementById('calendarFilterStatus').addEventListener('change', loadCalendar);
     document.getElementById('calendarFilterType').addEventListener('change', loadCalendar);
-    
+
     // Save teacher selection to cookie
     document.getElementById('calendarFilterTeacher').addEventListener('change', function() {
         if (this.value) {
@@ -286,22 +468,24 @@ function loadCalendar() {
     const teacherId = document.getElementById('calendarFilterTeacher').value;
     const statusFilter = document.getElementById('calendarFilterStatus').value;
     const typeFilter = document.getElementById('calendarFilterType').value;
-    
+
+    // Un enseignant doit toujours être sélectionné (plus de vue "tous les enseignants")
+    if (!teacherId) {
+        events = [];
+        renderWeekView();
+        return;
+    }
+
     // Build query string
     const params = new URLSearchParams();
-    if (teacherId) params.append('teacher_id', teacherId);
+    params.append('teacher_id', teacherId);
     if (statusFilter) params.append('status', statusFilter);
     if (typeFilter) params.append('type', typeFilter);
-    
+
     // Load events from API with filters
     fetch(`/api/calendar-events?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
-            console.log('Calendar events reçus:', data);
-            // Afficher le format de la première date si disponible
-            if (data.length > 0) {
-                console.log('Format de date exemple:', data[0].start, 'Type:', typeof data[0].start);
-            }
             events = data;
             renderWeekView();
         })
@@ -313,18 +497,18 @@ function loadCalendar() {
 // Fonction pour normaliser les dates en format YYYY-MM-DD
 function normalizeDateToYMD(dateValue) {
     if (!dateValue) return null;
-    
+
     let date;
-    
+
     // Si c'est déjà une chaîne au format YYYY-MM-DD
     if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
         return dateValue;
     }
-    
+
     // Si c'est une chaîne de date GMT ou autre format
     if (typeof dateValue === 'string') {
         date = new Date(dateValue);
-    } 
+    }
     // Si c'est déjà un objet Date
     else if (dateValue instanceof Date) {
         date = dateValue;
@@ -333,13 +517,13 @@ function normalizeDateToYMD(dateValue) {
     else {
         date = new Date(dateValue);
     }
-    
+
     // Vérifier si la date est valide
     if (isNaN(date.getTime())) {
         console.error('Date invalide:', dateValue);
         return null;
     }
-    
+
     // Retourner au format YYYY-MM-DD
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -347,124 +531,204 @@ function normalizeDateToYMD(dateValue) {
     return `${year}-${month}-${day}`;
 }
 
+// Répartit les événements qui se chevauchent en colonnes (comme un vrai emploi du temps)
+function layoutDayEvents(dayEvents) {
+    const sorted = [...dayEvents].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+    const clusters = [];
+    let current = [];
+    let currentEnd = -Infinity;
+
+    sorted.forEach(ev => {
+        if (current.length === 0 || ev.startMin < currentEnd) {
+            current.push(ev);
+            currentEnd = Math.max(currentEnd, ev.endMin);
+        } else {
+            clusters.push(current);
+            current = [ev];
+            currentEnd = ev.endMin;
+        }
+    });
+    if (current.length) clusters.push(current);
+
+    clusters.forEach(cluster => {
+        const columnEnds = [];
+        cluster.forEach(ev => {
+            let placed = false;
+            for (let c = 0; c < columnEnds.length; c++) {
+                if (columnEnds[c] <= ev.startMin) {
+                    columnEnds[c] = ev.endMin;
+                    ev.col = c;
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                columnEnds.push(ev.endMin);
+                ev.col = columnEnds.length - 1;
+            }
+        });
+        cluster.forEach(ev => { ev.totalCols = columnEnds.length; });
+    });
+
+    return sorted;
+}
+
 function renderWeekView() {
     const weekDays = getWeekDays(currentWeekStart);
     const weekEnd = new Date(currentWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 4); // Friday
-    
+
     // Update week header
     const monthNames = [
         'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
         'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
     ];
-    
+
     const startStr = `${currentWeekStart.getDate()} ${monthNames[currentWeekStart.getMonth()]}`;
     const endStr = `${weekEnd.getDate()} ${monthNames[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`;
     document.getElementById('currentWeek').textContent = `Semaine du ${startStr} au ${endStr}`;
-    
-    // Generate week view
-    const weekView = document.getElementById('weekView');
-    weekView.innerHTML = '';
-    
+
     const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
-    const teacherId = document.getElementById('calendarFilterTeacher').value;
-    
-    weekDays.forEach((day, index) => {
-        const dayElement = document.createElement('div');
-        dayElement.className = 'week-day';
-        
-        // Day header
-        const dayHeader = document.createElement('div');
-        dayHeader.className = 'week-day-header';
-        dayHeader.textContent = `${dayNames[index]} ${day.getDate()}/${day.getMonth() + 1}`;
-        dayElement.appendChild(dayHeader);
-        
-        // Day events container
-        const dayEventsContainer = document.createElement('div');
-        dayEventsContainer.className = 'week-day-events';
-        
-        // Get events for this day - normaliser les dates pour la comparaison
-        const dayDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        const dayEvents = events.filter(event => {
-            const eventDate = normalizeDateToYMD(event.start);
-            return eventDate === dayDate;
+    const showTeacherName = !document.getElementById('calendarFilterTeacher').value;
+    const todayStr = ymd(new Date());
+    const gridHeight = (PT_DAY_END_MIN - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+
+    // Répartir les événements par jour, avec calcul de leur position temporelle
+    const eventsByDay = weekDays.map(day => {
+        const dayDate = ymd(day);
+        const dayEvents = events
+            .filter(event => normalizeDateToYMD(event.start) === dayDate)
+            .map(event => {
+                const startMin = parseHoraireToMinutes(event.horaire);
+                if (startMin === null) return { ...event, hasTime: false };
+                const durationMin = getEventDurationMinutes(event);
+                return { ...event, hasTime: true, startMin, endMin: startMin + durationMin };
+            });
+        return { day, dayDate, timed: layoutDayEvents(dayEvents.filter(e => e.hasTime)), untimed: dayEvents.filter(e => !e.hasTime) };
+    });
+
+    const totalEvents = events.length;
+    document.getElementById('noPlanningResults').classList.toggle('d-none', totalEvents !== 0);
+    document.getElementById('pronoteTimetable').classList.toggle('d-none', totalEvents === 0);
+
+    const hasUntimed = eventsByDay.some(d => d.untimed.length > 0);
+
+    // ---- En-tête (jours) ----
+    let headHtml = `<div class="pronote-head-cell"></div>`;
+    eventsByDay.forEach(({ day, dayDate }, index) => {
+        const isToday = dayDate === todayStr;
+        headHtml += `
+            <div class="pronote-head-cell${isToday ? ' today' : ''}">
+                ${dayNames[index]}
+                <span class="pronote-head-daynum">${day.getDate()}/${day.getMonth() + 1}</span>
+            </div>`;
+    });
+
+    // ---- Colonne des heures ----
+    let timeColHtml = '';
+    for (let m = PT_DAY_START_MIN; m <= PT_DAY_END_MIN; m += 60) {
+        const top = (m - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+        timeColHtml += `<div class="pronote-time-label" style="top:${top}px;">${Math.floor(m / 60)}h</div>`;
+    }
+
+    // ---- Colonnes des jours (créneaux positionnés) ----
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let dayColsHtml = '';
+    eventsByDay.forEach(({ dayDate, timed }) => {
+        const isToday = dayDate === todayStr;
+        let colHtml = '';
+        timed.forEach(ev => {
+            const clampedStart = Math.max(ev.startMin, PT_DAY_START_MIN);
+            const clampedEnd = Math.min(ev.endMin, PT_DAY_END_MIN);
+            const top = (clampedStart - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+            const height = Math.max(18, (clampedEnd - clampedStart) * PT_PX_PER_MIN - PT_GAP_PX);
+            const widthPct = 100 / ev.totalCols;
+            const leftPct = ev.col * widthPct;
+            colHtml += buildEventHtml(ev, showTeacherName, {
+                position: 'absolute',
+                top: `${top}px`,
+                height: `${height}px`,
+                left: `calc(${leftPct}% + 2px)`,
+                width: `calc(${widthPct}% - 4px)`
+            });
         });
-        
-        if (dayEvents.length === 0) {
-            const noEvents = document.createElement('div');
-            noEvents.className = 'text-muted text-center py-3';
-            noEvents.textContent = 'Aucune demande';
-            dayEventsContainer.appendChild(noEvents);
-        } else {
-            // Group events by teacher if all teachers are shown
-            if (!teacherId) {
-                const eventsByTeacher = {};
-                dayEvents.forEach(event => {
-                    const teacherName = event.title.split(' - ')[0];
-                    if (!eventsByTeacher[teacherName]) {
-                        eventsByTeacher[teacherName] = [];
-                    }
-                    eventsByTeacher[teacherName].push(event);
-                });
-                
-                Object.keys(eventsByTeacher).forEach(teacherName => {
-                    const teacherGroup = document.createElement('div');
-                    teacherGroup.className = 'teacher-group';
-                    
-                    const teacherHeader = document.createElement('div');
-                    teacherHeader.className = 'teacher-name';
-                    teacherHeader.textContent = teacherName;
-                    teacherGroup.appendChild(teacherHeader);
-                    
-                    eventsByTeacher[teacherName].forEach(event => {
-                        const eventElement = createEventElement(event);
-                        teacherGroup.appendChild(eventElement);
-                    });
-                    
-                    dayEventsContainer.appendChild(teacherGroup);
-                });
-            } else {
-                // Show all events for selected teacher
-                dayEvents.forEach(event => {
-                    const eventElement = createEventElement(event);
-                    dayEventsContainer.appendChild(eventElement);
-                });
-            }
+        if (isToday && nowMin >= PT_DAY_START_MIN && nowMin <= PT_DAY_END_MIN) {
+            const top = (nowMin - PT_DAY_START_MIN) * PT_PX_PER_MIN;
+            colHtml += `<div class="pronote-now-line" style="top:${top}px;"></div>`;
         }
-        
-        dayElement.appendChild(dayEventsContainer);
-        weekView.appendChild(dayElement);
+        dayColsHtml += `<div class="pronote-day-col${isToday ? ' today' : ''}" style="height:${gridHeight}px;">${colHtml}</div>`;
+    });
+
+    // ---- Ligne "sans horaire" (absences, pas besoin de matériel non planifiés, etc.) ----
+    let noHorRowHtml = '';
+    if (hasUntimed) {
+        noHorRowHtml = `<div class="pronote-noh-label">sans<br>horaire</div>`;
+        eventsByDay.forEach(({ untimed }) => {
+            let chips = '';
+            untimed.forEach(ev => {
+                chips += buildChipHtml(ev, showTeacherName);
+            });
+            noHorRowHtml += `<div class="pronote-noh-cell">${chips}</div>`;
+        });
+    }
+
+    document.getElementById('pronoteTimetable').innerHTML = `
+        <div class="pronote-head">${headHtml}</div>
+        <div class="pronote-body" style="height:${gridHeight}px;">
+            <div class="pronote-time-col">${timeColHtml}</div>
+            ${dayColsHtml}
+        </div>
+        ${hasUntimed ? `<div class="pronote-noh-row">${noHorRowHtml}</div>` : ''}
+    `;
+
+    // Rattacher les gestionnaires de clic/clavier (CSP-friendly, pas d'attributs inline)
+    document.querySelectorAll('#pronoteTimetable [data-event-id]').forEach(el => {
+        const eventId = el.getAttribute('data-event-id');
+        const ev = events.find(e => String(e.id) === eventId);
+        if (!ev) return;
+        el.addEventListener('click', () => showEventDetails(ev));
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                showEventDetails(ev);
+            }
+        });
     });
 }
 
-function createEventElement(event) {
-    const eventElement = document.createElement('div');
-    eventElement.className = 'calendar-event';
-    const bgColor = event.backgroundColor || '#007bff';
-    console.log(`DEBUG FRONTEND - Event ID: ${event.id}, backgroundColor reçu: ${event.backgroundColor}, couleur finale: ${bgColor}`);
-    eventElement.style.setProperty('background-color', bgColor, 'important');
-    
-    // Attributs d'accessibilité
-    eventElement.setAttribute('role', 'button');
-    eventElement.setAttribute('tabindex', '0');
-    eventElement.setAttribute('aria-label', `Détails de la demande: ${event.title}. ${event.description}`);
-    
-    const className = event.title.split(' - ')[1] || '';
-    eventElement.innerHTML = `
-        <div><strong>${className}</strong></div>
-        <div class="small">${event.description.replace('Matériel: ', '')}</div>
-    `;
-    
-    // Support clavier et souris
-    eventElement.onclick = () => showEventDetails(event);
-    eventElement.onkeydown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            showEventDetails(event);
-        }
-    };
-    
-    return eventElement;
+function eventLabel(ev) {
+    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}. ${ev.description}`;
+}
+
+function buildEventHtml(ev, showTeacherName, styleObj) {
+    const bgColor = ev.backgroundColor || '#007bff';
+    const styleStr = Object.entries(styleObj).map(([k, v]) => `${k.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}:${v}`).join(';');
+    const className = ev.class_name || (ev.title || '').split(' - ')[1] || '';
+    const teacherName = ev.teacher_name || (ev.title || '').split(' - ')[0] || '';
+    return `
+        <div class="pronote-event" data-event-id="${ev.id}"
+             style="${styleStr};background-color:${bgColor};"
+             role="button" tabindex="0"
+             aria-label="Détails de la demande: ${eventLabel(ev).replace(/"/g, '&quot;')}">
+            <span class="ev-time">${ev.horaire || ''}</span>
+            ${showTeacherName ? `<span class="ev-teacher">${teacherName}</span>` : ''}
+            <span class="ev-class">${className}</span>
+        </div>`;
+}
+
+function buildChipHtml(ev, showTeacherName) {
+    const bgColor = ev.backgroundColor || '#007bff';
+    const className = ev.class_name || (ev.title || '').split(' - ')[1] || '';
+    const teacherName = ev.teacher_name || (ev.title || '').split(' - ')[0] || '';
+    const label = showTeacherName ? `${teacherName} - ${className}` : className;
+    return `
+        <span class="pronote-noh-chip" data-event-id="${ev.id}"
+              style="background-color:${bgColor};"
+              role="button" tabindex="0"
+              aria-label="Détails de la demande: ${eventLabel(ev).replace(/"/g, '&quot;')}">
+            ${label}
+        </span>`;
 }
 
 function previousWeek() {
@@ -481,26 +745,30 @@ function showEventDetails(event) {
     const modalElement = document.getElementById('eventModal');
     const modal = new bootstrap.Modal(modalElement);
     const details = document.getElementById('eventDetails');
-    
+
     details.innerHTML = `
         <div class="row">
             <div class="col-sm-4"><strong>Enseignant:</strong></div>
-            <div class="col-sm-8">${event.title.split(' - ')[0]}</div>
+            <div class="col-sm-8">${event.teacher_name || event.title.split(' - ')[0]}</div>
         </div>
         <div class="row mt-2">
             <div class="col-sm-4"><strong>Classe:</strong></div>
-            <div class="col-sm-8">${event.title.split(' - ')[1]}</div>
+            <div class="col-sm-8">${event.class_name || event.title.split(' - ')[1]}</div>
         </div>
         <div class="row mt-2">
             <div class="col-sm-4"><strong>Date:</strong></div>
             <div class="col-sm-8">${formatDate(event.start)}</div>
         </div>
         <div class="row mt-2">
+            <div class="col-sm-4"><strong>Horaire:</strong></div>
+            <div class="col-sm-8">${event.horaire || 'Non spécifié'}</div>
+        </div>
+        <div class="row mt-2">
             <div class="col-sm-4"><strong>Description:</strong></div>
             <div class="col-sm-8">${event.description}</div>
         </div>
     `;
-    
+
     // Écouter les événements d'ouverture/fermeture pour l'accessibilité
     modalElement.addEventListener('shown.bs.modal', function () {
         // Focus sur le premier élément focusable dans la modal
@@ -509,15 +777,15 @@ function showEventDetails(event) {
             firstFocusableElement.focus();
         }
     });
-    
+
     modalElement.addEventListener('hidden.bs.modal', function () {
         // Remettre le focus sur l'élément qui a ouvert la modal si possible
-        const activeElement = document.querySelector('.calendar-event:focus');
+        const activeElement = document.querySelector('[data-event-id]:focus');
         if (activeElement) {
             activeElement.focus();
         }
     });
-    
+
     modal.show();
 }
 
@@ -525,12 +793,12 @@ function formatDate(dateString) {
     // Utiliser la normalisation pour gérer tous les formats
     const normalizedDate = normalizeDateToYMD(dateString);
     if (!normalizedDate) return 'Date invalide';
-    
+
     const [year, month, day] = normalizedDate.split('-');
     return `${day}/${month}/${year}`;
 }
 
-// Toast functions 
+// Toast functions
 function showSuccessToast(message) {
     if (typeof window.showToast === 'function') {
         window.showToast('success', 'Succès', message);
