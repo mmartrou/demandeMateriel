@@ -13,6 +13,21 @@ let currentRelatedCount = 0;
 const isTeacherMode = '{{ effective_user_mode }}' === 'teacher';
 const myTeacherId = {% if current_user and current_user.get('teacher_id') %}{{ current_user.get('teacher_id') }}{% else %}null{% endif %};
 
+// Nombre de jours ouvrés requis avant une demande (configurable dans /admin/working-days)
+// Valeur par défaut en attendant la réponse de l'API.
+window.deadlineWorkingDays = window.deadlineWorkingDays || 2;
+if (!window._deadlineWorkingDaysFetched) {
+    window._deadlineWorkingDaysFetched = true;
+    fetch('/api/deadline-config')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Number.isFinite(data.deadline_working_days)) {
+                window.deadlineWorkingDays = data.deadline_working_days;
+            }
+        })
+        .catch(() => {}); // garde la valeur par défaut (2) en cas d'échec
+}
+
 // --- Utilities ---
 function escapeHtml(value) {
     return String(value ?? '')
@@ -188,7 +203,7 @@ function getEditBlockReason(request) {
             if (d >= 1 && d <= 5) workingDaysCount++;
             checkDate.setDate(checkDate.getDate() + 1);
         }
-        return workingDaysCount >= 2 ? null : 'deadline';
+        return workingDaysCount >= window.deadlineWorkingDays ? null : 'deadline';
     } catch (e) {
         return null;
     }
@@ -201,7 +216,7 @@ function canEditRequest(request) {
 function getEditBlockMessage(request) {
     const reason = getEditBlockReason(request);
     if (reason === 'not_owner') return 'modification impossible - vous n\'êtes pas à l\'origine de cette demande';
-    if (reason === 'deadline') return 'modification impossible - moins de 2 jours ouvrés';
+    if (reason === 'deadline') return `modification impossible - moins de ${window.deadlineWorkingDays} jour(s) ouvré(s)`;
     return '';
 }
 
@@ -250,7 +265,7 @@ function showRequestInReadOnlyMode(request) {
     if (!modalBody.querySelector('.readonly-info-message')) {
         const msg = document.createElement('div');
         msg.className = 'readonly-info-message alert alert-info mb-3';
-        msg.innerHTML = '<i class="fas fa-info-circle"></i> Cette demande ne peut plus être modifiée car elle est programmée dans moins de 2 jours ouvrés.';
+        msg.innerHTML = `<i class="fas fa-info-circle"></i> Cette demande ne peut plus être modifiée car elle est programmée dans moins de ${window.deadlineWorkingDays} jour(s) ouvré(s).`;
         modalBody.insertBefore(msg, modalBody.firstChild);
     }
     const title = document.querySelector('#editRequestModal .modal-title');

@@ -1144,7 +1144,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     removeImageBtn.addEventListener('click', clearImage);
     
-    // Retourne la première date valide selon la règle des 2 jours ouvrés
+    // Nombre de jours ouvrés requis avant une demande (configurable dans /admin/working-days)
+    // Valeur par défaut en attendant la réponse de l'API ; recalculée dès que la vraie valeur arrive.
+    let deadlineWorkingDays = 2;
+
+    // Retourne la première date valide selon la règle des N jours ouvrés
     // Miroir JS de deadline_utils.get_earliest_valid_date()
     function getMinimumValidDate() {
         const now = new Date();
@@ -1155,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let workingDayCount = 0;
         let d = new Date(startDay);
-        while (workingDayCount < 2) {
+        while (workingDayCount < deadlineWorkingDays) {
             if (d.getDay() !== 0 && d.getDay() !== 6) workingDayCount++;
             d.setDate(d.getDate() + 1);
         }
@@ -1166,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return d;
     }
 
-    // Configuration de la date minimum (2 jours ouvrés)
+    // Configuration de la date minimum (N jours ouvrés)
     // Labo et admin sont exemptés : ils peuvent choisir n'importe quelle date
     const isPrivilegedUser = ['admin', 'labo'].includes('{{ effective_user_mode }}');
 
@@ -1184,8 +1188,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Appliquer au champ principal
-    setMinimumDate(document.getElementById('planning_date'));
+    function applyMinimumDateToAllFields() {
+        setMinimumDate(document.getElementById('planning_date'));
+        document.querySelectorAll('#daysList input[type="date"]').forEach(setMinimumDate);
+    }
+
+    // Appliquer au champ principal avec la valeur par défaut, puis recalculer avec la vraie
+    // valeur configurée dès qu'elle est connue (évite de bloquer l'UI sur la requête réseau).
+    applyMinimumDateToAllFields();
+    if (!isPrivilegedUser) {
+        fetch('/api/deadline-config')
+            .then(r => r.json())
+            .then(data => {
+                if (data && Number.isFinite(data.deadline_working_days)) {
+                    deadlineWorkingDays = data.deadline_working_days;
+                    applyMinimumDateToAllFields();
+                }
+            })
+            .catch(() => {}); // garde la valeur par défaut (2) en cas d'échec
+    }
 
     // Appliquer aussi aux champs de jours supplémentaires quand ils sont ajoutés
     const originalAddDayBtn = document.getElementById('addDayBtn');
