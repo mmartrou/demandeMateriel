@@ -549,6 +549,18 @@ def pre_associate_teacher(email, teacher_id):
     conn.close()
 
 
+def delete_user(user_id):
+    """Delete a user account association (Google login link). Returns True if a row was deleted."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM users WHERE id = {placeholder}', (user_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def get_all_users():
     """Return all users with their linked teacher name."""
     conn, db_type = get_db_connection()
@@ -1822,15 +1834,18 @@ def delete_recurring_course(course_id, teacher_id):
         return False
 
 
-def generate_draft_requests_for_week(teacher_id, week_start_date):
+def generate_draft_requests_for_week(teacher_id, week_start_date, enforce_deadline=True):
     """
     Crée une demande "brouillon" (is_draft=True, 'Pas besoin de matériel') pour chaque cours
     récurrent de l'enseignant, sur la semaine commençant à week_start_date (un lundi).
     Idempotent : si une demande existe déjà pour ce teacher_id + cette date + cet horaire,
     elle n'est pas recréée.
+    Un jour non-ouvré (férié / config working_days_config) ou hors délai de dépôt (2 jours
+    ouvrés) est ignoré silencieusement plutôt que de créer une demande invalide.
     Retourne (nb_crees, nb_ignores).
     """
     from datetime import datetime, timedelta
+    from deadline_utils import is_request_deadline_respected
     if isinstance(week_start_date, str):
         week_start = datetime.strptime(week_start_date, '%Y-%m-%d').date()
     else:
@@ -1848,6 +1863,15 @@ def generate_draft_requests_for_week(teacher_id, week_start_date):
     skipped = 0
     for course in courses:
         target_date = (week_start + timedelta(days=int(course['day_of_week']))).strftime('%Y-%m-%d')
+
+        if not is_working_day_configured(target_date):
+            skipped += 1
+            continue
+
+        if enforce_deadline and not is_request_deadline_respected(target_date)['valid']:
+            skipped += 1
+            continue
+
         cursor.execute(f'''
             SELECT 1 FROM material_requests
             WHERE teacher_id = {placeholder} AND request_date = {placeholder} AND horaire = {placeholder}
