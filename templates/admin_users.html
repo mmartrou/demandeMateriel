@@ -83,6 +83,10 @@
                                 onclick="prefillLink('{{ u.email }}', {{ u.teacher_id or 'null' }})">
                                 Modifier
                             </button>
+                            <button class="btn btn-sm btn-outline-danger"
+                                onclick="confirmDeleteUser({{ u.id }}, '{{ u.email }}')">
+                                🗑️ Supprimer
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -133,6 +137,28 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <button type="button" class="btn btn-danger" onclick="doDeleteTeacher()">Supprimer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmation suppression compte -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Supprimer le compte</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Supprimer l'association du compte Google <strong id="deleteUserEmail"></strong> ?</p>
+                <div class="alert alert-warning py-2">
+                    L'utilisateur pourra se reconnecter, mais devra être ré-associé à un enseignant. Ses demandes de matériel existantes ne sont pas affectées.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="doDeleteUser()">Supprimer</button>
             </div>
         </div>
     </div>
@@ -194,6 +220,26 @@ async function saveNewTeacher() {
         setTimeout(() => location.reload(), 1200);
     } else {
         resultEl.innerHTML = `<div class="alert alert-danger py-1">${data.error}</div>`;
+    }
+}
+
+let userToDelete = null;
+
+function confirmDeleteUser(id, email) {
+    userToDelete = id;
+    document.getElementById('deleteUserEmail').textContent = email;
+    new bootstrap.Modal(document.getElementById('deleteUserModal')).show();
+}
+
+async function doDeleteUser() {
+    if (!userToDelete) return;
+    const resp = await fetch(`/api/admin/users/${userToDelete}`, { method: 'DELETE' });
+    const data = await resp.json();
+    bootstrap.Modal.getInstance(document.getElementById('deleteUserModal')).hide();
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Erreur : ' + data.error);
     }
 }
 

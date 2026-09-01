@@ -23,7 +23,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_rooms, update_room, import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
-                      pre_associate_teacher, get_all_users, add_teacher, delete_teacher,
+                      pre_associate_teacher, get_all_users, add_teacher, delete_teacher, delete_user,
                       get_tp_templates, upsert_tp_template, get_tp_template_by_id,
                       get_recurring_courses, add_recurring_course, delete_recurring_course,
                       generate_draft_requests_for_week, confirm_draft_request)
@@ -1405,7 +1405,8 @@ def api_generate_recurring_courses():
             return jsonify({'error': 'Format de date invalide (attendu YYYY-MM-DD)'}), 400
         if week_start_date.weekday() != 0:
             return jsonify({'error': 'La date doit être un lundi'}), 400
-        created, skipped = generate_draft_requests_for_week(user['teacher_id'], week_start)
+        enforce_deadline = not _is_privileged_user(user)
+        created, skipped = generate_draft_requests_for_week(user['teacher_id'], week_start, enforce_deadline=enforce_deadline)
         return jsonify({'success': True, 'created': created, 'skipped': skipped})
     except Exception as e:
         return api_error('Erreur lors de la génération des cours de la semaine', e)
@@ -1477,6 +1478,21 @@ def api_admin_link_teacher():
         return jsonify({'error': 'email et teacher_id requis'}), 400
     try:
         pre_associate_teacher(email, int(teacher_id))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+def api_admin_delete_user(user_id):
+    """Delete a Google account association (admin/labo)."""
+    user = _get_current_user()
+    if not user or user.get('role') not in ('admin', 'labo'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    try:
+        deleted = delete_user(user_id)
+        if not deleted:
+            return jsonify({'error': 'Compte introuvable'}), 404
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
