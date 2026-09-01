@@ -225,6 +225,15 @@ def init_database():
         )
     ''')
 
+    # Create app settings table (generic key/value store for admin-configurable options)
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key {text_type} PRIMARY KEY,
+            value {text_type} NOT NULL,
+            updated_at {timestamp_default}
+        )
+    ''')
+
     # Create C21 availability table
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS c21_availability (
@@ -1279,6 +1288,58 @@ def delete_working_day_config(date):
     except Exception as e:
         logger.error(f"Erreur lors de la suppression de la configuration {date}: {e}")
         return False
+
+# === PARAMÈTRES APPLICATIFS (clé/valeur) ===
+
+DEADLINE_WORKING_DAYS_KEY = 'deadline_working_days'
+DEFAULT_DEADLINE_WORKING_DAYS = 2
+
+def get_setting(key, default=None):
+    """Récupère une valeur de app_settings (str), ou default si absente."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT value FROM app_settings WHERE key = {placeholder}', (key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row is None:
+        return default
+    return row['value'] if isinstance(row, dict) else row[0]
+
+def set_setting(key, value):
+    """Crée ou met à jour une valeur de app_settings."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    if db_type == 'postgresql':
+        cursor.execute(f'''
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES ({placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+        ''', (key, str(value)))
+    else:
+        cursor.execute(f'''
+            INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+            VALUES ({placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+        ''', (key, str(value)))
+    conn.commit()
+    conn.close()
+
+def get_deadline_working_days():
+    """Nombre de jours ouvrés requis avant une demande (délai de dépôt). Configurable par un admin/labo."""
+    value = get_setting(DEADLINE_WORKING_DAYS_KEY, DEFAULT_DEADLINE_WORKING_DAYS)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_DEADLINE_WORKING_DAYS
+
+def set_deadline_working_days(days):
+    """Définit le nombre de jours ouvrés requis avant une demande."""
+    days = int(days)
+    if days < 0:
+        raise ValueError('Le délai ne peut pas être négatif')
+    set_setting(DEADLINE_WORKING_DAYS_KEY, days)
+    return days
 
 # === GESTION DISPONIBILITÉ C21 ===
 

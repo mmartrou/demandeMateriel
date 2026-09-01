@@ -1887,9 +1887,35 @@ def api_delete_c21_availability(availability_id):
         return api_error('Erreur lors de la suppression du créneau C21', e)
 
 # API Routes pour la gestion des salles
-from database import get_working_days_config, set_working_day_config, delete_working_day_config
+from database import get_working_days_config, set_working_day_config, delete_working_day_config, get_deadline_working_days, set_deadline_working_days
 # === API pour la gestion des jours ouvrés ===
 from flask import abort
+
+@app.route('/api/deadline-config', methods=['GET'])
+def api_get_deadline_config():
+    """Nombre de jours ouvrés requis avant une demande (lecture publique aux utilisateurs connectés)."""
+    try:
+        return jsonify({'deadline_working_days': get_deadline_working_days()})
+    except Exception as e:
+        return api_error('Erreur lors de la récupération du délai de dépôt', e)
+
+@app.route('/api/deadline-config', methods=['PUT'])
+def api_set_deadline_config():
+    """Modifie le nombre de jours ouvrés requis avant une demande (admin/labo)."""
+    user = _get_current_user()
+    if not user or not _is_privileged_user(user):
+        return jsonify({'error': 'Non autorisé'}), 403
+    try:
+        data = request.get_json(silent=True) or {}
+        days = data.get('deadline_working_days')
+        if days is None:
+            return jsonify({'error': 'deadline_working_days est requis'}), 400
+        saved = set_deadline_working_days(days)
+        return jsonify({'success': True, 'deadline_working_days': saved})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return api_error('Erreur lors de la mise à jour du délai de dépôt', e)
 
 @app.route('/api/working-days', methods=['GET'])
 def api_get_working_days():

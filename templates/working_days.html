@@ -16,9 +16,37 @@
             <!-- Instructions -->
             <div class="alert alert-info">
                 <i class="fas fa-info-circle"></i>
-                <strong>Instructions :</strong> 
-                Cliquez sur un jour pour le marquer comme ouvré (vert) ou non-ouvré (rouge). 
-                Les weekends sont non-ouvrés par défaut. Cette configuration affecte le calcul des délais de 2 jours ouvrés.
+                <strong>Instructions :</strong>
+                Cliquez sur un jour pour le marquer comme ouvré (vert) ou non-ouvré (rouge).
+                Les weekends sont non-ouvrés par défaut. Cette configuration affecte le calcul du délai de dépôt.
+            </div>
+
+            <!-- Délai de dépôt -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-hourglass-half"></i> Délai de dépôt des demandes</h5>
+                </div>
+                <div class="card-body">
+                    {% if current_user and current_user.role in ('admin', 'labo') %}
+                    <div class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label for="deadlineDaysInput" class="form-label mb-0">Jours ouvrés d'avance requis</label>
+                            <input type="number" min="0" step="1" class="form-control" id="deadlineDaysInput" style="width: 100px;">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-primary" id="saveDeadlineDays">
+                                <i class="fas fa-save"></i> Enregistrer
+                            </button>
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        Valeur par défaut : 2. À réduire temporairement pour gérer un cas exceptionnel (ex : jour férié imprévu, urgence).
+                    </small>
+                    <div id="deadlineDaysResult" class="mt-2"></div>
+                    {% else %}
+                    <p class="mb-0">Délai actuel : <strong id="deadlineDaysReadonly">-</strong> jour(s) ouvré(s) d'avance requis.</p>
+                    {% endif %}
+                </div>
             </div>
 
             <!-- Navigation mois -->
@@ -821,6 +849,46 @@ class WorkingDaysCalendar {
 let calendar;
 document.addEventListener('DOMContentLoaded', () => {
     calendar = new WorkingDaysCalendar();
+    loadDeadlineDays();
 });
+
+async function loadDeadlineDays() {
+    try {
+        const resp = await fetch('/api/deadline-config');
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Erreur');
+        const input = document.getElementById('deadlineDaysInput');
+        if (input) input.value = data.deadline_working_days;
+        const readonly = document.getElementById('deadlineDaysReadonly');
+        if (readonly) readonly.textContent = data.deadline_working_days;
+    } catch (error) {
+        console.error('Erreur chargement délai de dépôt:', error);
+    }
+}
+
+const saveDeadlineBtn = document.getElementById('saveDeadlineDays');
+if (saveDeadlineBtn) {
+    saveDeadlineBtn.addEventListener('click', async () => {
+        const input = document.getElementById('deadlineDaysInput');
+        const resultEl = document.getElementById('deadlineDaysResult');
+        const value = parseInt(input.value, 10);
+        if (isNaN(value) || value < 0) {
+            resultEl.innerHTML = '<div class="alert alert-danger py-1 mb-0">Valeur invalide.</div>';
+            return;
+        }
+        try {
+            const resp = await fetch('/api/deadline-config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deadline_working_days: value })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Erreur');
+            resultEl.innerHTML = '<div class="alert alert-success py-1 mb-0">Délai mis à jour.</div>';
+        } catch (error) {
+            resultEl.innerHTML = `<div class="alert alert-danger py-1 mb-0">${error.message}</div>`;
+        }
+    });
+}
 </script>
 {% endblock %}

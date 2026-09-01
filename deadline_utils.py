@@ -155,6 +155,18 @@ def count_working_days_between(start_datetime, end_date):
     
     return working_days
 
+def get_required_working_days():
+    """
+    Nombre de jours ouvrés requis avant une demande. Configurable en base
+    (table app_settings, via /admin/working-days) pour gérer les cas exceptionnels.
+    Retombe sur 2 si la base n'est pas disponible.
+    """
+    try:
+        from database import get_deadline_working_days
+        return get_deadline_working_days()
+    except ImportError:
+        return 2
+
 def is_request_deadline_respected(request_date_str, current_datetime=None):
     """
     Vérifie si une demande respecte le délai de 2 jours ouvrés
@@ -222,14 +234,17 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     # Log du nombre de jours ouvrés
     print(f"[DEBUG deadline_utils] Jours ouvrés calculés: {working_days}", file=sys.stderr)
 
-    # Vérifier si on a au moins 2 jours ouvrés complets
-    is_valid = working_days >= 2
+    # Nombre de jours ouvrés requis (configurable par un admin/labo, 2 par défaut)
+    required_days = get_required_working_days()
+
+    # Vérifier si on a au moins le nombre de jours ouvrés requis
+    is_valid = working_days >= required_days
 
     # Message informatif
     if is_valid:
         message = f"✅ Demande acceptée - {working_days} jour(s) ouvré(s) d'avance"
     else:
-        missing = 2 - working_days
+        missing = required_days - working_days
         message = f"❌ Délai insuffisant - manque {missing} jour(s) ouvré(s)"
 
     # Log du résultat final
@@ -264,12 +279,13 @@ def get_earliest_valid_date(current_datetime=None):
         # Avant 17h, commencer à chercher à partir de J+1
         candidate_date = current_datetime + timedelta(days=1)
     
-    # Chercher la première date avec au moins 2 jours ouvrés
+    # Chercher la première date avec au moins le nombre de jours ouvrés requis
+    required_days = get_required_working_days()
     while True:
         # Important: considérer le cours à 8h00 pour le calcul
         candidate_datetime = candidate_date.replace(hour=8, minute=0, second=0, microsecond=0)
         working_days = count_working_days_between(current_datetime, candidate_datetime)
-        if working_days >= 2:
+        if working_days >= required_days:
             return candidate_date.strftime('%Y-%m-%d')
         candidate_date += timedelta(days=1)
 
