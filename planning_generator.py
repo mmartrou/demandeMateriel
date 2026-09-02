@@ -917,6 +917,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         from datetime import datetime
 
         courses = planning_data.get('courses', [])
+        room_assignments = planning_data.get('room_assignments', {})
 
         wb = Workbook()
 
@@ -931,8 +932,12 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         chimie_salles   = ["C32", "C33", "C31"]
         ordered_rooms   = physique_salles + chimie_salles + ["C21"]
 
-        # Salles présentes dans le planning sauvegardé
-        rooms_in_planning = set(c.get('room', '') for c in courses if c.get('room'))
+        # Salles présentes dans le planning sauvegardé (course.room ou room_assignments)
+        rooms_in_planning = set()
+        for c in courses:
+            r = c.get('room', '') or room_assignments.get(str(c.get('id', '')), '')
+            if r:
+                rooms_in_planning.add(r)
         all_known_rooms = set(ordered_rooms)
         salle_list = [r for r in ordered_rooms if r in rooms_in_planning or r in all_known_rooms]
         # Ajouter les salles inconnues
@@ -995,7 +1000,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             ]
 
             for c in courses:
-                room = c.get('room', '')
+                room = c.get('room', '') or room_assignments.get(str(c.get('id', '')), '')
                 if not room or room not in salle_list:
                     continue
 
