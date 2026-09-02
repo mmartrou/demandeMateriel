@@ -102,8 +102,8 @@ function updateBulkEditAvailability() {
         relatedInfo.textContent = `La date a été modifiée : ce changement ne s'appliquera qu'à ce TP, pas aux ${currentRelatedCount} demandes liées (même enseignant + même nom "${requestName}").`;
         relatedInfo.className = 'text-warning fw-bold';
     } else if (currentRelatedCount > 1) {
-        bulkCb.checked = true; bulkCb.disabled = false;
-        relatedInfo.textContent = `${currentRelatedCount} demandes seront modifiées simultanément (même enseignant + même nom "${requestName}").`;
+        bulkCb.disabled = false;
+        relatedInfo.textContent = `${currentRelatedCount} demandes liées disponibles (même enseignant + même nom "${requestName}"). Cochez pour toutes les modifier.`;
         relatedInfo.className = 'text-info fw-bold';
     } else {
         bulkCb.checked = false; bulkCb.disabled = true;
@@ -470,6 +470,8 @@ function editRequest(requestOrId) {
                     r.teacher_id === request.teacher_id && r.request_name === request.request_name && r.request_name
                 ).length;
             }
+            const bulkCbReset = document.getElementById('editAllRelated');
+            if (bulkCbReset) bulkCbReset.checked = false;
             updateBulkEditAvailability();
 
             const descField = document.getElementById('editMaterialDescription');
