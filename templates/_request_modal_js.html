@@ -451,6 +451,8 @@ function editRequest(requestOrId) {
 
             const saveBtn = document.querySelector('#editRequestModal .btn-primary');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.style.display = ''; }
+            const deleteBtn = document.getElementById('deleteRequestBtn');
+            if (deleteBtn) deleteBtn.style.display = '';
 
             const idField = document.getElementById('editRequestId');
             if (idField) {
@@ -639,8 +641,9 @@ function saveRequestChanges() {
     currentData.selected_materials  = formData.selected_materials;
     currentData.material_description = formData.material_description;
 
+    const isCreating = !requestId;
     const changes = calculateRequestChanges(requestId, currentData);
-    if (Object.keys(changes).length === 0) {
+    if (!isCreating && Object.keys(changes).length === 0) {
         showSuccessToast('Aucune modification détectée');
         const modalEl = document.getElementById('editRequestModal');
         (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).hide();
@@ -649,31 +652,46 @@ function saveRequestChanges() {
 
     let savePromise;
     let relatedCount = 1;
+    let effectiveBulkEdit = false;
 
-    // Un changement de date ne s'applique jamais aux autres demandes liées (filet de sécurité :
-    // la case est normalement déjà décochée/désactivée par updateBulkEditAvailability()).
-    const effectiveBulkEdit = bulkEdit && !changes.request_date;
-
-    if (effectiveBulkEdit) {
-        const origTeacherId  = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
-        const origRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
-        if (!window.allRequests || window.allRequests.length === 0) {
-            savePromise = saveRequestDirect(requestId, formData);
-        } else {
-            const related = window.allRequests.filter(r => r.teacher_id === origTeacherId && r.request_name === origRequestName);
-            relatedCount = related.length;
-            const changedFields = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]));
-            savePromise = Promise.all(related.map(r => saveRequestDirect(r.id, Object.assign({
-                teacher_id: r.teacher_id, request_date: normalizeDateStr(r.request_date),
-                class_name: r.class_name, horaire: r.horaire || '',
-                material_description: r.material_description || '', selected_materials: r.selected_materials || '',
-                computers_needed: r.computers_needed || 0, notes: r.notes || '',
-                group_count: r.group_count ?? 1, material_prof: r.material_prof || '',
-                request_name: r.request_name || '', is_lab_test: !!r.is_lab_test
-            }, changedFields))));
-        }
+    if (isCreating) {
+        const createData = {
+            ...formData,
+            days_horaires: [{ date: formData.request_date, horaire: formData.horaire || '' }]
+        };
+        savePromise = fetch('/api/requests', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(createData)
+        }).then(r => r.json()).then(result => {
+            if (result.error) throw new Error(result.error);
+        });
     } else {
-        savePromise = saveRequestDirect(requestId, formData);
+        // Un changement de date ne s'applique jamais aux autres demandes liées (filet de sécurité :
+        // la case est normalement déjà décochée/désactivée par updateBulkEditAvailability()).
+        effectiveBulkEdit = bulkEdit && !changes.request_date;
+
+        if (effectiveBulkEdit) {
+            const origTeacherId  = parseInt(document.getElementById('editRequestId').getAttribute('data-teacher-id'));
+            const origRequestName = document.getElementById('editRequestId').getAttribute('data-request-name');
+            if (!window.allRequests || window.allRequests.length === 0) {
+                savePromise = saveRequestDirect(requestId, formData);
+            } else {
+                const related = window.allRequests.filter(r => r.teacher_id === origTeacherId && r.request_name === origRequestName);
+                relatedCount = related.length;
+                const changedFields = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]));
+                savePromise = Promise.all(related.map(r => saveRequestDirect(r.id, Object.assign({
+                    teacher_id: r.teacher_id, request_date: normalizeDateStr(r.request_date),
+                    class_name: r.class_name, horaire: r.horaire || '',
+                    material_description: r.material_description || '', selected_materials: r.selected_materials || '',
+                    computers_needed: r.computers_needed || 0, notes: r.notes || '',
+                    group_count: r.group_count ?? 1, material_prof: r.material_prof || '',
+                    request_name: r.request_name || '', is_lab_test: !!r.is_lab_test
+                }, changedFields))));
+            }
+        } else {
+            savePromise = saveRequestDirect(requestId, formData);
+        }
     }
 
     savePromise.then(() => {
@@ -688,7 +706,7 @@ function saveRequestChanges() {
         }, 100);
 
         if (typeof loadRequests === 'function') loadRequests();
-        showSuccessToast(effectiveBulkEdit ? `${relatedCount} demandes modifiées avec succès` : 'Demande modifiée avec succès');
+        showSuccessToast(isCreating ? 'Demande créée avec succès' : effectiveBulkEdit ? `${relatedCount} demandes modifiées avec succès` : 'Demande modifiée avec succès');
     }).catch(err => {
         console.error('Error:', err);
         showErrorToast('Erreur lors de la sauvegarde: ' + err.message);

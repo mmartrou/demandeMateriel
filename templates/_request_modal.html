@@ -238,7 +238,7 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger me-auto" onclick="deleteRequest()" title="Supprimer définitivement cette demande">
+                <button type="button" id="deleteRequestBtn" class="btn btn-danger me-auto" onclick="deleteRequest()" title="Supprimer définitivement cette demande">
                     🗑️ Supprimer
                 </button>
                 {% if current_user and current_user.role in ('admin', 'labo') %}

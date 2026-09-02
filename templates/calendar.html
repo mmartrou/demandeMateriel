@@ -224,6 +224,9 @@
                     🗓️ Planning hebdomadaire - Demandes de matériel
                 </h4>
                 <div>
+                    <button class="btn btn-success btn-sm me-2" onclick="openNewRequestFromCalendar()">
+                        ➕ Nouvelle demande
+                    </button>
                     <button class="btn btn-light btn-sm me-2" onclick="loadCalendar()">
                         🔄 Actualiser
                     </button>
@@ -456,6 +459,51 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+function loadRequests() { loadCalendar(); }
+
+function openNewRequestFromCalendar() {
+    // Déterminer la date courante de la vue calendrier (lundi de la semaine affichée)
+    const dateStr = currentWeekStart ? currentWeekStart.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    const teacherId = document.getElementById('calendarFilterTeacher').value || '';
+
+    // Réinitialiser la modale pour une création
+    document.getElementById('editRequestId').value = '';
+    document.getElementById('editRequestId').removeAttribute('data-teacher-id');
+    document.getElementById('editRequestId').removeAttribute('data-request-name');
+    document.getElementById('editDate').value = dateStr;
+    document.getElementById('editRequestName').value = '';
+    document.getElementById('editClassName').value = '';
+    document.getElementById('editHoraire').value = '';
+    document.getElementById('editMaterialDescription').value = '';
+    document.getElementById('editMaterialProf').value = '';
+    document.getElementById('editNotes').value = '';
+    document.getElementById('editQuantity').value = '1';
+    document.getElementById('editComputersNeeded').value = '0';
+    document.getElementById('editAbsent').checked = false;
+    document.getElementById('editNoMaterial').checked = false;
+    document.getElementById('editExamMode').checked = false;
+    document.getElementById('editLabTest').checked = false;
+    document.querySelectorAll('input[name="editMaterials"]').forEach(cb => cb.checked = false);
+    // Sélectionner "Pas de matériel spécifique" par défaut
+    const noSpecific = document.querySelector('input[name="editMaterials"][value="Pas de matériel spécifique à la salle"]');
+    if (noSpecific) noSpecific.checked = true;
+
+    if (teacherId) document.getElementById('editTeacher').value = teacherId;
+
+    // Titre de la modale
+    const titleEl = document.getElementById('editRequestModalLabel');
+    if (titleEl) titleEl.textContent = 'Nouvelle demande';
+
+    // Cacher le bouton Supprimer, afficher Enregistrer
+    const deleteBtn = document.getElementById('deleteRequestBtn');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+
+    window.originalRequestData = {};
+
+    const modalEl = document.getElementById('editRequestModal');
+    (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+}
 
 function loadCalendar() {
     // Get filter values
