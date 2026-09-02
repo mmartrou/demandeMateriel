@@ -148,7 +148,7 @@
                 // Cacher les champs non pertinents pour un template
                 ['editDate', 'editHoraire'].forEach(id => {
                     const el = document.getElementById(id);
-                    if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+                    if (el) el.parentElement?.style.setProperty('display', 'none');
                 });
                 const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
                 if (relatedCard) relatedCard.style.display = 'none';
@@ -236,7 +236,7 @@
         // Cacher les champs non pertinents pour un template (pas de date fixe)
         ['editDate', 'editHoraire'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+            if (el) el.parentElement?.style.setProperty('display', 'none');
         });
         const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
         if (relatedCard) relatedCard.style.display = 'none';
@@ -428,7 +428,7 @@
 
                 ['editDate', 'editHoraire'].forEach(id => {
                     const el = document.getElementById(id);
-                    if (el) el.closest('.mb-3, .col, .row')?.style.setProperty('display', 'none');
+                    if (el) el.parentElement?.style.setProperty('display', 'none');
                 });
                 const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
                 if (relatedCard) relatedCard.style.display = 'none';
