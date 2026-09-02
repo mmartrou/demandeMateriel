@@ -1153,10 +1153,29 @@ def api_update_request(request_id):
         )
         
         if success:
+            sm = data.get('selected_materials', '')
+            is_special = sm in ('Absent', 'Pas besoin de matériel', 'Examen')
+            if not is_special and data.get('request_name') and data.get('class_name'):
+                try:
+                    upsert_tp_template(
+                        teacher_id=data['teacher_id'],
+                        level=data['class_name'],
+                        request_name=data['request_name'],
+                        material_description=data.get('material_description', ''),
+                        selected_materials=sm,
+                        material_prof=data.get('material_prof', ''),
+                        computers_needed=data.get('computers_needed', 0),
+                        group_count=data.get('group_count', 1),
+                        notes=data.get('notes', ''),
+                        image_url=data.get('image_url', ''),
+                        room_type=data.get('room_type', 'Mixte')
+                    )
+                except Exception:
+                    pass
             return jsonify({'message': 'Demande mise à jour avec succès'})
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404
-    
+
     except Exception as e:
         return api_error('Erreur lors de la mise à jour de la demande', e)
 
