@@ -94,65 +94,37 @@ def add_working_hours(start_datetime, hours_to_add):
     
     return current
 
-def count_working_days_between(start_datetime, end_date):
+def count_working_days_between(start_datetime, end_date, overrides=None):
     """
-    Compte les jours ouvrés complets entre maintenant et une date cible
-    Utilise la configuration personnalisée des jours ouvrés
-    Exclut le jour de départ et le jour d'arrivée
-    
-    RÈGLE SPÉCIALE : Si l'heure actuelle est >= 17h, on considère que le lendemain
-    est "perdu" et on commence à compter à partir de J+2
-    
-    Args:
-        start_datetime (datetime): Date/heure de début
-        end_date (datetime): Date de fin (à 8h00)
-        
-    Returns:
-        int: Nombre de jours ouvrés complets entre les deux
+    Compte les jours ouvrés complets entre maintenant et une date cible.
+    overrides : dict {date_str: bool} pré-chargé (évite une connexion DB si fourni).
     """
-    # Import ici pour éviter les dépendances circulaires
-    try:
-        from database import is_working_day_configured
-    except ImportError:
-        # Fallback vers la logique par défaut si la base n'est pas disponible
-        logger.warning("Base de données non disponible, utilisation logique par défaut")
-        
-        # Appliquer la règle de 17h
-        if start_datetime.hour >= 17:
-            # Après 17h, on commence à compter à partir de J+2
-            current = (start_datetime + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
-        else:
-            # Avant 17h, on commence à compter à partir de J+1
-            current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        end = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        working_days = 0
-        while current < end:
-            if current.weekday() < 5:  # Lundi à vendredi par défaut
-                working_days += 1
-            current += timedelta(days=1)
-        
-        return working_days
-    
     # Appliquer la règle de 17h
     if start_datetime.hour >= 17:
-        # Après 17h, on commence à compter à partir de J+2
         current = (start_datetime + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
     else:
-        # Avant 17h, on commence à compter à partir de J+1
         current = (start_datetime + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     end = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
+    if overrides is None:
+        try:
+            from database import get_working_day_overrides
+            overrides = get_working_day_overrides()
+        except ImportError:
+            logger.warning("Base de données non disponible, utilisation logique par défaut")
+            overrides = {}
+
     working_days = 0
     while current < end:
-        # Utiliser la configuration personnalisée
         date_str = current.strftime('%Y-%m-%d')
-        if is_working_day_configured(date_str):
+        if date_str in overrides:
+            if overrides[date_str]:
+                working_days += 1
+        elif current.weekday() < 5:
             working_days += 1
         current += timedelta(days=1)
-    
+
     return working_days
 
 def get_required_working_days():
@@ -167,7 +139,7 @@ def get_required_working_days():
     except ImportError:
         return 2
 
-def is_request_deadline_respected(request_date_str, current_datetime=None):
+def is_request_deadline_respected(request_date_str, current_datetime=None, overrides=None, required_days=None):
     """
     Vérifie si une demande respecte le délai de 2 jours ouvrés
     
@@ -229,13 +201,14 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
     print(f"[DEBUG deadline_utils] Calcul délai: now(UTC)={current_datetime.isoformat()} | demande={request_date_str} → {request_datetime.isoformat()}", file=sys.stderr)
 
     # Compter les jours ouvrés entre maintenant et la date du cours
-    working_days = count_working_days_between(current_datetime, request_datetime)
+    working_days = count_working_days_between(current_datetime, request_datetime, overrides=overrides)
 
     # Log du nombre de jours ouvrés
     print(f"[DEBUG deadline_utils] Jours ouvrés calculés: {working_days}", file=sys.stderr)
 
     # Nombre de jours ouvrés requis (configurable par un admin/labo, 2 par défaut)
-    required_days = get_required_working_days()
+    if required_days is None:
+        required_days = get_required_working_days()
 
     # Vérifier si on a au moins le nombre de jours ouvrés requis
     is_valid = working_days >= required_days
@@ -257,34 +230,33 @@ def is_request_deadline_respected(request_date_str, current_datetime=None):
         'request_datetime': request_datetime
     }
 
-def get_earliest_valid_date(current_datetime=None):
+def get_earliest_valid_date(current_datetime=None, overrides=None, required_days=None):
     """
-    Retourne la première date valide pour une nouvelle demande (2 jours ouvrés)
-    Prend en compte la règle de 17h : après 17h, le lendemain est considéré comme "perdu"
-    
-    Args:
-        current_datetime (datetime, optional): Date/heure actuelle
-        
-    Returns:
-        str: Date au format YYYY-MM-DD
+    Retourne la première date valide pour une nouvelle demande (2 jours ouvrés).
+    overrides et required_days peuvent être pré-chargés pour éviter des connexions DB.
     """
     if current_datetime is None:
         current_datetime = datetime.now()
-    
+
+    if overrides is None:
+        try:
+            from database import get_working_day_overrides
+            overrides = get_working_day_overrides()
+        except ImportError:
+            overrides = {}
+
+    if required_days is None:
+        required_days = get_required_working_days()
+
     # Appliquer la règle de 17h pour déterminer le point de départ
     if current_datetime.hour >= 17:
-        # Après 17h, commencer à chercher à partir de J+2
         candidate_date = current_datetime + timedelta(days=2)
     else:
-        # Avant 17h, commencer à chercher à partir de J+1
         candidate_date = current_datetime + timedelta(days=1)
-    
-    # Chercher la première date avec au moins le nombre de jours ouvrés requis
-    required_days = get_required_working_days()
+
     while True:
-        # Important: considérer le cours à 8h00 pour le calcul
         candidate_datetime = candidate_date.replace(hour=8, minute=0, second=0, microsecond=0)
-        working_days = count_working_days_between(current_datetime, candidate_datetime)
+        working_days = count_working_days_between(current_datetime, candidate_datetime, overrides=overrides)
         if working_days >= required_days:
             return candidate_date.strftime('%Y-%m-%d')
         candidate_date += timedelta(days=1)

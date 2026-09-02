@@ -528,8 +528,8 @@ function loadCalendar() {
     // enseignant (utilisées par la modale d'édition : pré-remplissage instantané + détection
     // des demandes liées, comme sur la page "Voir les demandes").
     Promise.all([
-        fetch(`/api/calendar-events?${params.toString()}`).then(r => r.json()),
-        fetch(`/api/requests?teacher_id=${encodeURIComponent(teacherId)}`).then(r => r.json())
+        fetch(`/api/calendar-events?${params.toString()}`, { cache: 'no-store' }).then(r => r.json()),
+        fetch(`/api/requests?teacher_id=${encodeURIComponent(teacherId)}`, { cache: 'no-store' }).then(r => r.json())
     ])
         .then(([calendarEvents, fullRequests]) => {
             events = calendarEvents;

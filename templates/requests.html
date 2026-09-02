@@ -239,7 +239,7 @@ function loadRequestsWithPendingModifications() {
     if (endDate) params.append('end_date', endDate);
     
     // Fetch requests
-    fetch(`/api/requests?${params.toString()}`)
+    fetch(`/api/requests?${params.toString()}`, { cache: 'no-store' })
         .then(response => response.json())
         .then(requests => {
             loadingIndicator.classList.add('d-none');

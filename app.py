@@ -226,6 +226,13 @@ def enforce_authentication():
     return redirect(url_for('login'))
 
 
+@app.after_request
+def add_no_cache_to_api(response):
+    """Les réponses des API ne doivent jamais être mises en cache (données dynamiques)."""
+    if request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
 @app.before_request
 def protect_sensitive_routes():
     """Protège les routes sensibles."""
@@ -1103,33 +1110,34 @@ def api_update_request(request_id):
             if not current_user.get('teacher_id'):
                 return jsonify({'error': 'Compte enseignant non associé à un profil'}), 403
             data['teacher_id'] = current_user.get('teacher_id')
-        
+
         # Validation des champs principaux
         required_fields = ['teacher_id', 'class_name', 'material_description']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'error': f'Le champ {field} est requis'}), 400
-        
+
         # Validation du délai de 2 jours ouvrés pour toute modification (sauf admin et labo)
         if not _is_privileged_user():
-            current_request = get_material_request_by_id(request_id)
-            if current_request:
-                current_date = current_request['request_date']
+            from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
+            from database import get_working_day_overrides
+            from deadline_utils import get_required_working_days
+            overrides = get_working_day_overrides()
+            required_days = get_required_working_days()
 
-                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-                validation = is_request_deadline_respected(current_date)
-                if not validation['valid']:
-                    earliest_date = get_earliest_valid_date()
-                    return jsonify({
-                        'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
-                    }), 400
+            current_date = current_request['request_date']
+            validation = is_request_deadline_respected(current_date, overrides=overrides, required_days=required_days)
+            if not validation['valid']:
+                earliest_date = get_earliest_valid_date(overrides=overrides, required_days=required_days)
+                return jsonify({
+                    'error': f'Modification interdite - délai insuffisant. {validation["message"]} Première date modifiable: {earliest_date}'
+                }), 400
 
             if 'request_date' in data:
                 new_date = data['request_date']
-                from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
-                validation = is_request_deadline_respected(new_date)
+                validation = is_request_deadline_respected(new_date, overrides=overrides, required_days=required_days)
                 if not validation['valid']:
-                    earliest_date = get_earliest_valid_date()
+                    earliest_date = get_earliest_valid_date(overrides=overrides, required_days=required_days)
                     return jsonify({
                         'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
                     }), 400

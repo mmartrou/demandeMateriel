@@ -1232,6 +1232,16 @@ def set_working_day_config(date, is_working_day, description=None):
         logger.error(f"Erreur lors de la configuration du jour ouvré {date}: {e}")
         return False
 
+def get_working_day_overrides():
+    """Retourne toutes les surcharges de jours ouvrés en une seule requête : {date_str: bool}."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT date, is_working_day FROM working_days_config')
+    rows = cursor.fetchall()
+    conn.close()
+    return {str(row[0]): bool(row[1]) for row in rows}
+
+
 def is_working_day_configured(date):
     """
     Vérifie si un jour est configuré comme ouvré
