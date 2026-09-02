@@ -899,6 +899,226 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
     except Exception as e:
         return False, f"Erreur lors de la génération Excel: {str(e)}"
 
+def generer_excel_from_saved_planning(planning_data, date_str):
+    """
+    Génère l'Excel directement depuis le planning sauvegardé en base (table `plannings`),
+    sans relancer OR-Tools. Respecte les modifications de salle ET de créneau réalisées
+    via glisser-déposer dans l'éditeur.
+
+    planning_data : dict tel que stocké par /api/save-planning
+        { courses: [{room, time, duration, teacher, level, subject,
+                     request_name, eviers, hotte, bancs_optiques,
+                     obscurite_totale, becs_electriques, support_filtration,
+                     imprimante, ...}], ... }
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
+        from datetime import datetime
+
+        courses = planning_data.get('courses', [])
+
+        wb = Workbook()
+
+        horaires_str = [
+            "9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45",
+            "13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45",
+            "17h15", "17h45", "18h15"
+        ]
+        horaires = [h_to_min(h) for h in horaires_str]
+
+        physique_salles = ["C23", "C25", "C27", "C22", "C24"]
+        chimie_salles   = ["C32", "C33", "C31"]
+        ordered_rooms   = physique_salles + chimie_salles + ["C21"]
+
+        # Salles présentes dans le planning sauvegardé
+        rooms_in_planning = set(c.get('room', '') for c in courses if c.get('room'))
+        all_known_rooms = set(ordered_rooms)
+        salle_list = [r for r in ordered_rooms if r in rooms_in_planning or r in all_known_rooms]
+        # Ajouter les salles inconnues
+        for r in rooms_in_planning:
+            if r not in salle_list:
+                salle_list.append(r)
+
+        bold_font   = Font(bold=True, size=16)
+        header_font = Font(bold=True, size=36)
+        border = Border(
+            left=Side(style='thick'), right=Side(style='thick'),
+            top=Side(style='thick'), bottom=Side(style='thick')
+        )
+
+        if date_str:
+            try:
+                planning_date  = datetime.strptime(date_str, '%Y-%m-%d')
+                formatted_date = planning_date.strftime('%d/%m')
+            except ValueError:
+                formatted_date = date_str
+        else:
+            formatted_date = datetime.now().strftime('%d/%m')
+
+        col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
+        col_chimie   = [2 + salle_list.index(s) for s in chimie_salles   if s in salle_list]
+
+        def _build_sheet(wb, title, use_techniciens_content):
+            ws = wb.active if title == "Planning_Techniciens" else wb.create_sheet(title=title)
+            ws.title = title
+
+            ws.cell(row=1, column=1, value="Planning").alignment = Alignment(horizontal="center", vertical="center")
+            ws.column_dimensions['A'].width = 12
+
+            for col_list, label in [(col_physique, "Physique"), (col_chimie, "Chimie")]:
+                if col_list:
+                    if len(col_list) > 1 and col_list[-1] > col_list[0]:
+                        ws.merge_cells(start_row=1, start_column=col_list[0], end_row=1, end_column=col_list[-1])
+                    for col in range(col_list[0], col_list[-1] + 1):
+                        cell = ws.cell(row=1, column=col, value=label if col == col_list[0] else None)
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        cell.border = border
+
+            for idx_s, s in enumerate(salle_list):
+                col_letter = ws.cell(row=2, column=2 + idx_s).column_letter
+                cell = ws.cell(row=2, column=2 + idx_s, value=s)
+                ws.column_dimensions[col_letter].width = 20
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = border
+
+            ws.cell(row=2, column=1, value=formatted_date)
+            ws.cell(row=2, column=1).font = bold_font
+            ws.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="center")
+            ws.cell(row=2, column=1).border = border
+
+            cell_matrix = [
+                [{"content": "", "merge": False, "merge_len": 1, "matiere": ""} for _ in salle_list]
+                for _ in horaires
+            ]
+
+            for c in courses:
+                room = c.get('room', '')
+                if not room or room not in salle_list:
+                    continue
+
+                # Créneau depuis la position dans la grille (mis à jour par drag)
+                time_str   = c.get('time', '9h00') or '9h00'
+                start_time = h_to_min(time_str)
+                duree      = int(c.get('duration', 85) or 85)
+
+                idx_start = 0
+                idx_end   = 1
+                for idx, h in enumerate(horaires):
+                    if h <= start_time:
+                        idx_start = idx
+                    if h >= start_time + duree and idx_end == 1:
+                        idx_end = idx
+                        break
+                else:
+                    idx_end = len(horaires)
+                if idx_end <= idx_start:
+                    idx_end = idx_start + 1
+
+                merge_len = idx_end - idx_start
+                salle_idx = salle_list.index(room)
+                matiere   = c.get('subject', 'mixte') or 'mixte'
+                teacher   = c.get('teacher', '')
+                level     = c.get('level', '')
+                tp_name   = c.get('request_name', '')
+
+                if use_techniciens_content:
+                    equip = []
+                    if c.get('eviers', 0):        equip.append("Éviers")
+                    if c.get('hotte', 0):          equip.append("Hotte")
+                    if c.get('bancs_optiques', 0): equip.append("Bancs optiques")
+                    if c.get('obscurite_totale', 0): equip.append("Obscurité totale")
+                    if c.get('becs_electriques', 0): equip.append("Becs électriques")
+                    if c.get('support_filtration', 0): equip.append("Support de filtration")
+                    if c.get('imprimante', 0):     equip.append("Imprimante")
+                    if tp_name and tp_name.strip():
+                        equip.append(tp_name.strip())
+                    content = f"{teacher}\n{level}"
+                    if equip:
+                        content += "\n" + ", ".join(equip)
+                else:
+                    content = f"{teacher}\n{level}"
+
+                if idx_start < len(cell_matrix) and salle_idx < len(cell_matrix[idx_start]):
+                    cell_matrix[idx_start][salle_idx]["content"]    = content
+                    cell_matrix[idx_start][salle_idx]["matiere"]    = matiere
+                    cell_matrix[idx_start][salle_idx]["merge"]      = merge_len > 1
+                    cell_matrix[idx_start][salle_idx]["merge_len"]  = merge_len
+                    for idx in range(idx_start + 1, min(idx_end, len(cell_matrix))):
+                        cell_matrix[idx][salle_idx]["content"] = ""
+                        cell_matrix[idx][salle_idx]["matiere"] = matiere
+
+            # Fusions
+            merged_ranges = set()
+            for idx_h in range(len(horaires)):
+                for idx_s in range(len(salle_list)):
+                    cell = cell_matrix[idx_h][idx_s]
+                    excel_row = 3 + idx_h
+                    excel_col = 2 + idx_s
+                    if cell["merge"] and cell["content"] and cell["merge_len"] > 1:
+                        end_row   = excel_row + cell["merge_len"] - 1
+                        merge_key = (excel_row, excel_col, end_row)
+                        if end_row > excel_row and end_row <= 3 + len(horaires) - 1 and merge_key not in merged_ranges:
+                            try:
+                                ws.merge_cells(start_row=excel_row, start_column=excel_col,
+                                               end_row=end_row,   end_column=excel_col)
+                                merged_ranges.add(merge_key)
+                            except Exception:
+                                pass
+
+            # Contenu
+            for idx_h, h in enumerate(horaires):
+                ws.cell(row=3 + idx_h, column=1, value=horaires_str[idx_h])
+                ws.cell(row=3 + idx_h, column=1).alignment = Alignment(horizontal="center", vertical="center")
+                ws.cell(row=3 + idx_h, column=1).border    = border
+
+                for idx_s in range(len(salle_list)):
+                    cell      = cell_matrix[idx_h][idx_s]
+                    excel_row = 3 + idx_h
+                    excel_col = 2 + idx_s
+
+                    is_secondary = any(
+                        sr < excel_row <= er and sc == excel_col
+                        for (sr, sc, er) in merged_ranges
+                    )
+                    try:
+                        ws.cell(row=excel_row, column=excel_col).border = border
+                    except Exception:
+                        pass
+
+                    if not is_secondary:
+                        try:
+                            ws.cell(row=excel_row, column=excel_col, value=cell["content"])
+                            ws.cell(row=excel_row, column=excel_col).alignment = Alignment(
+                                horizontal="center", vertical="center", wrap_text=True)
+                            if cell["content"]:
+                                mat = (cell["matiere"] or "").lower()
+                                color = "B2F2E9" if "chimie" in mat else "FFD580" if "physique" in mat else "D3D3D3"
+                                ws.cell(row=excel_row, column=excel_col).fill = PatternFill(
+                                    start_color=color, end_color=color, fill_type="solid")
+                        except Exception:
+                            pass
+
+            for idx_h in range(len(horaires)):
+                ws.row_dimensions[3 + idx_h].height = 20
+
+        _build_sheet(wb, "Planning_Techniciens", use_techniciens_content=True)
+        _build_sheet(wb, "Affichage",             use_techniciens_content=False)
+
+        import tempfile, os
+        tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        tmp.close()
+        wb.save(tmp.name)
+        return True, tmp.name
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return False, f"Erreur génération Excel depuis planning sauvegardé: {e}"
+
+
 def generer_planning_excel(date, end_date=None, return_data_only=False, custom_room_assignments=None):
     """Generate planning Excel file for a specific date or date range"""
     try:

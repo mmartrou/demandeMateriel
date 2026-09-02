@@ -28,7 +28,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_recurring_courses, add_recurring_course, delete_recurring_course,
                       generate_draft_requests_for_week, confirm_draft_request)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
-from planning_generator import generer_planning_excel, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
+from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
 import json
 
@@ -2257,20 +2257,36 @@ def api_planning_editor_course(request_id):
 
 @app.route('/api/planning-editor/generate', methods=['POST'])
 def api_generate_planning_from_editor():
-    """API endpoint pour générer le planning Excel avec les assignations personnalisées"""
+    """API endpoint pour générer le planning Excel depuis l'éditeur (planning sauvegardé ou OR-Tools)"""
     try:
         data = request.get_json()
-        assignments = data.get('assignments', {})
         target_date = data.get('date')
-        room_assignments = data.get('room_assignments', {})
-        
+
         if not target_date:
             return jsonify({'error': 'La date est requise'}), 400
-        
-        print(f"🔍 Génération Excel avec room_assignments: {room_assignments}")
-        
-        # Utiliser exactement la même logique que /api/generate-planning mais avec assignations custom
-        success, result = generer_planning_excel(target_date, custom_room_assignments=room_assignments)
+
+        # Priorité 1 : planning sauvegardé en base (inclut les modifications glisser-déposer)
+        saved_planning = None
+        try:
+            conn, db_type = get_db_connection()
+            cursor = conn.cursor()
+            placeholder = '%s' if db_type == 'postgresql' else '?'
+            cursor.execute(f'SELECT data FROM plannings WHERE date = {placeholder}', (target_date,))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                raw = row['data'] if isinstance(row, dict) else row[0]
+                saved_planning = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception as e:
+            print(f"⚠️ Impossible de charger le planning sauvegardé: {e}")
+
+        if saved_planning and saved_planning.get('courses'):
+            success, result = generer_excel_from_saved_planning(saved_planning, target_date)
+        else:
+            # Fallback : relancer OR-Tools avec les assignations de salle envoyées par le client
+            room_assignments = data.get('room_assignments', {})
+            print(f"🔍 Pas de planning sauvegardé — génération OR-Tools avec room_assignments: {room_assignments}")
+            success, result = generer_planning_excel(target_date, custom_room_assignments=room_assignments)
         
         if not success:
             return jsonify({'error': result}), 500
