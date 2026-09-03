@@ -166,11 +166,7 @@
 <script>
 document.getElementById('planningDate').addEventListener('change', function() {
     const date = this.value;
-    const generateBtn = document.getElementById('generatePlanningBtn');
-    
-    // Activer/désactiver le bouton de génération
-    generateBtn.disabled = !date;
-    
+
     if (!date) {
         document.getElementById('planningDay').style.display = 'none';
         document.getElementById('planningLegend').style.display = 'none';
