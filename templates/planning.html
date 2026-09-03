@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Générateur de planning{% endblock %}
+{% block title %}Salles spécifiques{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -85,28 +85,17 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h2>Générateur de planning</h2>
+    <h2>Salles spécifiques</h2>
     <form id="planningForm" class="mb-3">
         <div class="row">
             <div class="col-md-6">
                 <label for="planningDate" class="form-label">Sélectionnez une date :</label>
-                <input type="date" id="planningDate" name="planningDate" class="form-control" required 
+                <input type="date" id="planningDate" name="planningDate" class="form-control" required
                        pattern="\d{4}-\d{2}-\d{2}" placeholder="jj/mm/aaaa">
-            </div>
-            <div class="col-md-6 d-flex align-items-end">
-                <button type="button" id="generatePlanningBtn" class="btn btn-primary" disabled onclick="generatePlanning()">
-                    <i class="fas fa-file-excel"></i> Générer planning Excel
-                </button>
-                <div id="planningSpinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status">
-                    <span class="visually-hidden">Génération en cours...</span>
-                </div>
             </div>
         </div>
     </form>
-    
-    <!-- Messages d'état -->
-    <div id="planningMessage" class="alert d-none" role="alert"></div>
-    
+
     <!-- Légende des couleurs -->
     <div class="row mb-4" id="planningLegend" style="display: none;">
         <div class="col-12">
@@ -353,108 +342,6 @@ function updateRoomType(requestId, roomType) {
         alert('Erreur lors de la mise à jour du type de salle');
         location.reload();
     });
-}
-
-function generatePlanning() {
-    const date = document.getElementById('planningDate').value;
-    if (!date) {
-        showMessage('Veuillez sélectionner une date', 'warning');
-        return;
-    }
-
-    const spinner = document.getElementById('planningSpinner');
-    const btn = document.getElementById('generatePlanningBtn');
-    const originalBtnText = btn.innerHTML;
-
-    // Afficher le spinner et désactiver le bouton
-    spinner.classList.remove('d-none');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
-
-    fetch('/api/generate-planning', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({date: date})
-    })
-    .then(async (response) => {
-        if (!response.ok) {
-            let errMsg = 'Erreur lors de la génération';
-            try {
-                const err = await response.json();
-                if (err && err.error) errMsg = err.error;
-            } catch (_) {}
-            throw new Error(errMsg);
-        }
-
-        // Déclencher le téléchargement du fichier Excel
-        const disposition = response.headers.get('Content-Disposition') || '';
-        let filename = 'planning.xlsx';
-        const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i.exec(disposition);
-        if (match && match[1]) {
-            filename = match[1].replace(/["']/g, '');
-        } else {
-            // Fallback: générer un nom à partir de la date sélectionnée
-            try {
-                const d = new Date(date + 'T00:00:00');
-                const jours = ['LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI','DIMANCHE'];
-                const jour = jours[d.getDay() === 0 ? 6 : d.getDay() - 1]; // adapter à Lundi=0
-                const formatted = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
-                filename = `planning_${jour}_${formatted}.xlsx`;
-            } catch (_) {}
-        }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-
-        // Ensuite, sauvegarder le planning côté serveur (données à compléter si nécessaire)
-        return fetch('/api/save-planning', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({date: date, data: {}})
-        });
-    })
-    .then(saveResponse => {
-        if (!saveResponse.ok) {
-            return saveResponse.json().then(err => {
-                throw new Error(err.error || 'Erreur lors de la sauvegarde du planning');
-            });
-        }
-
-        showMessage('Planning généré, téléchargé et sauvegardé avec succès', 'success');
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showMessage(error.message || 'Erreur lors de la génération ou de la sauvegarde du planning', 'danger');
-    })
-    .finally(() => {
-        // Restaurer le bouton
-        spinner.classList.add('d-none');
-        btn.disabled = false;
-        btn.innerHTML = originalBtnText;
-    });
-}
-
-function showMessage(message, type) {
-    const messageDiv = document.getElementById('planningMessage');
-    messageDiv.className = `alert alert-${type}`;
-    messageDiv.textContent = message;
-    messageDiv.classList.remove('d-none');
-    
-    // Masquer le message après 5 secondes
-    setTimeout(() => {
-        messageDiv.classList.add('d-none');
-    }, 5000);
 }
 
 // Définir la date par défaut au prochain jour ouvrable

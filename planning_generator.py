@@ -63,77 +63,6 @@ def interval_cours(c):
     return (start, start + c["duree"])
 
 
-def calculer_score_salle(besoins, equipements_salle, type_salle, matiere):
-    """
-    Calcule un score de compatibilité entre les besoins d'un cours et une salle
-    """
-    try:
-        # Convertir les dictionnaires s'ils ne le sont pas déjà
-        if not isinstance(besoins, dict):
-            besoins = dict(besoins) if hasattr(besoins, 'items') else {}
-        if not isinstance(equipements_salle, dict):
-            equipements_salle = dict(equipements_salle) if hasattr(equipements_salle, 'items') else {}
-        # Analyser les équipements réels de la salle
-        room_has_chemistry_equipment = (equipements_salle.get("eviers", 0) > 0 or equipements_salle.get("hotte", 0) > 0 or 
-                                       equipements_salle.get("becs_electriques", 0) > 0 or equipements_salle.get("support_filtration", 0) > 0)
-        room_has_physics_equipment = (equipements_salle.get("obscurite_totale", 0) > 0 or equipements_salle.get("bancs_optiques", 0) > 0)
-
-        # Vérifier si le cours a des besoins spécifiques
-        has_equipment_needs = (besoins.get("ordinateurs", 0) > 0 or besoins.get("eviers", 0) > 0 or
-                              besoins.get("hotte", 0) > 0 or besoins.get("bancs_optiques", 0) > 0 or
-                              besoins.get("obscurite_totale", 0) > 0 or besoins.get("becs_electriques", 0) > 0 or
-                              besoins.get("support_filtration", 0) > 0 or besoins.get("imprimante", 0) > 0)
-        
-        # Score de base selon la matière et les équipements
-        score = 0.5  # Score neutre
-        
-        matiere_lower = matiere.lower()
-        if "chimie" in matiere_lower:
-            if room_has_chemistry_equipment:
-                score = 1.0 if has_equipment_needs else 0.9
-            elif type_salle == "chimie":
-                score = 0.7 if has_equipment_needs else 0.8
-            else:
-                score = 0.3 if has_equipment_needs else 0.6
-                
-        elif "physique" in matiere_lower:
-            if room_has_physics_equipment:
-                score = 1.0 if has_equipment_needs else 0.9
-            elif type_salle == "physique":
-                score = 0.7 if has_equipment_needs else 0.8
-            else:
-                score = 0.3 if has_equipment_needs else 0.6
-        else:
-            # Autres matières - préférer salles sans équipements spécialisés
-            if not room_has_chemistry_equipment and not room_has_physics_equipment:
-                score = 0.8
-            else:
-                score = 0.4
-        
-        # Pénaliser si les besoins spécifiques ne sont pas satisfaits
-        if besoins.get("eviers", 0) > 0 and equipements_salle.get("eviers", 0) == 0:
-            score *= 0.1
-        if besoins.get("hotte", 0) > 0 and equipements_salle.get("hotte", 0) == 0:
-            score *= 0.1
-        if besoins.get("obscurite_totale", 0) > 0 and equipements_salle.get("obscurite_totale", 0) == 0:
-            score *= 0.1
-        if besoins.get("bancs_optiques", 0) > 0 and equipements_salle.get("bancs_optiques", 0) == 0:
-            score *= 0.1
-        if besoins.get("becs_electriques", 0) > 0 and equipements_salle.get("becs_electriques", 0) == 0:
-            score *= 0.1
-        if besoins.get("support_filtration", 0) > 0 and equipements_salle.get("support_filtration", 0) == 0:
-            score *= 0.1
-        if besoins.get("imprimante", 0) > 0 and equipements_salle.get("imprimante", 0) == 0:
-            score *= 0.1
-            
-        return max(0.0, min(1.0, score))
-    except Exception as e:
-        print(f"Erreur calcul score salle: {e}")
-        print(f"Besoins: {besoins}")
-        print(f"Equipements salle: {equipements_salle}")
-        return 0.5
-
-
 def extract_material_needs(selected_materials):
     """Extract material needs from selected_materials string with improved parsing"""
     needs = {
@@ -364,9 +293,12 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
-        
+        from openpyxl.worksheet.page import PageMargins
+        from openpyxl.cell.rich_text import CellRichText, TextBlock
+        from openpyxl.cell.text import InlineFont
+
         wb = Workbook()
-        
+
         # Créneaux horaires personnalisés (comme dans main.py)
         horaires_str = [
             "9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45",
@@ -374,6 +306,36 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
             "17h15", "17h45", "18h15"
         ]
         horaires = [h_to_min(h) for h in horaires_str]
+
+        JOURS_FR = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
+        def _row_border(idx_h):
+            """Bordure horizontale alternée (pleine/pointillés), avec séparateurs
+            renforcés aux changements de créneau clé (12h15, 15h15)."""
+            is_major = horaires_str[idx_h] in ("12h15", "15h15")
+            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in ("12h15", "15h15")
+            top_style = 'thick' if is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
+            bottom_style = 'thick' if next_is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
+            return Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style=top_style), bottom=Side(style=bottom_style))
+
+        def _teacher_rich_text(teacher, rest_lines):
+            """Nom du professeur en gras, 1.5x plus grand que le reste du contenu."""
+            rest = "\n".join(l for l in rest_lines if l)
+            runs = [TextBlock(InlineFont(b=True, sz=17), teacher or "")]
+            if rest:
+                runs.append(TextBlock(InlineFont(sz=11), "\n" + rest))
+            return CellRichText(*runs)
+
+        def _apply_print_setup(ws, n_rooms, n_rows):
+            ws.page_setup.orientation = 'landscape'
+            ws.page_setup.paperSize = ws.PAPERSIZE_A4
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 1
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0.1, footer=0.1)
+            last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
+            ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
         
         # Définition de l'ordre personnalisé des salles
         physique_salles = ["C23", "C25", "C27", "C22", "C24"]
@@ -399,8 +361,21 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         border = Border(left=Side(style='thick'), right=Side(style='thick'), 
                        top=Side(style='thick'), bottom=Side(style='thick'))
         
+        # Date / jour de la semaine - Utiliser la date du planning, pas la date actuelle
+        from datetime import datetime
+        if date_param:
+            if isinstance(date_param, str):
+                planning_date = datetime.strptime(date_param, '%Y-%m-%d')
+            else:
+                planning_date = date_param
+            formatted_date = planning_date.strftime('%d/%m')
+        else:
+            planning_date = datetime.now()
+            formatted_date = planning_date.strftime('%d/%m')
+        jour_semaine = JOURS_FR[planning_date.weekday()]
+
         # En-tête principal (ligne 1)
-        ws1.cell(row=1, column=1, value="Planning")
+        ws1.cell(row=1, column=1, value=jour_semaine)
         ws1.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws1.column_dimensions['A'].width = 12
         
@@ -432,22 +407,12 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for idx_s, s in enumerate(salle_list):
             col_letter = ws1.cell(row=2, column=2+idx_s).column_letter
             cell = ws1.cell(row=2, column=2+idx_s, value=s)
-            ws1.column_dimensions[col_letter].width = 20
+            ws1.column_dimensions[col_letter].width = 26
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border
-        
-        # Date (ligne 2, colonne 1) - Utiliser la date du planning, pas la date actuelle
-        from datetime import datetime
-        # Si date_param n'est pas fournie, utiliser la date actuelle
-        if date_param:
-            if isinstance(date_param, str):
-                planning_date = datetime.strptime(date_param, '%Y-%m-%d')
-            else:
-                planning_date = date_param
-            formatted_date = planning_date.strftime('%d/%m')
-        else:
-            formatted_date = datetime.now().strftime('%d/%m')
+
+        # Date (ligne 2, colonne 1)
         ws1.cell(row=2, column=1, value=formatted_date)
         ws1.cell(row=2, column=1).font = bold_font
         ws1.cell(row=2, column=1).alignment = Alignment(horizontal="center", vertical="center")
@@ -544,12 +509,13 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                 if titre_tp and titre_tp.strip():
                     besoins_txt_techniciens.append(titre_tp.strip())
                 
-                content_techniciens = f"{c.get('enseignant', '')}\n{c.get('niveau', '')}"
+                rest_lines_techniciens = [c.get('niveau', '')]
                 if besoins_txt_techniciens:
-                    content_techniciens += "\n" + ", ".join(besoins_txt_techniciens)
-                
+                    rest_lines_techniciens.append(", ".join(besoins_txt_techniciens))
+                content_techniciens = _teacher_rich_text(c.get('enseignant', ''), rest_lines_techniciens)
+
                 # Build course content for Affichage (seulement enseignant + niveau)
-                content_affichage = f"{c.get('enseignant', '')}\n{c.get('niveau', '')}"
+                content_affichage = _teacher_rich_text(c.get('enseignant', ''), [c.get('niveau', '')])
                 
                 # Fill matrix avec vérifications d'indices
                 try:
@@ -611,29 +577,30 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         
         # Ensuite, remplir le contenu
         for idx_h, h in enumerate(horaires):
+            row_border = _row_border(idx_h)
             # Horaires (colonne 1)
             ws1.cell(row=3+idx_h, column=1, value=horaires_str[idx_h])
             ws1.cell(row=3+idx_h, column=1).alignment = Alignment(horizontal="center", vertical="center")
-            ws1.cell(row=3+idx_h, column=1).border = border
-            
+            ws1.cell(row=3+idx_h, column=1).border = row_border
+
             # Salles
             for idx_s, s in enumerate(salle_list):
                 cell = cell_matrix[idx_h][idx_s]
                 excel_row = 3 + idx_h
                 excel_col = 2 + idx_s
-                
+
                 # Vérifier si cette cellule est une cellule fusionnée secondaire
                 is_merged_secondary = False
                 for merge_key in merged_ranges:
                     start_row, start_col, end_row = merge_key
-                    if (start_col == excel_col and 
+                    if (start_col == excel_col and
                         start_row < excel_row <= end_row):
                         is_merged_secondary = True
                         break
-                
+
                 # Appliquer les bordures à toutes les cellules (y compris fusionnées)
                 try:
-                    ws1.cell(row=excel_row, column=excel_col).border = border
+                    ws1.cell(row=excel_row, column=excel_col).border = row_border
                 except Exception:
                     pass
                 
@@ -666,13 +633,13 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                         print(f"Ignoring cell write error at ({excel_row}, {excel_col}): {e}")
                         pass        # Hauteur des lignes
         for idx_h in range(len(horaires)):
-            ws1.row_dimensions[3 + idx_h].height = 20
-        
+            ws1.row_dimensions[3 + idx_h].height = 32
+
         # Feuille 2: Affichage simplifié
         ws2 = wb.create_sheet(title="Affichage")
-        
+
         # Même structure mais contenu simplifié
-        ws2.cell(row=1, column=1, value="Planning")
+        ws2.cell(row=1, column=1, value=jour_semaine)
         ws2.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws2.column_dimensions['A'].width = 12
         
@@ -701,7 +668,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for idx_s, s in enumerate(salle_list):
             col_letter = ws2.cell(row=2, column=2+idx_s).column_letter
             cell = ws2.cell(row=2, column=2+idx_s, value=s)
-            ws2.column_dimensions[col_letter].width = 20
+            ws2.column_dimensions[col_letter].width = 26
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border
@@ -771,9 +738,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                 
                 merge_len = idx_end - idx_start
                 
-                # Build course content for Affichage (seulement enseignant + niveau) 
-                content_affichage = f"{c.get('enseignant', '')}\n{c.get('niveau', '')}"
-                
+                # Build course content for Affichage (seulement enseignant + niveau)
+                content_affichage = _teacher_rich_text(c.get('enseignant', ''), [c.get('niveau', '')])
+
                 # Fill matrix avec vérifications d'indices
                 try:
                     salle_idx = salle_list.index(salle_assignee)
@@ -831,27 +798,28 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         
         # Ensuite, remplir le contenu
         for idx_h, h in enumerate(horaires):
+            row_border = _row_border(idx_h)
             ws2.cell(row=3+idx_h, column=1, value=horaires_str[idx_h])
             ws2.cell(row=3+idx_h, column=1).alignment = Alignment(horizontal="center", vertical="center")
-            ws2.cell(row=3+idx_h, column=1).border = border
-            
+            ws2.cell(row=3+idx_h, column=1).border = row_border
+
             for idx_s, s in enumerate(salle_list):
                 cell = cell_matrix2[idx_h][idx_s]
                 excel_row = 3 + idx_h
                 excel_col = 2 + idx_s
-                
+
                 # Vérifier si cette cellule est une cellule fusionnée secondaire
                 is_merged_secondary = False
                 for merge_key in merged_ranges2:
                     start_row, start_col, end_row = merge_key
-                    if (start_col == excel_col and 
+                    if (start_col == excel_col and
                         start_row < excel_row <= end_row):
                         is_merged_secondary = True
                         break
-                
+
                 # Appliquer les bordures à toutes les cellules (y compris fusionnées)
                 try:
-                    ws2.cell(row=excel_row, column=excel_col).border = border
+                    ws2.cell(row=excel_row, column=excel_col).border = row_border
                 except Exception:
                     pass
                 
@@ -874,8 +842,12 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         
         # Hauteur des lignes feuille 2
         for idx_h in range(len(horaires)):
-            ws2.row_dimensions[3 + idx_h].height = 20
-        
+            ws2.row_dimensions[3 + idx_h].height = 32
+
+        # Mise en page A4 paysage pour impression
+        _apply_print_setup(ws1, len(salle_list), len(horaires))
+        _apply_print_setup(ws2, len(salle_list), len(horaires))
+
         # Ajout des cours non assignés en bas
         if unassigned_courses:
             # Ligne vide
@@ -914,7 +886,40 @@ def generer_excel_from_saved_planning(planning_data, date_str):
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
+        from openpyxl.worksheet.page import PageMargins
+        from openpyxl.cell.rich_text import CellRichText, TextBlock
+        from openpyxl.cell.text import InlineFont
         from datetime import datetime
+
+        JOURS_FR = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
+        def _row_border(idx_h):
+            """Bordure horizontale alternée (pleine/pointillés), avec séparateurs
+            renforcés aux changements de créneau clé (12h15, 15h15)."""
+            is_major = horaires_str[idx_h] in ("12h15", "15h15")
+            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in ("12h15", "15h15")
+            top_style = 'thick' if is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
+            bottom_style = 'thick' if next_is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
+            return Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style=top_style), bottom=Side(style=bottom_style))
+
+        def _teacher_rich_text(teacher, rest_lines):
+            """Nom du professeur en gras, 1.5x plus grand que le reste du contenu."""
+            rest = "\n".join(l for l in rest_lines if l)
+            runs = [TextBlock(InlineFont(b=True, sz=17), teacher or "")]
+            if rest:
+                runs.append(TextBlock(InlineFont(sz=11), "\n" + rest))
+            return CellRichText(*runs)
+
+        def _apply_print_setup(ws, n_rooms, n_rows):
+            ws.page_setup.orientation = 'landscape'
+            ws.page_setup.paperSize = ws.PAPERSIZE_A4
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 1
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0.1, footer=0.1)
+            last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
+            ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
 
         courses = planning_data.get('courses', [])
         room_assignments = planning_data.get('room_assignments', {})
@@ -956,10 +961,14 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             try:
                 planning_date  = datetime.strptime(date_str, '%Y-%m-%d')
                 formatted_date = planning_date.strftime('%d/%m')
+                jour_semaine   = JOURS_FR[planning_date.weekday()]
             except ValueError:
                 formatted_date = date_str
+                jour_semaine   = date_str
         else:
-            formatted_date = datetime.now().strftime('%d/%m')
+            planning_date  = datetime.now()
+            formatted_date = planning_date.strftime('%d/%m')
+            jour_semaine   = JOURS_FR[planning_date.weekday()]
 
         col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
         col_chimie   = [2 + salle_list.index(s) for s in chimie_salles   if s in salle_list]
@@ -968,7 +977,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             ws = wb.active if title == "Planning_Techniciens" else wb.create_sheet(title=title)
             ws.title = title
 
-            ws.cell(row=1, column=1, value="Planning").alignment = Alignment(horizontal="center", vertical="center")
+            ws.cell(row=1, column=1, value=jour_semaine).alignment = Alignment(horizontal="center", vertical="center")
             ws.column_dimensions['A'].width = 12
 
             for col_list, label in [(col_physique, "Physique"), (col_chimie, "Chimie")]:
@@ -984,7 +993,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             for idx_s, s in enumerate(salle_list):
                 col_letter = ws.cell(row=2, column=2 + idx_s).column_letter
                 cell = ws.cell(row=2, column=2 + idx_s, value=s)
-                ws.column_dimensions[col_letter].width = 20
+                ws.column_dimensions[col_letter].width = 26
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = border
@@ -1040,11 +1049,12 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                     if c.get('imprimante', 0):     equip.append("Imprimante")
                     if tp_name and tp_name.strip():
                         equip.append(tp_name.strip())
-                    content = f"{teacher}\n{level}"
+                    rest_lines = [level]
                     if equip:
-                        content += "\n" + ", ".join(equip)
+                        rest_lines.append(", ".join(equip))
+                    content = _teacher_rich_text(teacher, rest_lines)
                 else:
-                    content = f"{teacher}\n{level}"
+                    content = _teacher_rich_text(teacher, [level])
 
                 if idx_start < len(cell_matrix) and salle_idx < len(cell_matrix[idx_start]):
                     cell_matrix[idx_start][salle_idx]["content"]    = content
@@ -1075,9 +1085,10 @@ def generer_excel_from_saved_planning(planning_data, date_str):
 
             # Contenu
             for idx_h, h in enumerate(horaires):
+                row_border = _row_border(idx_h)
                 ws.cell(row=3 + idx_h, column=1, value=horaires_str[idx_h])
                 ws.cell(row=3 + idx_h, column=1).alignment = Alignment(horizontal="center", vertical="center")
-                ws.cell(row=3 + idx_h, column=1).border    = border
+                ws.cell(row=3 + idx_h, column=1).border    = row_border
 
                 for idx_s in range(len(salle_list)):
                     cell      = cell_matrix[idx_h][idx_s]
@@ -1089,7 +1100,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                         for (sr, sc, er) in merged_ranges
                     )
                     try:
-                        ws.cell(row=excel_row, column=excel_col).border = border
+                        ws.cell(row=excel_row, column=excel_col).border = row_border
                     except Exception:
                         pass
 
@@ -1107,7 +1118,9 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                             pass
 
             for idx_h in range(len(horaires)):
-                ws.row_dimensions[3 + idx_h].height = 20
+                ws.row_dimensions[3 + idx_h].height = 32
+
+            _apply_print_setup(ws, len(salle_list), len(horaires))
 
         _build_sheet(wb, "Planning_Techniciens", use_techniciens_content=True)
         _build_sheet(wb, "Affichage",             use_techniciens_content=False)
@@ -1498,13 +1511,6 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
     except Exception as e:
         import traceback
         return False, f"Erreur lors de la génération du planning: {str(e)}\n{traceback.format_exc()}"
-
-
-def get_planning_data_for_editor(target_date):
-    """
-    Appelle la nouvelle version qui fonctionne
-    """
-    return get_planning_data_for_editor_v2(target_date)
 
 
 def get_planning_data_for_editor_v2(target_date):

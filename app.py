@@ -28,7 +28,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_recurring_courses, add_recurring_course, delete_recurring_course,
                       generate_draft_requests_for_week, confirm_draft_request)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
-from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor, get_planning_data_for_editor_v2, build_course_data_entry
+from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
 import json
 
@@ -489,74 +489,6 @@ def handle_payload_too_large(e):
 def planning():
     """Page Générateur de Planning pour voir les demandes d'un jour"""
     return render_template('planning.html')
-
-@app.route('/api/generate-planning', methods=['POST'])
-def generate_planning():
-    """Generate Excel planning for a specific date using OR-Tools optimization"""
-    try:
-        data = request.get_json()
-        if not data or 'date' not in data:
-            return jsonify({'error': 'Date manquante'}), 400
-        
-        date_str = data['date']
-        
-        # Use the existing planning generator
-        success, result = generer_planning_excel(date_str)
-        
-        if not success:
-            return jsonify({'error': result}), 404
-        
-        # Resolve generated file path from result
-        file_path = None
-        try:
-            # Case 1: function returns the filename directly
-            if isinstance(result, str) and result.lower().endswith('.xlsx'):
-                file_path = result
-            # Case 2: function returned a message string (legacy)
-            elif isinstance(result, str) and "Planning généré:" in result:
-                file_path = result.split("Planning généré: ")[1].split(" (")[0]
-            else:
-                return jsonify({'error': "Format de réponse inattendu lors de la génération du fichier"}), 500
-        except Exception as _e:
-            return jsonify({'error': 'Erreur lors de l\'extraction du nom de fichier'}), 500
-        
-        # Read the generated file and return it
-        try:
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-        except FileNotFoundError:
-            return jsonify({'error': f'Fichier généré non trouvé: {file_path}'}), 500
-        
-        # Create response
-        response = make_response(file_content)
-        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        
-        # Create filename based on date
-        from datetime import datetime
-        try:
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            # datetime.weekday(): Lundi=0 .. Dimanche=6
-            day_names = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-            day_name = day_names[date_obj.weekday()]
-            formatted_date = date_obj.strftime('%d-%m-%Y')
-            filename = f"planning_{day_name.upper()}_{formatted_date}.xlsx"
-        except:
-            filename = f"planning_{date_str}.xlsx"
-        
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        
-        # Clean up the temporary file
-        import os
-        try:
-            os.remove(file_path)
-        except:
-            pass
-        
-        return response
-        
-    except Exception as e:
-        logging.error(f"Erreur génération planning: {e}")
-        return api_error('Erreur lors de la génération du planning', e)
 
 @app.route('/')
 def index():
