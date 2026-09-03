@@ -322,9 +322,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         def _teacher_rich_text(teacher, rest_lines):
             """Nom du professeur en gras, 1.5x plus grand que le reste du contenu."""
             rest = "\n".join(l for l in rest_lines if l)
-            runs = [TextBlock(InlineFont(b=True, sz=17), teacher or "")]
+            runs = [TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), teacher or "")]
             if rest:
-                runs.append(TextBlock(InlineFont(sz=11), "\n" + rest))
+                runs.append(TextBlock(InlineFont(rFont="Calibri", sz=11), "\n" + rest))
             return CellRichText(*runs)
 
         def _apply_print_setup(ws, n_rooms, n_rows):
@@ -333,7 +333,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
             ws.page_setup.fitToWidth = 1
             ws.page_setup.fitToHeight = 1
             ws.sheet_properties.pageSetUpPr.fitToPage = True
-            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0.1, footer=0.1)
+            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0, footer=0)
             last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
             ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
         
@@ -378,7 +378,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         ws1.cell(row=1, column=1, value=jour_semaine)
         ws1.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws1.column_dimensions['A'].width = 12
-        
+        ws1.row_dimensions[1].height = 40
+        ws1.row_dimensions[2].height = 40
+
         # Encadrés Physique et Chimie
         col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
         col_chimie = [2 + salle_list.index(s) for s in chimie_salles if s in salle_list]
@@ -407,7 +409,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for idx_s, s in enumerate(salle_list):
             col_letter = ws1.cell(row=2, column=2+idx_s).column_letter
             cell = ws1.cell(row=2, column=2+idx_s, value=s)
-            ws1.column_dimensions[col_letter].width = 26
+            ws1.column_dimensions[col_letter].width = 15
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border
@@ -633,7 +635,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
                         print(f"Ignoring cell write error at ({excel_row}, {excel_col}): {e}")
                         pass        # Hauteur des lignes
         for idx_h in range(len(horaires)):
-            ws1.row_dimensions[3 + idx_h].height = 32
+            ws1.row_dimensions[3 + idx_h].height = 25
 
         # Feuille 2: Affichage simplifié
         ws2 = wb.create_sheet(title="Affichage")
@@ -642,7 +644,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         ws2.cell(row=1, column=1, value=jour_semaine)
         ws2.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws2.column_dimensions['A'].width = 12
-        
+        ws2.row_dimensions[1].height = 40
+        ws2.row_dimensions[2].height = 40
+
         # Répliquer les en-têtes
         if col_physique and len(col_physique) > 0:
             # Ne fusionner que s'il y a plusieurs colonnes
@@ -668,7 +672,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         for idx_s, s in enumerate(salle_list):
             col_letter = ws2.cell(row=2, column=2+idx_s).column_letter
             cell = ws2.cell(row=2, column=2+idx_s, value=s)
-            ws2.column_dimensions[col_letter].width = 26
+            ws2.column_dimensions[col_letter].width = 15
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border
@@ -842,7 +846,7 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         
         # Hauteur des lignes feuille 2
         for idx_h in range(len(horaires)):
-            ws2.row_dimensions[3 + idx_h].height = 32
+            ws2.row_dimensions[3 + idx_h].height = 25
 
         # Mise en page A4 paysage pour impression
         _apply_print_setup(ws1, len(salle_list), len(horaires))
@@ -906,9 +910,9 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         def _teacher_rich_text(teacher, rest_lines):
             """Nom du professeur en gras, 1.5x plus grand que le reste du contenu."""
             rest = "\n".join(l for l in rest_lines if l)
-            runs = [TextBlock(InlineFont(b=True, sz=17), teacher or "")]
+            runs = [TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), teacher or "")]
             if rest:
-                runs.append(TextBlock(InlineFont(sz=11), "\n" + rest))
+                runs.append(TextBlock(InlineFont(rFont="Calibri", sz=11), "\n" + rest))
             return CellRichText(*runs)
 
         def _apply_print_setup(ws, n_rooms, n_rows):
@@ -917,7 +921,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             ws.page_setup.fitToWidth = 1
             ws.page_setup.fitToHeight = 1
             ws.sheet_properties.pageSetUpPr.fitToPage = True
-            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0.1, footer=0.1)
+            ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0, footer=0)
             last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
             ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
 
@@ -979,6 +983,8 @@ def generer_excel_from_saved_planning(planning_data, date_str):
 
             ws.cell(row=1, column=1, value=jour_semaine).alignment = Alignment(horizontal="center", vertical="center")
             ws.column_dimensions['A'].width = 12
+            ws.row_dimensions[1].height = 40
+            ws.row_dimensions[2].height = 40
 
             for col_list, label in [(col_physique, "Physique"), (col_chimie, "Chimie")]:
                 if col_list:
@@ -993,7 +999,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             for idx_s, s in enumerate(salle_list):
                 col_letter = ws.cell(row=2, column=2 + idx_s).column_letter
                 cell = ws.cell(row=2, column=2 + idx_s, value=s)
-                ws.column_dimensions[col_letter].width = 26
+                ws.column_dimensions[col_letter].width = 15
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = border
@@ -1118,7 +1124,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                             pass
 
             for idx_h in range(len(horaires)):
-                ws.row_dimensions[3 + idx_h].height = 32
+                ws.row_dimensions[3 + idx_h].height = 25
 
             _apply_print_setup(ws, len(salle_list), len(horaires))
 
