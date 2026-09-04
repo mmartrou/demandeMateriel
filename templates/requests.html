@@ -522,21 +522,15 @@ function getValidationButton(request) {
     return '';
 }
 function togglePrepared(requestId) {
-    fetch(`/api/requests/${requestId}/toggle-prepared`, {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            throw new Error(data.error);
-        }
-        loadRequests();
-        showSuccessToast('Statut mis à jour avec succès');
-    })
-       .catch(error => {
-        console.error('Error:', error);
-        showErrorToast('Erreur lors de la mise à jour du statut');
-    });
+    togglePreparedWithRelated(requestId)
+        .then(({ idsToToggle }) => {
+            loadRequests();
+            showSuccessToast(idsToToggle.length > 1 ? `${idsToToggle.length} demandes marquées comme préparées` : 'Statut mis à jour avec succès');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showErrorToast('Erreur lors de la mise à jour du statut');
+        });
 }
 
 </script>

@@ -777,15 +777,14 @@ function formatDateHoraireFr(dateStr, horaire) {
     return horaire ? `${label} (${horaire})` : label;
 }
 
-function togglePreparedFromModal() {
-    const requestId = parseInt(document.getElementById('editRequestId').value);
-    if (!requestId) return;
-    const btn = document.getElementById('modalPreparedBtn');
+// Bascule le statut "préparée" d'une demande. Quand on la marque comme préparée (pas quand on
+// la démarque), le matériel préparé l'est en général pour toutes les séances du même TP (même
+// enseignant + même nom) : on propose de les marquer aussi. Utilisé à la fois par la modale
+// d'édition (togglePreparedFromModal) et par le bouton de la page "Voir les demandes".
+function togglePreparedWithRelated(requestId) {
     const req = window.allRequests?.find(r => r.id === requestId);
     const willBePrepared = !(req && req.prepared);
 
-    // Lorsqu'on marque une demande comme préparée, le matériel préparé l'est en général pour
-    // toutes les séances du même TP (même enseignant + même nom) : on propose de les marquer aussi.
     let relatedIds = [];
     if (willBePrepared && req && req.request_name && window.allRequests) {
         relatedIds = window.allRequests
@@ -807,7 +806,7 @@ function togglePreparedFromModal() {
 
     const idsToToggle = [requestId, ...(applyToRelated ? relatedIds : [])];
 
-    Promise.all(idsToToggle.map(id => fetch(`/api/requests/${id}/toggle-prepared`, { method: 'POST' }).then(r => r.json())))
+    return Promise.all(idsToToggle.map(id => fetch(`/api/requests/${id}/toggle-prepared`, { method: 'POST' }).then(r => r.json())))
         .then(results => {
             const err = results.find(r => r.error);
             if (err) throw new Error(err.error);
@@ -815,6 +814,16 @@ function togglePreparedFromModal() {
                 const r = window.allRequests?.find(x => x.id === id);
                 if (r) r.prepared = willBePrepared;
             });
+            return { willBePrepared, idsToToggle };
+        });
+}
+
+function togglePreparedFromModal() {
+    const requestId = parseInt(document.getElementById('editRequestId').value);
+    if (!requestId) return;
+    const btn = document.getElementById('modalPreparedBtn');
+    togglePreparedWithRelated(requestId)
+        .then(({ willBePrepared, idsToToggle }) => {
             if (btn) {
                 btn.textContent = willBePrepared ? '↩ Non préparée' : '✅ Marquer préparée';
                 btn.className   = willBePrepared ? 'btn btn-outline-secondary' : 'btn btn-success';
