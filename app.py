@@ -1089,7 +1089,8 @@ def api_update_request(request_id):
             material_prof=data.get('material_prof', ''),
             request_name=data.get('request_name', ''),
             custom_duration=data.get('custom_duration'),
-            is_lab_test=bool(data.get('is_lab_test', False))
+            is_lab_test=bool(data.get('is_lab_test', False)),
+            image_url=data.get('image_url')
         )
         
         if success:

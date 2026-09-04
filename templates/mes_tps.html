@@ -338,12 +338,12 @@
         fetch('/api/upload-image', { method: 'POST', body: formData })
             .then(r => r.json())
             .then(data => {
-                if (data.success && data.url) {
-                    document.getElementById('tpImageUrl').value = data.url;
+                if (data.success && data.image_url) {
+                    document.getElementById('tpImageUrl').value = data.image_url;
                     status.innerHTML = '<span class="text-success">✅ Image uploadée</span>';
                     const section = document.getElementById('editImageSection');
                     const oldPreview = section.querySelector('.text-center');
-                    if (oldPreview) oldPreview.innerHTML = `<img src="${data.url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                    if (oldPreview) oldPreview.innerHTML = `<img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
                 } else {
                     status.innerHTML = `<span class="text-danger">❌ ${data.error || 'Erreur'}</span>`;
                 }

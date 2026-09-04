@@ -316,20 +316,50 @@ function populateEditForm(request) {
 
     const imageSection = document.getElementById('editImageSection');
     if (imageSection) {
-        if (request.image_url && request.image_url.trim()) {
-            const safe = sanitizeImageUrl(request.image_url);
-            imageSection.innerHTML = safe
-                ? `<div class="mb-2 text-center">
-                    <img src="${safe}" alt="Image de la demande" class="img-thumbnail"
-                         style="max-width:120px;max-height:120px;cursor:pointer;"
-                         onclick="showImageModal('${safe}', 'Demande #${request.id} - ${escapeHtml(request.teacher_name || '')}')">
-                    <div><small class="text-muted">Cliquez pour agrandir</small></div>
-                  </div>`
-                : '<em class="text-muted">Image non disponible</em>';
-        } else {
-            imageSection.innerHTML = '<em class="text-muted">Aucune image associée</em>';
-        }
+        const safe = request.image_url && request.image_url.trim() ? sanitizeImageUrl(request.image_url) : '';
+        const previewHtml = safe
+            ? `<div class="mb-2 text-center">
+                <img src="${safe}" alt="Image de la demande" class="img-thumbnail"
+                     style="max-width:120px;max-height:120px;cursor:pointer;"
+                     onclick="showImageModal('${safe}', 'Demande #${request.id} - ${escapeHtml(request.teacher_name || '')}')">
+                <div><small class="text-muted">Cliquez pour agrandir</small></div>
+              </div>`
+            : '';
+        imageSection.innerHTML = `
+            ${previewHtml}
+            <label class="form-label">📷 Image</label>
+            <input type="file" class="form-control" id="editImageUpload" accept="image/*">
+            <input type="hidden" id="editImageUrl" value="${safe}">
+            <div id="editImageStatus" class="mt-1"></div>`;
+        document.getElementById('editImageUpload').addEventListener('change', handleEditImageUpload);
     }
+}
+
+function handleEditImageUpload() {
+    const file = this.files[0];
+    if (!file) return;
+    const status = document.getElementById('editImageStatus');
+    status.innerHTML = '<span class="text-info">⏳ Upload en cours...</span>';
+    const formData = new FormData();
+    formData.append('image', file);
+    fetch('/api/upload-image', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.image_url) {
+                document.getElementById('editImageUrl').value = data.image_url;
+                status.innerHTML = '<span class="text-success">✅ Image uploadée</span>';
+                const section = document.getElementById('editImageSection');
+                const oldPreview = section.querySelector('.text-center');
+                if (oldPreview) {
+                    oldPreview.innerHTML = `<img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                } else {
+                    section.insertAdjacentHTML('afterbegin', `<div class="mb-2 text-center"><img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;"></div>`);
+                }
+            } else {
+                status.innerHTML = `<span class="text-danger">❌ ${data.error || 'Erreur'}</span>`;
+            }
+        })
+        .catch(() => { status.innerHTML = '<span class="text-danger">❌ Erreur réseau</span>'; });
 }
 
 // --- Cours réguliers (brouillon) : remplacer par un TP de la base de l'enseignant ---
@@ -430,7 +460,8 @@ function editRequest(requestOrId) {
                 computers_needed: request.computers_needed || 0,
                 selected_materials: request.selected_materials || '',
                 custom_duration: request.custom_duration ?? null,
-                is_lab_test: !!request.is_lab_test
+                is_lab_test: !!request.is_lab_test,
+                image_url: request.image_url || ''
             };
 
             const modalEl = document.getElementById('editRequestModal');
@@ -552,7 +583,7 @@ async function savePendingModifications(requestId, changes) {
 
 function calculateRequestChanges(requestId, newData) {
     const changes = {};
-    for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire', 'request_date']) {
+    for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire', 'request_date', 'image_url']) {
         const orig = originalRequestData[field] || '';
         const next = newData[field] || '';
         if (orig !== next) changes[field] = { original: orig, new: next, diff: generateDiffDisplay(orig, next) };
@@ -598,7 +629,8 @@ function saveRequestChanges() {
         material_prof:     document.getElementById('editMaterialProf').value,
         notes:             document.getElementById('editNotes').value,
         custom_duration:   getCustomDurationValue('editCustomDuration'),
-        is_lab_test:       document.getElementById('editLabTest').checked
+        is_lab_test:       document.getElementById('editLabTest').checked,
+        image_url:         document.getElementById('editImageUrl')?.value || ''
     };
 
     const formData = {
@@ -612,7 +644,8 @@ function saveRequestChanges() {
         material_prof:    currentData.material_prof,
         notes:            currentData.notes,
         custom_duration:  currentData.custom_duration,
-        is_lab_test:      currentData.is_lab_test
+        is_lab_test:      currentData.is_lab_test,
+        image_url:        currentData.image_url
     };
 
     if (isAbsent) {

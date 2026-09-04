@@ -732,8 +732,12 @@ def get_material_request_by_id(request_id):
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
                            horaire=None, quantity=1, selected_materials='', computers_needed=0,
                            notes='', group_count=1, material_prof='', request_name='', custom_duration=None,
-                           is_lab_test=False):
-    """Update an existing material request and mark it as modified"""
+                           is_lab_test=False, image_url=None):
+    """Update an existing material request and mark it as modified.
+
+    image_url=None leaves the stored image untouched (e.g. bulk edits of related
+    requests don't carry an image_url) — pass a string (possibly empty) to set it.
+    """
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     # Coerce group_count to an integer with a safe default (0 autorisé : niveaux sans répartition en groupes)
@@ -749,17 +753,23 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     false_val = 'FALSE' if db_type == 'postgresql' else '0'
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
 
+    image_clause = f", image_url={placeholder}" if image_url is not None else ""
+    params = [teacher_id, request_date, horaire, class_name, material_description, quantity,
+              selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
+              bool(is_lab_test)]
+    if image_url is not None:
+        params.append(image_url)
+    params.append(request_id)
+
     cursor.execute(f'''
         UPDATE material_requests
         SET teacher_id={placeholder}, request_date={placeholder}, horaire={placeholder},
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder},
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder},
             group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder},
-            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}
+            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}{image_clause}
         WHERE id={placeholder}
-    ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
-          selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
-          bool(is_lab_test), request_id))
+    ''', tuple(params))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0
