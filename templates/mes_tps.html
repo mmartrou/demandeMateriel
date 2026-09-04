@@ -343,7 +343,11 @@
                     status.innerHTML = '<span class="text-success">✅ Image uploadée</span>';
                     const section = document.getElementById('editImageSection');
                     const oldPreview = section.querySelector('.text-center');
-                    if (oldPreview) oldPreview.innerHTML = `<img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                    if (oldPreview) {
+                        oldPreview.innerHTML = `<img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                    } else {
+                        section.insertAdjacentHTML('afterbegin', `<div class="mb-2 text-center"><img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;"></div>`);
+                    }
                 } else {
                     status.innerHTML = `<span class="text-danger">❌ ${data.error || 'Erreur'}</span>`;
                 }
