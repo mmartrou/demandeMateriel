@@ -18,7 +18,9 @@
                             <label for="teacher_id" class="form-label">
                                 👨‍🏫 Enseignant *
                             </label>
-                            <select class="form-select" id="teacher_id" name="teacher_id" required>
+                            <select class="form-select" id="teacher_id" name="teacher_id" required
+                                data-effective-user-mode="{{ effective_user_mode }}"
+                                data-teacher-scoped="{% if effective_user_mode == 'teacher' and current_user and current_user.teacher_id %}true{% else %}false{% endif %}">
                                 <option value="">Sélectionner un enseignant</option>
                                 {% for teacher in teachers %}
                                 <option value="{{ teacher.id }}">{{ teacher.name }}</option>
@@ -407,7 +409,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('planning_date').value = today;
 
     const teacherSelect = document.getElementById('teacher_id');
-    const isTeacherScopedMode = {% if effective_user_mode == 'teacher' and current_user and current_user.teacher_id %}true{% else %}false{% endif %};
+    const isTeacherScopedMode = teacherSelect && teacherSelect.dataset.teacherScoped === 'true';
 
     function enforceConnectedTeacherSelection() {
         if (!isTeacherScopedMode || !teacherSelect) {
@@ -1172,7 +1174,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configuration de la date minimum (N jours ouvrés)
     // Labo et admin sont exemptés : ils peuvent choisir n'importe quelle date
-    const isPrivilegedUser = ['admin', 'labo'].includes('{{ effective_user_mode }}');
+    const isPrivilegedUser = ['admin', 'labo'].includes(document.getElementById('teacher_id')?.dataset.effectiveUserMode);
 
     function setMinimumDate(inputEl) {
         if (isPrivilegedUser) return; // pas de restriction pour admin/labo
