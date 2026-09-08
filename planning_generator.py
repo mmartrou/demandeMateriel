@@ -144,6 +144,8 @@ def build_course_data_entry(request_id):
     req = to_dict_request(raw_req)
 
     material_needs = extract_material_needs(req.get('selected_materials', ''))
+    teacher_short_map = {t['name']: t['short_name'] for t in database.get_all_teachers()}
+    level_short_map = {l['name']: l['short_name'] for l in database.get_all_levels()}
     matiere = "mixte"
     if req.get('room_type') == 'Physique':
         matiere = "physique"
@@ -186,6 +188,9 @@ def build_course_data_entry(request_id):
         'support_filtration': material_needs["support_filtration"],
         'imprimante': material_needs["imprimante"],
         'examen': material_needs["examen"],
+        'teacher_short_name': teacher_short_map.get(req.get('teacher_name', ''), ''),
+        'level_short_name': level_short_map.get(req.get('class_name', ''), ''),
+        'labo_observations': req.get('labo_observations', '') or '',
     }
 
 
@@ -1160,6 +1165,10 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         
         # Récupérer les disponibilités C21
         c21_slots = database.get_c21_availability()
+
+        # Maps nom court pour enseignants et niveaux
+        teacher_short_map = {t['name']: t['short_name'] for t in database.get_all_teachers()}
+        level_short_map = {l['name']: l['short_name'] for l in database.get_all_levels()}
         
         if not raw_requests:
             return False, "Aucune demande trouvée pour cette date"
@@ -1248,7 +1257,10 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "chaises": eleves_par_niveau(req.get('class_name', ''), req.get('teacher_name', 'Unknown')),
                 "materiel_demande": req.get('material_description', 'N/A'),
                 "selected_materials": req.get('selected_materials', ''),
-                "request_name": req.get('request_name', '')
+                "request_name": req.get('request_name', ''),
+                "teacher_short_name": teacher_short_map.get(req.get('teacher_name', ''), ''),
+                "level_short_name": level_short_map.get(req.get('class_name', ''), ''),
+                "labo_observations": req.get('labo_observations', '') or '',
             })
 
         if not cours:
@@ -1450,7 +1462,10 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                         'becs_electriques': course.get('becs_electriques', 0),
                         'support_filtration': course.get('support_filtration', 0),
                         'imprimante': course.get('imprimante', 0),
-                        'examen': course.get('examen', 0)
+                        'examen': course.get('examen', 0),
+                        'teacher_short_name': course.get('teacher_short_name', ''),
+                        'level_short_name': course.get('level_short_name', ''),
+                        'labo_observations': course.get('labo_observations', ''),
                     })
                     
                     # Trouver l'assignation de salle
