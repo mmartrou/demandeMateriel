@@ -742,14 +742,17 @@
         }
         
         showLoading('loading-container');
-        
+
         try {
             console.log('🔄 Appel API avec date:', targetDate);
+            // Lancée en parallèle de la requête principale (pas après) pour ne pas ajouter
+            // un aller-retour réseau supplémentaire au temps de chargement perçu.
+            const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
             const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
             console.log('📡 Réponse API status:', response.status);
             const data = await response.json();
             console.log('📋 Données reçues:', data);
-            
+
             if (response.ok) {
                 if (data.error) {
                     throw new Error(data.error);
@@ -762,8 +765,7 @@
                 currentAssignments = { ...data.assignments };
                 currentRoomAssignments = { ...data.room_assignments || {} };
 
-                await syncPreparedStates();
-                await loadStandardOccupationForDate(targetDate);
+                await Promise.all([syncPreparedStates(), standardOccupationPromise]);
                 renderPlanningGrid();
                 updateStats();
                 document.getElementById('generate-btn').disabled = false;
@@ -1783,26 +1785,27 @@ async function reloadPlanning() {
     showLoading('loading-container');
 
     try {
+        // Lancée en parallèle de la requête principale (pas après)
+        const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.ok) {
             const data = await response.json();
             console.log('🔍 Raw API response:', data);
-            
+
             // Parse the JSON string if needed
             if (typeof data.planning === 'string') {
                 planningData = JSON.parse(data.planning);
             } else {
                 planningData = data.planning || data;
             }
-            
+
             // Update currentRoomAssignments with loaded data
             currentRoomAssignments = { ...planningData.room_assignments || {} };
 
             console.log('🔍 Assigned planningData:', planningData);
             console.log('🔍 planningData.rooms:', planningData.rooms);
             console.log('🔍 Updated currentRoomAssignments:', currentRoomAssignments);
-            await syncPreparedStates();
-            await loadStandardOccupationForDate(targetDate);
+            await Promise.all([syncPreparedStates(), standardOccupationPromise]);
             renderPlanningGrid(); // Fonction existante pour afficher le planning
             showAlert('Planning chargé avec succès!', 'success');
         } else {
@@ -1819,6 +1822,8 @@ async function reloadPlanning() {
 
 async function reloadPlanningIfExists(targetDate) {
     try {
+        // Lancée en parallèle de la requête principale (pas après)
+        const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.status === 404) {
             // Aucun planning sauvegardé pour cette date : état vide sans erreur
@@ -1842,8 +1847,7 @@ async function reloadPlanningIfExists(targetDate) {
             planningData = data.planning || data;
         }
         currentRoomAssignments = { ...planningData.room_assignments || {} };
-        await syncPreparedStates();
-        await loadStandardOccupationForDate(targetDate);
+        await Promise.all([syncPreparedStates(), standardOccupationPromise]);
         renderPlanningGrid();
         updateStats();
         document.getElementById('generate-btn').disabled = false;

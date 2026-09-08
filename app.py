@@ -29,7 +29,6 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       generate_draft_requests_for_week, confirm_draft_request,
                       update_teacher_short_name,
                       get_all_levels, add_level, delete_level, update_level,
-                      get_student_count_for_teacher,
                       get_standard_occupation, set_standard_occupation)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
@@ -2472,6 +2471,9 @@ def get_planning():
             if courses:
                 teacher_short_map = {t['name']: t['short_name'] for t in get_all_teachers()}
                 level_short_map = {l['name']: l['short_name'] for l in get_all_levels()}
+                # Effectifs "2nde classe entière" par enseignant, chargés en une seule requête
+                # (plutôt qu'une connexion DB par cours "2nd Classe")
+                student_count_map = {s['teacher_name']: s['student_count'] for s in get_all_student_numbers() if s.get('level') == '2nde'}
 
                 # Charger labo_observations pour tous les request_ids en une seule requête
                 req_ids = [c['request_id'] for c in courses if c.get('request_id')]
@@ -2495,7 +2497,7 @@ def get_planning():
                     c['level_short_name'] = level_short_map.get(c.get('level', ''), '')
                     c['labo_observations'] = labo_map.get(c.get('request_id'), '')
                     if c.get('level') == '2nd Classe':
-                        c['students'] = get_student_count_for_teacher(c.get('teacher', ''), '2nde')
+                        c['students'] = student_count_map.get(c.get('teacher', ''), 20)
 
             app.logger.info(f"Planning trouvé pour la date {date}")
             return jsonify({'planning': planning}), 200
