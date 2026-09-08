@@ -314,6 +314,18 @@ def init_database():
         )
     ''')
 
+    # Create standard occupation table (nombre de cours attendus par jour de semaine et créneau,
+    # colonne "Occupation standard" de l'éditeur de planning)
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS standard_occupation (
+            id {auto_increment},
+            day_of_week {text_type} NOT NULL,
+            slot {text_type} NOT NULL,
+            value INTEGER NOT NULL,
+            UNIQUE(day_of_week, slot)
+        )
+    ''')
+
     # Create pending modifications table for tracking changes before validation
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS pending_modifications (
@@ -1981,6 +1993,76 @@ def get_tp_template_by_id(template_id):
     except Exception as e:
         logger.error(f"Erreur get_tp_template_by_id: {e}")
         return None
+
+
+# === OCCUPATION STANDARD (éditeur de planning) ===
+
+def get_standard_occupation(day_of_week):
+    """
+    Récupère l'occupation standard (nombre de cours attendus) pour chaque créneau d'un jour donné
+
+    Args:
+        day_of_week (str): Jour de la semaine (lundi, mardi, mercredi, jeudi, vendredi)
+
+    Returns:
+        dict: {slot: value}
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'SELECT slot, value FROM standard_occupation WHERE day_of_week = {placeholder}', (day_of_week,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {row[0]: row[1] for row in rows}
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération de l'occupation standard {day_of_week}: {e}")
+        return {}
+
+def set_standard_occupation(day_of_week, slot, value):
+    """
+    Enregistre (ou supprime si value est None) l'occupation standard d'un créneau donné
+
+    Args:
+        day_of_week (str): Jour de la semaine (lundi, mardi, mercredi, jeudi, vendredi)
+        slot (str): Créneau horaire (ex: '9h00')
+        value (int|None): Nombre de cours attendus, ou None pour effacer la valeur
+
+    Returns:
+        bool: True si succès, False sinon
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+
+        if value is None:
+            cursor.execute(f'''
+                DELETE FROM standard_occupation WHERE day_of_week = {placeholder} AND slot = {placeholder}
+            ''', (day_of_week, slot))
+        elif db_type == 'postgresql':
+            cursor.execute(f'''
+                INSERT INTO standard_occupation (day_of_week, slot, value)
+                VALUES ({placeholder}, {placeholder}, {placeholder})
+                ON CONFLICT(day_of_week, slot) DO UPDATE SET value = EXCLUDED.value
+            ''', (day_of_week, slot, value))
+        else:
+            cursor.execute(f'''
+                INSERT OR REPLACE INTO standard_occupation (day_of_week, slot, value)
+                VALUES ({placeholder}, {placeholder}, {placeholder})
+            ''', (day_of_week, slot, value))
+
+        conn.commit()
+        conn.close()
+        return True
+
+    except Exception as e:
+        logger.error(f"Erreur lors de l'enregistrement de l'occupation standard {day_of_week} {slot}: {e}")
+        return False
 
 
 # === EMPLOI DU TEMPS RÉCURRENT ===

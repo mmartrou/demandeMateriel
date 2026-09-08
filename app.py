@@ -29,7 +29,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       generate_draft_requests_for_week, confirm_draft_request,
                       update_teacher_short_name,
                       get_all_levels, add_level, delete_level, update_level,
-                      get_student_count_for_teacher)
+                      get_student_count_for_teacher,
+                      get_standard_occupation, set_standard_occupation)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
@@ -152,6 +153,7 @@ def _is_admin_only_route(path, method):
         '/api/requests-with-pending-modifications',
         '/api/working-days',
         '/api/c21-availability',
+        '/api/standard-occupation',
         '/api/rooms',
         '/api/students',
         '/api/planning-editor',
@@ -1928,6 +1930,32 @@ def api_delete_c21_availability(availability_id):
             return jsonify({'error': 'Créneau non trouvé'}), 404
     except Exception as e:
         return api_error('Erreur lors de la suppression du créneau C21', e)
+
+@app.route('/api/standard-occupation', methods=['GET', 'POST'])
+def api_standard_occupation():
+    """API pour gérer l'occupation standard (colonne "Occupation standard" de l'éditeur de planning)"""
+    if request.method == 'GET':
+        day = request.args.get('day')
+        if not day:
+            return jsonify({'error': 'Jour manquant'}), 400
+        return jsonify(get_standard_occupation(day))
+    elif request.method == 'POST':
+        data = request.get_json()
+        day = data.get('day')
+        slot = data.get('slot')
+        value = data.get('value')
+        if not day or not slot:
+            return jsonify({'error': 'Champs manquants'}), 400
+        if value is not None:
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Valeur invalide'}), 400
+        success = set_standard_occupation(day, slot, value)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Erreur lors de l\'enregistrement'}), 500
 
 # API Routes pour la gestion des salles
 from database import get_working_days_config, set_working_day_config, delete_working_day_config, get_deadline_working_days, set_deadline_working_days
