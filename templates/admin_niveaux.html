@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Gérer les niveaux{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Gérer les niveaux</h2>
+        <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">← Retour admin</a>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Niveaux / Classes</h5>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addLevelModal">
+                ➕ Nouveau niveau
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nom</th>
+                        <th>Nom court <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in levels %}
+                    <tr>
+                        <td>{{ l.name }}</td>
+                        <td>
+                            <span class="level-short-name-display"
+                                  style="cursor:pointer; border-bottom: 1px dashed #aaa;"
+                                  onclick="editLevelShortName(this, {{ l.id }})"
+                                  title="Cliquer pour modifier">{{ l.short_name or '—' }}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger"
+                                onclick="confirmDeleteLevel({{ l.id }}, '{{ l.name }}')">
+                                🗑️ Supprimer
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal nouveau niveau -->
+<div class="modal fade" id="addLevelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ajouter un niveau</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nom du niveau</label>
+                    <input type="text" class="form-control" id="newLevelName" placeholder="Ex : Terminale Physique">
+                </div>
+                <div id="addLevelResult" class="mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveNewLevel()">Créer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmation suppression niveau -->
+<div class="modal fade" id="deleteLevelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Supprimer le niveau</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Supprimer le niveau <strong id="deleteLevelName"></strong> ?</p>
+                <div class="alert alert-warning py-2">
+                    Les demandes existantes utilisant ce niveau ne seront pas affectées.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="doDeleteLevel()">Supprimer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let levelToDelete = null;
+
+async function saveNewLevel() {
+    const name = document.getElementById('newLevelName').value.trim();
+    const resultEl = document.getElementById('addLevelResult');
+    if (!name) {
+        resultEl.innerHTML = '<div class="alert alert-danger py-1">Le nom est requis.</div>';
+        return;
+    }
+    const resp = await fetch('/api/admin/levels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+        resultEl.innerHTML = `<div class="alert alert-success py-1">Niveau créé.</div>`;
+        document.getElementById('newLevelName').value = '';
+        setTimeout(() => location.reload(), 1000);
+    } else {
+        resultEl.innerHTML = `<div class="alert alert-danger py-1">${data.error}</div>`;
+    }
+}
+
+function confirmDeleteLevel(id, name) {
+    levelToDelete = id;
+    document.getElementById('deleteLevelName').textContent = name;
+    new bootstrap.Modal(document.getElementById('deleteLevelModal')).show();
+}
+
+async function doDeleteLevel() {
+    if (!levelToDelete) return;
+    const resp = await fetch(`/api/admin/levels/${levelToDelete}`, { method: 'DELETE' });
+    bootstrap.Modal.getInstance(document.getElementById('deleteLevelModal')).hide();
+    if (resp.ok) location.reload();
+    else alert('Erreur lors de la suppression.');
+}
+
+function editLevelShortName(spanEl, levelId) {
+    const current = spanEl.textContent === '—' ? '' : spanEl.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'form-control form-control-sm d-inline-block';
+    input.style.width = '130px';
+    input.placeholder = 'Nom court…';
+    spanEl.replaceWith(input);
+    input.focus();
+
+    async function save() {
+        const val = input.value.trim();
+        await fetch(`/api/admin/levels/${levelId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ short_name: val })
+        });
+        const span = document.createElement('span');
+        span.className = 'level-short-name-display';
+        span.style.cssText = 'cursor:pointer; border-bottom: 1px dashed #aaa;';
+        span.title = 'Cliquer pour modifier';
+        span.onclick = function() { editLevelShortName(this, levelId); };
+        span.textContent = val || '—';
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { input.value = current; input.blur(); }
+    });
+}
+</script>
+{% endblock %}
