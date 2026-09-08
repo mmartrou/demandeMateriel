@@ -1438,6 +1438,14 @@ def admin_users():
     return render_template('admin_users.html', users=users, teachers=teachers)
 
 
+@app.route('/admin/niveaux')
+def admin_niveaux():
+    user = _get_current_user()
+    if not user or user.get('role') not in ('admin', 'labo'):
+        return redirect(url_for('login'))
+    return render_template('admin_niveaux.html')
+
+
 @app.route('/api/admin/link-teacher', methods=['POST'])
 def api_admin_link_teacher():
     """Associate an email with a teacher_id (admin/labo)."""
