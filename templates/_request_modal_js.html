@@ -468,7 +468,9 @@ function editRequest(requestOrId) {
                 selected_materials: request.selected_materials || '',
                 custom_duration: request.custom_duration ?? null,
                 is_lab_test: !!request.is_lab_test,
-                image_url: request.image_url || ''
+                image_url: request.image_url || '',
+                room_type: request.room_type || 'Mixte',
+                labo_observations: request.labo_observations || ''
             };
 
             const modalEl = document.getElementById('editRequestModal');
@@ -614,6 +616,14 @@ function calculateRequestChanges(requestId, newData) {
         changes.is_lab_test = { original: !!originalRequestData.is_lab_test, new: !!newData.is_lab_test,
             diff: `${originalRequestData.is_lab_test ? 'Test au labo' : 'Cours normal'} → ${newData.is_lab_test ? 'Test au labo' : 'Cours normal'}` };
     }
+    if ((originalRequestData.room_type || 'Mixte') !== (newData.room_type || 'Mixte')) {
+        changes.room_type = { original: originalRequestData.room_type || 'Mixte', new: newData.room_type || 'Mixte',
+            diff: `${originalRequestData.room_type || 'Mixte'} → ${newData.room_type || 'Mixte'}` };
+    }
+    if ((originalRequestData.labo_observations || '') !== (newData.labo_observations || '')) {
+        changes.labo_observations = { original: originalRequestData.labo_observations || '', new: newData.labo_observations || '',
+            diff: generateDiffDisplay(originalRequestData.labo_observations || '', newData.labo_observations || '') };
+    }
     if (Object.keys(changes).length > 0) window.modifiedRequests.set(requestId, changes);
     else window.modifiedRequests.delete(requestId);
     return changes;
@@ -654,7 +664,9 @@ function saveRequestChanges() {
         notes:            currentData.notes,
         custom_duration:  currentData.custom_duration,
         is_lab_test:      currentData.is_lab_test,
-        image_url:        currentData.image_url
+        image_url:        currentData.image_url,
+        room_type:        currentData.room_type,
+        labo_observations: currentData.labo_observations
     };
 
     if (isAbsent) {
