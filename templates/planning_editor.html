@@ -932,7 +932,7 @@
         const teacherDisplay = course.teacher_short_name || course.teacher;
         const levelDisplay = course.level_short_name || course.level;
         const laboObs = course.labo_observations ? `<div style="font-size:0.75em; color:#555; margin-top:2px; font-style:italic;">${course.labo_observations}</div>` : '';
-        const isClasseEntiere = (course.level || '').toLowerCase().includes('classe entière');
+        const isClasseEntiere = course.level === '2nd Classe';
         const studentLine = (isClasseEntiere && course.students > 0)
             ? `<div style="font-weight:bold; font-size:1.5em; margin-top:1px;">${course.students} élèves</div>` : '';
 

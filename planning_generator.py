@@ -54,10 +54,9 @@ def duree_par_niveau(niveau, levels_map=None):
 
 def eleves_par_niveau(niveau, enseignant=None):
     """Get number of students by level"""
-    if niveau == "2nde":
-        return 20
-    else:
-        return 20
+    if niveau == "2nd Classe" and enseignant:
+        return database.get_student_count_for_teacher(enseignant, '2nde')
+    return 20
 
 
 def interval_cours(c):

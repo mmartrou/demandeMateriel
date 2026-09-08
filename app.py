@@ -28,7 +28,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_recurring_courses, add_recurring_course, delete_recurring_course,
                       generate_draft_requests_for_week, confirm_draft_request,
                       update_teacher_short_name,
-                      get_all_levels, add_level, delete_level, update_level)
+                      get_all_levels, add_level, delete_level, update_level,
+                      get_student_count_for_teacher)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
@@ -2448,6 +2449,8 @@ def get_planning():
                     c['teacher_short_name'] = teacher_short_map.get(c.get('teacher', ''), '')
                     c['level_short_name'] = level_short_map.get(c.get('level', ''), '')
                     c['labo_observations'] = labo_map.get(c.get('request_id'), '')
+                    if c.get('level') == '2nd Classe':
+                        c['students'] = get_student_count_for_teacher(c.get('teacher', ''), '2nde')
 
             app.logger.info(f"Planning trouvé pour la date {date}")
             return jsonify({'planning': planning}), 200
