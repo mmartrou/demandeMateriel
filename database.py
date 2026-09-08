@@ -90,7 +90,7 @@ def init_database():
     # Pré-remplir avec les niveaux par défaut si la table est vide
     cursor.execute('SELECT COUNT(*) FROM levels')
     row = cursor.fetchone()
-    count = row[0] if isinstance(row, (list, tuple)) else list(row.values())[0]
+    count = row[0] if row is not None else 0
     if count == 0:
         default_levels = [
             ('6ème', None, 1), ('5ème', None, 2), ('4ème', None, 3), ('3ème', None, 4),
