@@ -310,10 +310,6 @@ function populateEditForm(request) {
     set('editComputersNeeded', request.computers_needed || 0);
     set('editMaterialProf', request.material_prof || '');
     set('editNotes', request.notes || '');
-    ['editMaterialDescription', 'editMaterialProf', 'editNotes'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) autoResize(el);
-    });
 
     const prepBtn = document.getElementById('modalPreparedBtn');
     if (prepBtn) {
@@ -1026,5 +1022,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     }
+});
+
+document.getElementById('editRequestModal')?.addEventListener('shown.bs.modal', () => {
+    ['editMaterialDescription', 'editMaterialProf', 'editNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) autoResize(el);
+    });
 });
 </script>
