@@ -236,6 +236,30 @@
                     </div>
 
                     <div id="editImageSection" class="mb-3"></div>
+
+                    {% if current_user and current_user.role in ('admin', 'labo') %}
+                    <hr class="my-3">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary">🔒 Informations labo (non visibles par les enseignants)</label>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label for="editRoomType" class="form-label">Salle</label>
+                                <select class="form-select" id="editRoomType">
+                                    <option value="Mixte">Mixte</option>
+                                    <option value="Physique">Physique</option>
+                                    <option value="Chimie">Chimie</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label for="editLaboObservations" class="form-label">Observations labo</label>
+                                <textarea class="form-control" id="editLaboObservations"
+                                          style="overflow:hidden; resize:vertical; min-height:40px;"
+                                          oninput="autoResize(this)"
+                                          placeholder="Notes internes..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </form>
             </div>
             <div class="modal-footer">

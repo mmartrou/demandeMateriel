@@ -103,6 +103,7 @@ def init_database():
             custom_duration INTEGER,
             is_lab_test BOOLEAN DEFAULT FALSE,
             is_draft BOOLEAN DEFAULT FALSE,
+            labo_observations {text_type},
             created_at {timestamp_default},
             FOREIGN KEY (teacher_id) REFERENCES teachers (id)
         )
@@ -123,7 +124,8 @@ def init_database():
         ('image_url', 'TEXT'),
         ('custom_duration', 'INTEGER'),
         ('is_lab_test', 'BOOLEAN DEFAULT FALSE'),
-        ('is_draft', 'BOOLEAN DEFAULT FALSE')
+        ('is_draft', 'BOOLEAN DEFAULT FALSE'),
+        ('labo_observations', 'TEXT')
     ]
     
     for column_name, column_type in columns_to_add:
@@ -633,7 +635,8 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft
+               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft,
+               mr.labo_observations
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE 1=1
@@ -685,7 +688,8 @@ def get_material_request_by_id(request_id):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft
+               t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft,
+               mr.labo_observations
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.id = {placeholder}
@@ -726,13 +730,14 @@ def get_material_request_by_id(request_id):
             'teacher_name': request[19],
             'custom_duration': request[20] if len(request) > 20 else None,
             'is_lab_test': bool(request[21]) if len(request) > 21 and request[21] is not None else False,
-            'is_draft': bool(request[22]) if len(request) > 22 and request[22] is not None else False
+            'is_draft': bool(request[22]) if len(request) > 22 and request[22] is not None else False,
+            'labo_observations': request[23] if len(request) > 23 else None
         }
 
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
                            horaire=None, quantity=1, selected_materials='', computers_needed=0,
                            notes='', group_count=1, material_prof='', request_name='', custom_duration=None,
-                           is_lab_test=False, image_url=None):
+                           is_lab_test=False, image_url=None, room_type=None, labo_observations=None):
     """Update an existing material request and mark it as modified.
 
     image_url=None leaves the stored image untouched (e.g. bulk edits of related
@@ -754,11 +759,17 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
 
     image_clause = f", image_url={placeholder}" if image_url is not None else ""
+    room_type_clause = f", room_type={placeholder}" if room_type is not None else ""
+    labo_obs_clause = f", labo_observations={placeholder}" if labo_observations is not None else ""
     params = [teacher_id, request_date, horaire, class_name, material_description, quantity,
               selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
               bool(is_lab_test)]
     if image_url is not None:
         params.append(image_url)
+    if room_type is not None:
+        params.append(room_type)
+    if labo_observations is not None:
+        params.append(labo_observations)
     params.append(request_id)
 
     cursor.execute(f'''
@@ -767,7 +778,7 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder},
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder},
             group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder},
-            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}{image_clause}
+            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}{image_clause}{room_type_clause}{labo_obs_clause}
         WHERE id={placeholder}
     ''', tuple(params))
     conn.commit()

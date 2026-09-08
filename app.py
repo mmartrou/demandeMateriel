@@ -598,7 +598,8 @@ def api_get_requests():
                 'teacher_name': req[19] if len(req) > 19 else '',
                 'custom_duration': req[20] if len(req) > 20 else None,
                 'is_lab_test': bool(req[21]) if len(req) > 21 and req[21] is not None else False,
-                'is_draft': bool(req[22]) if len(req) > 22 and req[22] is not None else False
+                'is_draft': bool(req[22]) if len(req) > 22 and req[22] is not None else False,
+                'labo_observations': req[23] if len(req) > 23 else None
             }
             # Debug log
             try:
@@ -606,6 +607,8 @@ def api_get_requests():
                     print(f"🔍 Backend: Request #{req[0]} has group_count={req[12]} (type={type(req[12])})")
             except Exception:
                 pass
+        if not _is_privileged_user():
+            r.pop('labo_observations', None)
         requests_list.append(r)
     return jsonify(requests_list)
 
@@ -1074,6 +1077,7 @@ def api_update_request(request_id):
                         'error': f'Nouvelle date invalide - délai insuffisant. {validation["message"]} Première date disponible: {earliest_date}'
                     }), 400
         
+        privileged = _is_privileged_user()
         success = update_material_request(
             request_id,
             data['teacher_id'],
@@ -1090,7 +1094,9 @@ def api_update_request(request_id):
             request_name=data.get('request_name', ''),
             custom_duration=data.get('custom_duration'),
             is_lab_test=bool(data.get('is_lab_test', False)),
-            image_url=data.get('image_url')
+            image_url=data.get('image_url'),
+            room_type=data.get('room_type') if privileged else None,
+            labo_observations=data.get('labo_observations') if privileged else None
         )
         
         if success:

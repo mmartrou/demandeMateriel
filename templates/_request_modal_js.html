@@ -310,6 +310,9 @@ function populateEditForm(request) {
     set('editComputersNeeded', request.computers_needed || 0);
     set('editMaterialProf', request.material_prof || '');
     set('editNotes', request.notes || '');
+    const roomTypeEl = document.getElementById('editRoomType');
+    if (roomTypeEl) roomTypeEl.value = request.room_type || 'Mixte';
+    set('editLaboObservations', request.labo_observations || '');
 
     const prepBtn = document.getElementById('modalPreparedBtn');
     if (prepBtn) {
@@ -632,10 +635,12 @@ function saveRequestChanges() {
         group_count:       parseGroupCount(document.getElementById('editQuantity').value),
         computers_needed:  parseInt(document.getElementById('editComputersNeeded').value, 10) || 0,
         material_prof:     document.getElementById('editMaterialProf').value,
-        notes:             document.getElementById('editNotes').value,
-        custom_duration:   getCustomDurationValue('editCustomDuration'),
-        is_lab_test:       document.getElementById('editLabTest').checked,
-        image_url:         document.getElementById('editImageUrl')?.value || ''
+        notes:              document.getElementById('editNotes').value,
+        custom_duration:    getCustomDurationValue('editCustomDuration'),
+        is_lab_test:        document.getElementById('editLabTest').checked,
+        image_url:          document.getElementById('editImageUrl')?.value || '',
+        room_type:          document.getElementById('editRoomType')?.value || 'Mixte',
+        labo_observations:  document.getElementById('editLaboObservations')?.value || ''
     };
 
     const formData = {
@@ -1025,7 +1030,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.getElementById('editRequestModal')?.addEventListener('shown.bs.modal', () => {
-    ['editMaterialDescription', 'editMaterialProf', 'editNotes'].forEach(id => {
+    ['editMaterialDescription', 'editMaterialProf', 'editNotes', 'editLaboObservations'].forEach(id => {
         const el = document.getElementById(id);
         if (el) autoResize(el);
     });
