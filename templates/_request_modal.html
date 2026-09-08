@@ -237,7 +237,8 @@
 
                     <div id="editImageSection" class="mb-3"></div>
 
-                    {% if current_user and current_user.role in ('admin', 'labo') %}
+                    <!-- debug-mode: {{ effective_user_mode }} -->
+                    {% if effective_user_mode in ('admin', 'labo') %}
                     <hr class="my-3">
                     <div class="mb-3">
                         <label class="form-label fw-bold text-secondary">🔒 Informations labo (non visibles par les enseignants)</label>
