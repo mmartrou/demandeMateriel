@@ -60,16 +60,42 @@
     .time-cell {
         background: #f8f9fa;
         text-align: center;
-        padding: 8px;
+        padding: 0 8px;
         font-weight: bold;
         border: 1px solid #dee2e6;
         position: sticky;
         left: 0;
         z-index: 25;
         height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    }
+
+    /* L'horaire est positionné pile sur la ligne de début du créneau,
+       pas centré dans la cellule qui suit */
+    .time-cell .time-label {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        transform: translateY(-50%);
+        line-height: 1;
+        pointer-events: none;
+    }
+
+    .time-cell.first-slot .time-label {
+        /* Le tout premier horaire (9h00) ne peut pas déborder sur l'en-tête */
+        top: 4px;
+        transform: none;
+    }
+
+    .time-cell.row-odd,
+    .room-cell.row-odd {
+        background-color: #eef1f4;
+    }
+
+    /* Lignes de repère plus marquées (pause déjeuner / après-midi) */
+    .time-cell.time-boundary-strong,
+    .room-cell.time-boundary-strong {
+        border-top: 3px solid #495057;
     }
     
     .room-cell {
@@ -723,40 +749,54 @@
         let placementByRoom = {};
         rooms.forEach(room => placementByRoom[room.name] = 0);
         
+        // Créneaux dont la ligne de début doit être davantage mise en évidence
+        // (repère pause déjeuner / après-midi)
+        const strongBoundarySlots = ['12h15', '15h15'];
+
         // Créer une ligne pour chaque créneau horaire avec hauteur proportionnelle à la durée
         timeSlots.forEach((slot, slotIndex) => {
             const row = document.createElement('div');
             row.className = 'grid-row';
-            
+
             // Calculer la hauteur en fonction de la durée du créneau
             const slotDuration = getSlotDuration(slot);
             // Base: 40px pour 30min, 60px pour 45min, 80px pour 60min
             const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
-            
+            const isOddRow = slotIndex % 2 === 1;
+            const isStrongBoundary = strongBoundarySlots.includes(slot);
+
             // Cellule de l'horaire
             const timeCell = document.createElement('div');
             timeCell.className = 'time-cell';
+            if (isOddRow) timeCell.classList.add('row-odd');
+            if (isStrongBoundary) timeCell.classList.add('time-boundary-strong');
+            if (slotIndex === 0) timeCell.classList.add('first-slot');
             timeCell.dataset.slot = slot;
-            timeCell.textContent = slot;
             timeCell.style.height = `${cellHeight}px`;
+            const timeLabel = document.createElement('span');
+            timeLabel.className = 'time-label';
+            timeLabel.textContent = slot;
+            timeCell.appendChild(timeLabel);
             row.appendChild(timeCell);
-            
+
             // Cellules vides pour chaque salle (les cours seront positionnés par position absolute)
             rooms.forEach((room, roomIndex) => {
                 const roomCell = document.createElement('div');
                 roomCell.className = 'room-cell drop-zone';
+                if (isOddRow) roomCell.classList.add('row-odd');
+                if (isStrongBoundary) roomCell.classList.add('time-boundary-strong');
                 roomCell.dataset.room = room.name;
                 roomCell.dataset.slot = slot;
                 roomCell.dataset.slotIndex = slotIndex;
                 roomCell.dataset.roomIndex = roomIndex;
                 roomCell.style.height = `${cellHeight}px`;
-                
+
                 // Configurer les événements de drop
                 setupDropZone(roomCell);
-                
+
                 row.appendChild(roomCell);
             });
-            
+
             grid.appendChild(row);
         });
 
