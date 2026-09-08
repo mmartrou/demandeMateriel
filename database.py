@@ -1247,7 +1247,9 @@ def get_student_count_for_teacher(teacher_name, level):
     ''', (teacher_name, level))
     result = cursor.fetchone()
     conn.close()
-    return result['student_count'] if result else 20  # Default fallback
+    if not result:
+        return 20  # Default fallback
+    return result['student_count'] if isinstance(result, (dict, sqlite3.Row)) else result[0]
 
 def get_planning_data(date_str):
     """Get all material requests for planning generation on a specific date"""
