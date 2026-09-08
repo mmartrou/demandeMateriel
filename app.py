@@ -27,7 +27,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_tp_templates, upsert_tp_template, get_tp_template_by_id,
                       get_recurring_courses, add_recurring_course, delete_recurring_course,
                       generate_draft_requests_for_week, confirm_draft_request,
-                      update_teacher_short_name)
+                      update_teacher_short_name,
+                      get_all_levels, add_level, delete_level, update_level)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
 from database import get_db_connection
@@ -257,10 +258,15 @@ def protect_sensitive_routes():
 @app.context_processor
 def inject_auth_context():
     user = _get_current_user()
+    try:
+        levels = get_all_levels()
+    except Exception:
+        levels = []
     return {
         'current_user': user,
         'effective_user_mode': _get_effective_user_mode(user),
-        'google_client_id': os.getenv('GOOGLE_CLIENT_ID', '').strip()
+        'google_client_id': os.getenv('GOOGLE_CLIENT_ID', '').strip(),
+        'levels': levels
     }
 
 
@@ -1505,6 +1511,50 @@ def api_admin_update_teacher(teacher_id):
     short_name = str(payload.get('short_name', '')).strip()
     try:
         update_teacher_short_name(teacher_id, short_name)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/levels', methods=['POST'])
+def api_admin_add_level():
+    user = _get_current_user()
+    if not user or user.get('role') not in ('admin', 'labo'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'Le nom est requis'}), 400
+    try:
+        new_id = add_level(name)
+        return jsonify({'success': True, 'id': new_id, 'name': name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/levels/<int:level_id>', methods=['PUT'])
+def api_admin_update_level(level_id):
+    user = _get_current_user()
+    if not user or user.get('role') not in ('admin', 'labo'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    payload = request.get_json(silent=True) or {}
+    short_name = str(payload.get('short_name', '')).strip()
+    display_order = payload.get('display_order')
+    try:
+        update_level(level_id, short_name=short_name,
+                     display_order=int(display_order) if display_order is not None else None)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/levels/<int:level_id>', methods=['DELETE'])
+def api_admin_delete_level(level_id):
+    user = _get_current_user()
+    if not user or user.get('role') not in ('admin', 'labo'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    try:
+        delete_level(level_id)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

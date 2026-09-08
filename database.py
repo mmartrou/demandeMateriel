@@ -78,6 +78,33 @@ def init_database():
         except Exception:
             pass
 
+    # Create levels table
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS levels (
+            id {auto_increment},
+            name {text_type} NOT NULL UNIQUE,
+            short_name {text_type},
+            display_order INTEGER DEFAULT 0
+        )
+    ''')
+    # Pré-remplir avec les niveaux par défaut si la table est vide
+    cursor.execute('SELECT COUNT(*) FROM levels')
+    row = cursor.fetchone()
+    count = row[0] if isinstance(row, (list, tuple)) else list(row.values())[0]
+    if count == 0:
+        default_levels = [
+            ('6ème', None, 1), ('5ème', None, 2), ('4ème', None, 3), ('3ème', None, 4),
+            ('SNT', None, 5), ('SI', None, 6), ('2nd Classe', None, 7), ('2nd TP', None, 8),
+            ('AP PP', None, 9), ('AP 2nd', None, 10), ('1ère ES', None, 11),
+            ('Terminale ES', None, 12), ('1ère Spécialité', None, 13),
+            ('Terminale Spécialité', None, 14), ('Autre', None, 15),
+        ]
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        cursor.executemany(
+            f'INSERT INTO levels (name, short_name, display_order) VALUES ({placeholder},{placeholder},{placeholder})',
+            default_levels
+        )
+
     # Create users table for Google authentication and role management
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS users (
@@ -457,6 +484,65 @@ def update_teacher_short_name(teacher_id, short_name):
     placeholder = '%s' if db_type == 'postgresql' else '?'
     cursor.execute(f'UPDATE teachers SET short_name={placeholder} WHERE id={placeholder}',
                    (short_name or None, teacher_id))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def get_all_levels():
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name, short_name, display_order FROM levels ORDER BY display_order, name')
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        if isinstance(row, dict):
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row.get('short_name') or '', 'display_order': row.get('display_order', 0)})
+        elif isinstance(row, sqlite3.Row):
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row['short_name'] or '', 'display_order': row['display_order'] or 0})
+        else:
+            result.append({'id': row[0], 'name': row[1], 'short_name': row[2] or '', 'display_order': row[3] or 0})
+    return result
+
+
+def add_level(name):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT COALESCE(MAX(display_order), 0) + 1 FROM levels')
+    next_order = cursor.fetchone()[0]
+    if db_type == 'postgresql':
+        cursor.execute(f'INSERT INTO levels (name, display_order) VALUES ({placeholder},{placeholder}) RETURNING id', (name, next_order))
+        new_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(f'INSERT INTO levels (name, display_order) VALUES ({placeholder},{placeholder})', (name, next_order))
+        new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def delete_level(level_id):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM levels WHERE id={placeholder}', (level_id,))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def update_level(level_id, short_name=None, display_order=None):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    if display_order is not None:
+        cursor.execute(f'UPDATE levels SET short_name={placeholder}, display_order={placeholder} WHERE id={placeholder}',
+                       (short_name or None, display_order, level_id))
+    else:
+        cursor.execute(f'UPDATE levels SET short_name={placeholder} WHERE id={placeholder}',
+                       (short_name or None, level_id))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0

@@ -78,21 +78,9 @@
                             <label for="editClassName" class="form-label">🎓 Niveau/Classe *</label>
                             <select class="form-select" id="editClassName" required>
                                 <option value="">Sélectionner un niveau</option>
-                                <option value="6ème">6ème</option>
-                                <option value="5ème">5ème</option>
-                                <option value="4ème">4ème</option>
-                                <option value="3ème">3ème</option>
-                                <option value="SNT">SNT</option>
-                                <option value="SI">SI</option>
-                                <option value="2nd Classe">2nd Classe</option>
-                                <option value="2nd TP">2nd TP</option>
-                                <option value="AP PP">AP PP</option>
-                                <option value="AP 2nd">AP 2nd</option>
-                                <option value="1ère ES">1ère ES</option>
-                                <option value="Terminale ES">Terminale ES</option>
-                                <option value="1ère Spécialité">1ère Spécialité</option>
-                                <option value="Terminale Spécialité">Terminale Spécialité</option>
-                                <option value="Autre">Autre</option>
+                                {% for level in levels %}
+                                <option value="{{ level.name }}">{{ level.name }}</option>
+                                {% endfor %}
                             </select>
                             <div id="editCustomDuration_inputs" class="d-flex align-items-center gap-1 mt-1">
                                 <span>⏱️ Durée :</span>
