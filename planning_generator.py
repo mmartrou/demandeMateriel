@@ -39,8 +39,10 @@ from datetime import datetime, timedelta
 from ortools.sat.python import cp_model
 
 
-def duree_par_niveau(niveau):
-    """Get duration by level"""
+def duree_par_niveau(niveau, levels_map=None):
+    """Get duration by level. levels_map: dict {name: duration} from DB (optional)."""
+    if levels_map and niveau in levels_map:
+        return levels_map[niveau]
     if niveau in ("Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"):
         return 110
     elif niveau in ("AP PP", "1ère ES", "Autre"):

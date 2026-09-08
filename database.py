@@ -84,24 +84,49 @@ def init_database():
             id {auto_increment},
             name {text_type} NOT NULL UNIQUE,
             short_name {text_type},
+            default_duration INTEGER DEFAULT 85,
             display_order INTEGER DEFAULT 0
         )
     ''')
+    # Migration : ajouter default_duration si absent
+    if db_type == 'postgresql':
+        cursor.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='levels' AND column_name='default_duration'
+        """)
+        if cursor.fetchone() is None:
+            cursor.execute('ALTER TABLE levels ADD COLUMN default_duration INTEGER DEFAULT 85')
+    else:
+        try:
+            cursor.execute('ALTER TABLE levels ADD COLUMN default_duration INTEGER DEFAULT 85')
+        except Exception:
+            pass
     # Pré-remplir avec les niveaux par défaut si la table est vide
     cursor.execute('SELECT COUNT(*) FROM levels')
     row = cursor.fetchone()
     count = row[0] if row is not None else 0
     if count == 0:
+        # (name, short_name, default_duration, display_order)
         default_levels = [
-            ('6ème', None, 1), ('5ème', None, 2), ('4ème', None, 3), ('3ème', None, 4),
-            ('SNT', None, 5), ('SI', None, 6), ('2nd Classe', None, 7), ('2nd TP', None, 8),
-            ('AP PP', None, 9), ('AP 2nd', None, 10), ('1ère ES', None, 11),
-            ('Terminale ES', None, 12), ('1ère Spécialité', None, 13),
-            ('Terminale Spécialité', None, 14), ('Autre', None, 15),
+            ('6ème',               None, 85,  1),
+            ('5ème',               None, 85,  2),
+            ('4ème',               None, 85,  3),
+            ('3ème',               None, 85,  4),
+            ('SNT',                None, 85,  5),
+            ('SI',                 None, 110, 6),
+            ('2nd Classe',         None, 85,  7),
+            ('2nd TP',             None, 85,  8),
+            ('AP PP',              None, 55,  9),
+            ('AP 2nd',             None, 110, 10),
+            ('1ère ES',            None, 55,  11),
+            ('Terminale ES',       None, 110, 12),
+            ('1ère Spécialité',    None, 110, 13),
+            ('Terminale Spécialité', None, 110, 14),
+            ('Autre',              None, 55,  15),
         ]
         placeholder = '%s' if db_type == 'postgresql' else '?'
         cursor.executemany(
-            f'INSERT INTO levels (name, short_name, display_order) VALUES ({placeholder},{placeholder},{placeholder})',
+            f'INSERT INTO levels (name, short_name, default_duration, display_order) VALUES ({placeholder},{placeholder},{placeholder},{placeholder})',
             default_levels
         )
 
@@ -492,17 +517,20 @@ def update_teacher_short_name(teacher_id, short_name):
 def get_all_levels():
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, name, short_name, display_order FROM levels ORDER BY display_order, name')
+    cursor.execute('SELECT id, name, short_name, default_duration, display_order FROM levels ORDER BY display_order, name')
     rows = cursor.fetchall()
     conn.close()
     result = []
     for row in rows:
         if isinstance(row, dict):
-            result.append({'id': row['id'], 'name': row['name'], 'short_name': row.get('short_name') or '', 'display_order': row.get('display_order', 0)})
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row.get('short_name') or '',
+                           'default_duration': row.get('default_duration') or 85, 'display_order': row.get('display_order', 0)})
         elif isinstance(row, sqlite3.Row):
-            result.append({'id': row['id'], 'name': row['name'], 'short_name': row['short_name'] or '', 'display_order': row['display_order'] or 0})
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row['short_name'] or '',
+                           'default_duration': row['default_duration'] or 85, 'display_order': row['display_order'] or 0})
         else:
-            result.append({'id': row[0], 'name': row[1], 'short_name': row[2] or '', 'display_order': row[3] or 0})
+            result.append({'id': row[0], 'name': row[1], 'short_name': row[2] or '',
+                           'default_duration': row[3] or 85, 'display_order': row[4] or 0})
     return result
 
 
@@ -533,16 +561,20 @@ def delete_level(level_id):
     return cursor.rowcount > 0
 
 
-def update_level(level_id, short_name=None, display_order=None):
+def update_level(level_id, short_name=None, default_duration=None, display_order=None):
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
+    sets = [f'short_name={placeholder}']
+    params = [short_name or None]
+    if default_duration is not None:
+        sets.append(f'default_duration={placeholder}')
+        params.append(int(default_duration))
     if display_order is not None:
-        cursor.execute(f'UPDATE levels SET short_name={placeholder}, display_order={placeholder} WHERE id={placeholder}',
-                       (short_name or None, display_order, level_id))
-    else:
-        cursor.execute(f'UPDATE levels SET short_name={placeholder} WHERE id={placeholder}',
-                       (short_name or None, level_id))
+        sets.append(f'display_order={placeholder}')
+        params.append(int(display_order))
+    params.append(level_id)
+    cursor.execute(f'UPDATE levels SET {", ".join(sets)} WHERE id={placeholder}', tuple(params))
     conn.commit()
     conn.close()
     return cursor.rowcount > 0

@@ -1547,9 +1547,11 @@ def api_admin_update_level(level_id):
         return jsonify({'error': 'Non autorisé'}), 403
     payload = request.get_json(silent=True) or {}
     short_name = str(payload.get('short_name', '')).strip()
+    default_duration = payload.get('default_duration')
     display_order = payload.get('display_order')
     try:
         update_level(level_id, short_name=short_name,
+                     default_duration=int(default_duration) if default_duration is not None else None,
                      display_order=int(display_order) if display_order is not None else None)
         return jsonify({'success': True})
     except Exception as e:

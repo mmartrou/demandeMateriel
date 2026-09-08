@@ -447,13 +447,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('class_name').addEventListener('change', loadTpTemplates);
 
-    // --- Durée personnalisée ---
-    // Doit rester cohérent avec duree_par_niveau() dans planning_generator.py
-    function dureeParNiveau(niveau) {
-        if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
-        if (["AP PP", "1ère ES", "Autre"].includes(niveau)) return 55;
-        return 85;
-    }
+    // --- Durée personnalisée (depuis la base de données) ---
+    const DUREES_PAR_NIVEAU = {
+        {% for l in levels %}"{{ l.name }}": {{ l.default_duration or 85 }},
+        {% endfor %}
+    };
+    function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
     // Nombre de groupes par défaut selon le niveau
     function groupesParNiveau(niveau) {
         if (niveau === '2nd TP') return 8;

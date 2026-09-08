@@ -231,11 +231,11 @@ const PT_DAY_START_MIN = 9 * 60;
 const PT_DAY_END_MIN = 20 * 60 + 15;
 const PT_PX_PER_MIN = 1;
 
-function dureeParNiveau(niveau) {
-    if (["Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"].includes(niveau)) return 110;
-    if (["AP PP", "1ère ES", "Autre"].includes(niveau)) return 55;
-    return 85;
-}
+const DUREES_PAR_NIVEAU = {
+    {% for l in levels %}"{{ l.name }}": {{ l.default_duration or 85 }},
+    {% endfor %}
+};
+function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
 
 function parseHoraireToMinutes(horaire) {
     if (!horaire) return null;

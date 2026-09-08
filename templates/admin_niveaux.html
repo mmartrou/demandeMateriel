@@ -22,6 +22,7 @@
                     <tr>
                         <th>Nom</th>
                         <th>Nom court <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
+                        <th>Durée (min) <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -34,6 +35,12 @@
                                   style="cursor:pointer; border-bottom: 1px dashed #aaa;"
                                   onclick="editLevelShortName(this, {{ l.id }})"
                                   title="Cliquer pour modifier">{{ l.short_name or '—' }}</span>
+                        </td>
+                        <td>
+                            <span class="level-duration-display"
+                                  style="cursor:pointer; border-bottom: 1px dashed #aaa;"
+                                  onclick="editLevelDuration(this, {{ l.id }})"
+                                  title="Cliquer pour modifier">{{ l.default_duration or 85 }}</span>
                         </td>
                         <td>
                             <button class="btn btn-sm btn-outline-danger"
@@ -159,6 +166,40 @@ function editLevelShortName(spanEl, levelId) {
         span.title = 'Cliquer pour modifier';
         span.onclick = function() { editLevelShortName(this, levelId); };
         span.textContent = val || '—';
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { input.value = current; input.blur(); }
+    });
+}
+
+function editLevelDuration(spanEl, levelId) {
+    const current = spanEl.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = current;
+    input.min = 1;
+    input.className = 'form-control form-control-sm d-inline-block';
+    input.style.width = '90px';
+    spanEl.replaceWith(input);
+    input.focus();
+
+    async function save() {
+        const val = parseInt(input.value) || 85;
+        await fetch(`/api/admin/levels/${levelId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_duration: val })
+        });
+        const span = document.createElement('span');
+        span.className = 'level-duration-display';
+        span.style.cssText = 'cursor:pointer; border-bottom: 1px dashed #aaa;';
+        span.title = 'Cliquer pour modifier';
+        span.onclick = function() { editLevelDuration(this, levelId); };
+        span.textContent = val;
         input.replaceWith(span);
     }
 
