@@ -19,6 +19,33 @@
         margin: 20px 0;
         background-color: #dee2e6;
         min-width: 800px;
+        position: relative;
+    }
+
+    /* Repères horaires dessinés par-dessus les cartes de cours (colonnes des salles uniquement) */
+    .time-lines-overlay {
+        grid-column: 2 / -1;
+        grid-row: 2 / -1;
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        pointer-events: none;
+    }
+
+    .time-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        border-top: 1px solid rgba(73, 80, 87, 0.3);
+    }
+
+    .time-line.time-line-dashed {
+        border-top-style: dashed;
+    }
+
+    .time-line.time-line-strong {
+        border-top: 3px solid #212529;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
     }
     
     .grid-header {
@@ -752,6 +779,9 @@
         // Créneaux dont la ligne de début doit être davantage mise en évidence
         // (repère pause déjeuner / après-midi)
         const strongBoundarySlots = ['12h15', '15h15'];
+        // Position cumulée (en px) du haut de chaque créneau, pour dessiner les repères horaires
+        let cumulativeTop = 0;
+        const slotBoundaries = [];
 
         // Créer une ligne pour chaque créneau horaire avec hauteur proportionnelle à la durée
         timeSlots.forEach((slot, slotIndex) => {
@@ -764,6 +794,8 @@
             const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
             const isOddRow = slotIndex % 2 === 1;
             const isStrongBoundary = strongBoundarySlots.includes(slot);
+            slotBoundaries.push({ top: cumulativeTop, isStrong: isStrongBoundary, isOdd: isOddRow });
+            cumulativeTop += cellHeight;
 
             // Cellule de l'horaire
             const timeCell = document.createElement('div');
@@ -799,6 +831,18 @@
 
             grid.appendChild(row);
         });
+
+        // Overlay de repères horaires dessiné par-dessus les cartes de cours :
+        // une ligne fine, la suivante en pointillé, en alternance, avec 12h15/15h15 renforcées
+        const linesOverlay = document.createElement('div');
+        linesOverlay.className = 'time-lines-overlay';
+        slotBoundaries.forEach((boundary, i) => {
+            const line = document.createElement('div');
+            line.className = 'time-line' + (boundary.isStrong ? ' time-line-strong' : (boundary.isOdd ? ' time-line-dashed' : ''));
+            line.style.top = `${boundary.top}px`;
+            linesOverlay.appendChild(line);
+        });
+        grid.appendChild(linesOverlay);
 
         // Placer les cours dans leurs cellules de début avec débordement contrôlé
         planningData.courses.forEach(course => {
