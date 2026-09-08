@@ -198,19 +198,25 @@
                         <label for="editMaterialDescription" class="form-label">
                             📝 Matériel requis par groupe
                         </label>
-                        <textarea class="form-control" id="editMaterialDescription" rows="4"
+                        <textarea class="form-control" id="editMaterialDescription"
+                                  style="overflow:hidden; resize:vertical; min-height:60px;"
+                                  oninput="autoResize(this)"
                                   placeholder="Ex: 2 Tubes à essai, 1 verre de montre, 1 bécher 100mL, pipettes graduées..."></textarea>
                     </div>
 
                     <div class="mb-3" id="editMaterialProfSection">
                         <label for="editMaterialProf" class="form-label">👨‍🏫 Matériel prof</label>
-                        <textarea class="form-control" id="editMaterialProf" rows="2"
+                        <textarea class="form-control" id="editMaterialProf"
+                                  style="overflow:hidden; resize:vertical; min-height:40px;"
+                                  oninput="autoResize(this)"
                                   placeholder="Matériel nécessaire pour le professeur"></textarea>
                     </div>
 
                     <div class="mb-3">
                         <label for="editNotes" class="form-label">📝 Notes supplémentaires</label>
-                        <textarea class="form-control" id="editNotes" rows="2"></textarea>
+                        <textarea class="form-control" id="editNotes"
+                                  style="overflow:hidden; resize:vertical; min-height:40px;"
+                                  oninput="autoResize(this)"></textarea>
                     </div>
 
                     <div class="mb-3">
