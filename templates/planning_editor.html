@@ -38,7 +38,7 @@
         position: absolute;
         left: 0;
         right: 0;
-        border-top: 1px solid rgba(73, 80, 87, 0.3);
+        border-top: 2px solid rgba(73, 80, 87, 0.45);
     }
 
     .time-line.time-line-dashed {
@@ -121,8 +121,8 @@
         background-color: #eef1f4;
     }
 
-    /* Lignes de repère plus marquées (pause déjeuner / après-midi) */
-    .time-cell.time-boundary-strong,
+    /* Lignes de repère plus marquées (pause déjeuner / après-midi) - uniquement sur la grille des salles,
+       pas sur la colonne Horaire (déjà mise en évidence par le repère horaire lui-même) */
     .room-cell.time-boundary-strong {
         border-top: 3px solid #495057;
     }
@@ -731,7 +731,7 @@
         console.log('🔍 DEBUG: rooms type:', typeof rooms);
         console.log('🔍 DEBUG: rooms is array?', Array.isArray(rooms));
         
-        // Générer tous les créneaux de 15 minutes de 9h00 à 18h15 côté client
+        // Générer tous les créneaux de 15 minutes de 9h00 à 19h15 côté client
         const timeSlots = generateAllTimeSlots();
         
         console.log('🏢 Salles disponibles:', rooms);
@@ -801,7 +801,6 @@
             const timeCell = document.createElement('div');
             timeCell.className = 'time-cell';
             if (isOddRow) timeCell.classList.add('row-odd');
-            if (isStrongBoundary) timeCell.classList.add('time-boundary-strong');
             if (slotIndex === 0) timeCell.classList.add('first-slot');
             timeCell.dataset.slot = slot;
             timeCell.style.height = `${cellHeight}px`;
@@ -1152,7 +1151,10 @@
             '15h45',  // 30min jusqu'à 16h15
             '16h15',  // 30min jusqu'à 16h45
             '16h45',  // 30min jusqu'à 17h15
-            '17h15'   // 60min (double taille pour permettre cours jusqu'à 18h15)
+            '17h15',  // 30min jusqu'à 17h45
+            '17h45',  // 30min jusqu'à 18h15
+            '18h15',  // 30min jusqu'à 18h45
+            '18h45'   // 30min jusqu'à 19h15
         ];
         
         console.log(`📅 Créneaux autorisés: ${authorizedSlots.length} horaires de début`);
@@ -1180,7 +1182,10 @@
             '15h45': 30,
             '16h15': 30,
             '16h45': 30,
-            '17h15': 60   // Double durée pour fin de journée
+            '17h15': 30,
+            '17h45': 30,
+            '18h15': 30,
+            '18h45': 30
         };
         return slotDurations[slot] || 30;
     }
