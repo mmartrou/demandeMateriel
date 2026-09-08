@@ -24,10 +24,12 @@
 
     /* Repères horaires dessinés par-dessus les cartes de cours (colonnes des salles uniquement) */
     .time-lines-overlay {
-        grid-column: 2 / -1;
-        grid-row: 2 / -1;
         position: absolute;
-        inset: 0;
+        top: 0;
+        /* 80px de colonne horaire + 1px de gap de la grille */
+        left: 81px;
+        right: 0;
+        bottom: 0;
         z-index: 20;
         pointer-events: none;
     }
@@ -779,9 +781,9 @@
         // Créneaux dont la ligne de début doit être davantage mise en évidence
         // (repère pause déjeuner / après-midi)
         const strongBoundarySlots = ['12h15', '15h15'];
-        // Position cumulée (en px) du haut de chaque créneau, pour dessiner les repères horaires
-        let cumulativeTop = 0;
-        const slotBoundaries = [];
+        // Référence des cellules horaires, pour positionner les repères une fois la grille insérée dans le DOM
+        // (mesure réelle plutôt qu'un calcul manuel, pour rester fiable quel que soit le rendu du CSS Grid)
+        const slotBoundaryCells = [];
 
         // Créer une ligne pour chaque créneau horaire avec hauteur proportionnelle à la durée
         timeSlots.forEach((slot, slotIndex) => {
@@ -794,8 +796,6 @@
             const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
             const isOddRow = slotIndex % 2 === 1;
             const isStrongBoundary = strongBoundarySlots.includes(slot);
-            slotBoundaries.push({ top: cumulativeTop, isStrong: isStrongBoundary, isOdd: isOddRow });
-            cumulativeTop += cellHeight;
 
             // Cellule de l'horaire
             const timeCell = document.createElement('div');
@@ -810,6 +810,7 @@
             timeLabel.textContent = slot;
             timeCell.appendChild(timeLabel);
             row.appendChild(timeCell);
+            slotBoundaryCells.push({ el: timeCell, isStrong: isStrongBoundary, isOdd: isOddRow });
 
             // Cellules vides pour chaque salle (les cours seront positionnés par position absolute)
             rooms.forEach((room, roomIndex) => {
@@ -831,18 +832,6 @@
 
             grid.appendChild(row);
         });
-
-        // Overlay de repères horaires dessiné par-dessus les cartes de cours :
-        // une ligne fine, la suivante en pointillé, en alternance, avec 12h15/15h15 renforcées
-        const linesOverlay = document.createElement('div');
-        linesOverlay.className = 'time-lines-overlay';
-        slotBoundaries.forEach((boundary, i) => {
-            const line = document.createElement('div');
-            line.className = 'time-line' + (boundary.isStrong ? ' time-line-strong' : (boundary.isOdd ? ' time-line-dashed' : ''));
-            line.style.top = `${boundary.top}px`;
-            linesOverlay.appendChild(line);
-        });
-        grid.appendChild(linesOverlay);
 
         // Placer les cours dans leurs cellules de début avec débordement contrôlé
         planningData.courses.forEach(course => {
@@ -879,6 +868,22 @@
         
         container.appendChild(grid);
         console.log('✅ Grille ajoutée au container');
+
+        // Overlay de repères horaires dessiné par-dessus les cartes de cours :
+        // une ligne fine, la suivante en pointillé, en alternance, avec 12h15/15h15 renforcées.
+        // Positionné par mesure réelle (getBoundingClientRect) une fois la grille dans le DOM,
+        // pour rester fiable quels que soient les gaps/bordures du CSS Grid.
+        const linesOverlay = document.createElement('div');
+        linesOverlay.className = 'time-lines-overlay';
+        const gridRect = grid.getBoundingClientRect();
+        slotBoundaryCells.forEach(boundary => {
+            const cellRect = boundary.el.getBoundingClientRect();
+            const line = document.createElement('div');
+            line.className = 'time-line' + (boundary.isStrong ? ' time-line-strong' : (boundary.isOdd ? ' time-line-dashed' : ''));
+            line.style.top = `${cellRect.top - gridRect.top}px`;
+            linesOverlay.appendChild(line);
+        });
+        grid.appendChild(linesOverlay);
         
         // Debug du placement final
         console.log('📊 PLACEMENT FINAL:', {
