@@ -931,20 +931,17 @@
 
         const teacherDisplay = course.teacher_short_name || course.teacher;
         const levelDisplay = course.level_short_name || course.level;
-        const laboObs = course.labo_observations ? `<div class="course-labo-obs" style="font-size:0.75em; color:#555; margin-top:2px; font-style:italic;">${course.labo_observations}</div>` : '';
+        const laboObs = course.labo_observations ? `<div style="font-size:0.75em; color:#555; margin-top:2px; font-style:italic;">${course.labo_observations}</div>` : '';
         const isClasseEntiere = (course.level || '').toLowerCase().includes('classe entière');
         const studentLine = (isClasseEntiere && course.students > 0)
-            ? `<div class="course-students" style="font-weight:bold; font-size:1.5em; margin-top:1px;">${course.students} élèves</div>` : '';
+            ? `<div style="font-weight:bold; font-size:1.5em; margin-top:1px;">${course.students} élèves</div>` : '';
 
         card.innerHTML = `
             ${preparedBadge}
-            <div class="course-teacher" style="font-weight:bold; font-size:1.5em; line-height:1.2;">${teacherDisplay}</div>
-            <div class="course-level" style="font-size:0.9em;">${levelDisplay}</div>
+            <div style="font-weight:bold; font-size:1.5em; line-height:1.2;">${teacherDisplay}</div>
+            <div style="font-size:0.9em;">${levelDisplay}</div>
             ${laboObs}
             ${studentLine}
-            <div class="course-time" style="font-size:0.8em; color:#666;">${course.time}${durationText ? ` (${durationText})` : ''}</div>
-            ${requestNameLine}
-            ${equipmentLine}
         `;
 
         card.dataset.prepared = course.prepared ? '1' : '0';

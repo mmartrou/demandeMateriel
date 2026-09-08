@@ -29,7 +29,8 @@ def to_dict_request(req):
             'exam': req[17] if len(req) > 17 else False,
             'created_at': req[18] if len(req) > 18 else None,
             'teacher_name': req[19] if len(req) > 19 else '',
-            'custom_duration': req[20] if len(req) > 20 else None
+            'custom_duration': req[20] if len(req) > 20 else None,
+            'labo_observations': req[21] if len(req) > 21 else '',
         }
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-

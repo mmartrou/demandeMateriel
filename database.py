@@ -1262,7 +1262,7 @@ def get_planning_data(date_str):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration
+               t.name as teacher_name, mr.custom_duration, mr.labo_observations
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.request_date = {placeholder}
