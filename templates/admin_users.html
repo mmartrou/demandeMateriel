@@ -23,6 +23,7 @@
                     <tr>
                         <th>ID</th>
                         <th>Nom</th>
+                        <th>Nom court</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -31,6 +32,12 @@
                     <tr>
                         <td><span class="badge bg-secondary">{{ t.id }}</span></td>
                         <td>{{ t.name }}</td>
+                        <td>
+                            <span class="short-name-display" data-id="{{ t.id }}"
+                                  style="cursor:pointer; border-bottom: 1px dashed #aaa;"
+                                  onclick="editShortName(this)"
+                                  title="Cliquer pour modifier">{{ t.short_name or '—' }}</span>
+                        </td>
                         <td>
                             <button class="btn btn-sm btn-outline-danger"
                                 onclick="confirmDeleteTeacher({{ t.id }}, '{{ t.name }}')">
@@ -200,6 +207,42 @@
 {% block extra_js %}
 <script>
 let teacherToDelete = null;
+
+function editShortName(spanEl) {
+    const teacherId = spanEl.dataset.id;
+    const current = spanEl.textContent === '—' ? '' : spanEl.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'form-control form-control-sm d-inline-block';
+    input.style.width = '120px';
+    input.placeholder = 'Nom court…';
+    spanEl.replaceWith(input);
+    input.focus();
+
+    async function save() {
+        const val = input.value.trim();
+        const resp = await fetch(`/api/admin/teachers/${teacherId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ short_name: val })
+        });
+        const span = document.createElement('span');
+        span.className = 'short-name-display';
+        span.dataset.id = teacherId;
+        span.style.cssText = 'cursor:pointer; border-bottom: 1px dashed #aaa;';
+        span.title = 'Cliquer pour modifier';
+        span.onclick = function() { editShortName(this); };
+        span.textContent = val || '—';
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { input.value = current; input.blur(); }
+    });
+}
 
 async function saveNewTeacher() {
     const name = document.getElementById('newTeacherName').value.trim();

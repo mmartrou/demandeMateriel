@@ -60,9 +60,23 @@ def init_database():
         CREATE TABLE IF NOT EXISTS teachers (
             id {auto_increment},
             name {text_type} NOT NULL UNIQUE,
+            short_name {text_type},
             created_at {timestamp_default}
         )
     ''')
+    # Migration : ajouter short_name si absent
+    if db_type == 'postgresql':
+        cursor.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='teachers' AND column_name='short_name'
+        """)
+        if cursor.fetchone() is None:
+            cursor.execute('ALTER TABLE teachers ADD COLUMN short_name TEXT')
+    else:
+        try:
+            cursor.execute('ALTER TABLE teachers ADD COLUMN short_name TEXT')
+        except Exception:
+            pass
 
     # Create users table for Google authentication and role management
     cursor.execute(f'''
@@ -422,21 +436,30 @@ def delete_teacher(teacher_id):
 def get_all_teachers():
     """Get all teachers from the database"""
     conn, db_type = get_db_connection()
-    if db_type == 'postgresql':
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name FROM teachers ORDER BY name')
-        rows = cursor.fetchall()
-        # rows is a list of tuples (id, name)
-        teachers = [{'id': row[0], 'name': row[1]} for row in rows]
-    else:
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name FROM teachers ORDER BY name')
-        rows = cursor.fetchall()
-        # rows is a list of sqlite3.Row or tuples
-        teachers = [{'id': row['id'], 'name': row['name']} if isinstance(row, sqlite3.Row) else {'id': row[0], 'name': row[1]} for row in rows]
-    print("DEBUG teachers:", teachers)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name, short_name FROM teachers ORDER BY name')
+    rows = cursor.fetchall()
     conn.close()
-    return teachers
+    result = []
+    for row in rows:
+        if isinstance(row, dict):
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row.get('short_name') or ''})
+        elif isinstance(row, sqlite3.Row):
+            result.append({'id': row['id'], 'name': row['name'], 'short_name': row['short_name'] or ''})
+        else:
+            result.append({'id': row[0], 'name': row[1], 'short_name': row[2] or '' if len(row) > 2 else ''})
+    return result
+
+
+def update_teacher_short_name(teacher_id, short_name):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'UPDATE teachers SET short_name={placeholder} WHERE id={placeholder}',
+                   (short_name or None, teacher_id))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
 
 
 def _normalize_name(s):
