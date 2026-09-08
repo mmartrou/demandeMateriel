@@ -2418,8 +2418,39 @@ def get_planning():
         conn.close()
 
         if row:
-            app.logger.info(f"Planning trouvé pour la date {date}: {row[0]}")
-            return jsonify({'planning': row[0]}), 200
+            raw = row[0]
+            planning = json.loads(raw) if isinstance(raw, str) else raw
+
+            # Enrichir les courses avec les noms courts et labo_observations à jour
+            courses = planning.get('courses', [])
+            if courses:
+                teacher_short_map = {t['name']: t['short_name'] for t in get_all_teachers()}
+                level_short_map = {l['name']: l['short_name'] for l in get_all_levels()}
+
+                # Charger labo_observations pour tous les request_ids en une seule requête
+                req_ids = [c['request_id'] for c in courses if c.get('request_id')]
+                labo_map = {}
+                if req_ids:
+                    conn2, db_type2 = get_db_connection()
+                    cursor2 = conn2.cursor()
+                    placeholder2 = '%s' if db_type2 == 'postgresql' else '?'
+                    placeholders_list = ','.join([placeholder2] * len(req_ids))
+                    cursor2.execute(f'SELECT id, labo_observations FROM material_requests WHERE id IN ({placeholders_list})', req_ids)
+                    for r in cursor2.fetchall():
+                        rid = r['id'] if isinstance(r, dict) else r[0]
+                        obs = r['labo_observations'] if isinstance(r, dict) else r[1]
+                        labo_map[rid] = obs or ''
+                    conn2.close()
+
+                for c in courses:
+                    c.setdefault('teacher_short_name', teacher_short_map.get(c.get('teacher', ''), ''))
+                    c.setdefault('level_short_name', level_short_map.get(c.get('level', ''), ''))
+                    c['teacher_short_name'] = teacher_short_map.get(c.get('teacher', ''), '')
+                    c['level_short_name'] = level_short_map.get(c.get('level', ''), '')
+                    c['labo_observations'] = labo_map.get(c.get('request_id'), '')
+
+            app.logger.info(f"Planning trouvé pour la date {date}")
+            return jsonify({'planning': planning}), 200
         else:
             app.logger.warning(f"Aucun planning trouvé pour la date {date}.")
             return jsonify({'error': 'Aucun planning trouvé pour cette date'}), 404
