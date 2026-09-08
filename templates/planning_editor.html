@@ -12,13 +12,13 @@
     /* Layout type Excel avec CSS Grid */
     .planning-grid {
         display: grid;
-        grid-template-columns: 80px repeat(9, minmax(100px, 1fr)) 90px 130px 100px;
+        grid-template-columns: 80px repeat(9, minmax(100px, 1fr)) 90px 28px 28px;
         gap: 1px;
         width: 100%;
         font-size: 0.85em;
         margin: 20px 0;
         background-color: #dee2e6;
-        min-width: 1120px;
+        min-width: 906px;
         position: relative;
     }
 
@@ -38,9 +38,11 @@
     .extra-col-cell {
         border: 1px solid #dee2e6;
         height: 40px;
+        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
+        font-size: 0.9em;
     }
 
     .standard-occupation-cell {
@@ -51,9 +53,20 @@
         width: 100%;
         height: 100%;
         border: none;
+        padding: 0;
         text-align: center;
         font-weight: bold;
+        font-size: inherit;
         background: transparent;
+        /* Masquer les flèches +/- pour rester très étroit (un seul chiffre) */
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+
+    .standard-occupation-input::-webkit-outer-spin-button,
+    .standard-occupation-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     .standard-occupation-input:focus {
@@ -832,12 +845,12 @@
 
         const standardHeaderCell = document.createElement('div');
         standardHeaderCell.className = 'room-header-cell extra-col-header';
-        standardHeaderCell.textContent = 'Occupation standard';
+        standardHeaderCell.title = 'Occupation standard';
         headerRow.appendChild(standardHeaderCell);
 
         const computedHeaderCell = document.createElement('div');
         computedHeaderCell.className = 'room-header-cell extra-col-header';
-        computedHeaderCell.textContent = 'Cours simultanés';
+        computedHeaderCell.title = 'Cours simultanés';
         headerRow.appendChild(computedHeaderCell);
 
         grid.appendChild(headerRow);
@@ -978,9 +991,9 @@
                 return;
             }
             
-            // Trouver l'index de la salle
+            // Trouver l'index de la salle (le stockage temporaire n'est pas une vraie salle mais reste valide)
             const roomIndex = rooms.findIndex(room => room.name === assignedRoom);
-            if (roomIndex === -1) return;
+            if (roomIndex === -1 && assignedRoom !== TEMP_STORAGE_ID) return;
             
             // Trouver la cellule de départ
             const startCell = grid.querySelector(`[data-slot="${course.time}"][data-room="${assignedRoom}"]`);
@@ -996,7 +1009,7 @@
             startCell.appendChild(courseCard);
             
             totalCoursesPlaced++;
-            placementByRoom[assignedRoom]++;
+            if (placementByRoom[assignedRoom] !== undefined) placementByRoom[assignedRoom]++;
         });
         
         container.appendChild(grid);
