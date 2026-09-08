@@ -801,14 +801,22 @@ def api_add_request():
             labo_note = "Demande saisie par Labo"
             data['notes'] = f"{labo_note} | {existing_notes}" if existing_notes else labo_note
 
+        # Un TP ne peut jamais être demandé un jour non-ouvré (weekend ou jour férié),
+        # y compris pour admin/labo qui ne sont exemptés que du délai de préavis ci-dessous.
+        from database import is_working_day_configured
+        for dh in data['days_horaires']:
+            date = dh.get('date')
+            if not date:
+                return jsonify({'error': 'Date manquante pour un des jours'}), 400
+            if not is_working_day_configured(date):
+                return jsonify({'error': f'Le {date} n\'est pas un jour ouvré (week-end ou jour férié).'}), 400
+
         # Validation du délai de 2 jours ouvrés pour chaque date (sauf admin et labo)
         if not _is_privileged_user():
             from deadline_utils import is_request_deadline_respected, get_earliest_valid_date
 
             for dh in data['days_horaires']:
                 date = dh.get('date')
-                if not date:
-                    return jsonify({'error': 'Date manquante pour un des jours'}), 400
 
                 validation = is_request_deadline_respected(date)
                 if not validation['valid']:
@@ -816,10 +824,6 @@ def api_add_request():
                     return jsonify({
                         'error': f'Délai insuffisant pour le {date}. {validation["message"]} Première date disponible: {earliest_date}'
                     }), 400
-        else:
-            for dh in data['days_horaires']:
-                if not dh.get('date'):
-                    return jsonify({'error': 'Date manquante pour un des jours'}), 400
 
         # Ajout de chaque demande (jour/horaire)
         request_ids = []
@@ -1061,6 +1065,12 @@ def api_update_request(request_id):
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'error': f'Le champ {field} est requis'}), 400
+
+        # Un TP ne peut jamais être programmé un jour non-ouvré, y compris pour admin/labo
+        if data.get('request_date'):
+            from database import is_working_day_configured
+            if not is_working_day_configured(data['request_date']):
+                return jsonify({'error': f'Le {data["request_date"]} n\'est pas un jour ouvré (week-end ou jour férié).'}), 400
 
         # Validation du délai de 2 jours ouvrés pour toute modification (sauf admin et labo)
         if not _is_privileged_user():
@@ -1683,6 +1693,13 @@ def api_pending_modifications():
                     logger.error(f"❌ Champ manquant: {field}")
                     return jsonify({'error': f'Champ manquant: {field}'}), 400
             
+            # Un TP ne peut jamais être programmé un jour non-ouvré, y compris pour admin/labo
+            if data['field_name'] == 'request_date':
+                from database import is_working_day_configured
+                new_date = data['new_value']
+                if not is_working_day_configured(new_date):
+                    return jsonify({'error': f'Le {new_date} n\'est pas un jour ouvré (week-end ou jour férié).'}), 400
+
             # Validation du délai de 2 jours ouvrés (sauf admin et labo)
             if not _is_privileged_user():
                 if data['field_name'] == 'request_date':

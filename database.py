@@ -1444,10 +1444,12 @@ def is_working_day_configured(date):
     if result is not None:
         return bool(result[0])
     else:
-        # Défaut: lundi-vendredi sont ouvrés, samedi-dimanche non
+        # Défaut: lundi-vendredi hors jours fériés (une entrée dans working_days_config
+        # permet de forcer un jour normalement non-ouvré, ou l'inverse, au cas par cas)
         from datetime import datetime
+        from deadline_utils import is_working_day
         date_obj = datetime.strptime(date, '%Y-%m-%d')
-        return date_obj.weekday() < 5  # 0-4 = lundi-vendredi
+        return is_working_day(date_obj)
 
 def delete_working_day_config(date):
     """
