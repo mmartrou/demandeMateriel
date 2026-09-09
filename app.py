@@ -158,6 +158,7 @@ def _is_admin_only_route(path, method):
         '/api/planning-editor',
         '/api/save-planning',
         '/api/get-planning',
+        '/api/planning-observations',
         '/planning',
         '/api/generate-planning',
     )
@@ -2458,12 +2459,13 @@ def get_planning():
 
         # Récupérer les données du planning
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        cursor.execute(f"SELECT data FROM plannings WHERE date = {placeholder}", (date,))
+        cursor.execute(f"SELECT data, observations FROM plannings WHERE date = {placeholder}", (date,))
         row = cursor.fetchone()
         conn.close()
 
         if row:
-            raw = row[0]
+            raw = row[0] if not isinstance(row, dict) else row['data']
+            obs = (row[1] if not isinstance(row, dict) else row.get('observations')) or ''
             planning = json.loads(raw) if isinstance(raw, str) else raw
 
             # Enrichir les courses avec les noms courts et labo_observations à jour
@@ -2500,7 +2502,7 @@ def get_planning():
                         c['students'] = student_count_map.get(c.get('teacher', ''), 20)
 
             app.logger.info(f"Planning trouvé pour la date {date}")
-            return jsonify({'planning': planning}), 200
+            return jsonify({'planning': planning, 'observations': obs}), 200
         else:
             app.logger.warning(f"Aucun planning trouvé pour la date {date}.")
             return jsonify({'error': 'Aucun planning trouvé pour cette date'}), 404
@@ -2509,7 +2511,40 @@ def get_planning():
         app.logger.error(f"Erreur lors de la récupération du planning: {e}")
         return api_error('Erreur lors de la récupération du planning', e)
 
-        
+
+@app.route('/api/planning-observations', methods=['PUT'])
+def save_planning_observations():
+    """Sauvegarde les observations d'un planning (par date)"""
+    if not _is_privileged_user():
+        return jsonify({'error': 'Non autorisé'}), 403
+    try:
+        data = request.get_json(silent=True) or {}
+        date = data.get('date')
+        observations = data.get('observations', '')
+        if not date:
+            return jsonify({'error': 'Date requise'}), 400
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = '%s' if db_type == 'postgresql' else '?'
+        if db_type == 'postgresql':
+            cursor.execute(f'''
+                INSERT INTO plannings (date, data, observations)
+                VALUES ({placeholder}, {placeholder}, {placeholder})
+                ON CONFLICT(date) DO UPDATE SET observations=EXCLUDED.observations
+            ''', (date, '{}', observations))
+        else:
+            cursor.execute(f'SELECT 1 FROM plannings WHERE date={placeholder}', (date,))
+            if cursor.fetchone():
+                cursor.execute(f'UPDATE plannings SET observations={placeholder} WHERE date={placeholder}', (observations, date))
+            else:
+                cursor.execute(f'INSERT INTO plannings (date, data, observations) VALUES ({placeholder},{placeholder},{placeholder})', (date, '{}', observations))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Observations enregistrées'}), 200
+    except Exception as e:
+        return api_error('Erreur lors de la sauvegarde des observations', e)
+
+
 if __name__ == '__main__':
     import os
     import sys

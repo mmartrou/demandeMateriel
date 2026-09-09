@@ -344,9 +344,23 @@ def init_database():
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS plannings (
             date {text_type} PRIMARY KEY,
-            data {text_type} NOT NULL
+            data {text_type} NOT NULL,
+            observations {text_type}
         );
     ''')
+    # Migration : ajouter observations si absent
+    if db_type == 'postgresql':
+        cursor.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='plannings' AND column_name='observations'
+        """)
+        if cursor.fetchone() is None:
+            cursor.execute('ALTER TABLE plannings ADD COLUMN observations TEXT')
+    else:
+        try:
+            cursor.execute('ALTER TABLE plannings ADD COLUMN observations TEXT')
+        except Exception:
+            pass
 
     # Table des templates de TP (TPs précédemment demandés, classés par enseignant+niveau)
     cursor.execute(f'''

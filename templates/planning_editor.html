@@ -605,6 +605,14 @@
         </div>
     </div>
     
+    <!-- Observations du planning -->
+    <div class="mt-4" id="observations-section" style="display:none;">
+        <label for="planningObservations" class="form-label fw-bold">Observations du planning</label>
+        <textarea id="planningObservations" class="form-control" rows="3"
+                  placeholder="Notes internes pour ce planning…"
+                  style="resize:vertical;"></textarea>
+    </div>
+
     <!-- Message quand aucun planning n'est chargé -->
     <div id="no-planning-message" class="text-center py-5">
         <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
@@ -764,6 +772,8 @@
                 planningData = data;
                 currentAssignments = { ...data.assignments };
                 currentRoomAssignments = { ...data.room_assignments || {} };
+
+                document.getElementById('observations-section').style.display = '';
 
                 await Promise.all([syncPreparedStates(), standardOccupationPromise]);
                 renderPlanningGrid();
@@ -1835,6 +1845,8 @@ async function reloadPlanningIfExists(targetDate) {
             document.getElementById('no-planning-message').style.display = '';
             document.getElementById('stats-panel').style.display = 'none';
             document.getElementById('generate-btn').disabled = true;
+            document.getElementById('observations-section').style.display = 'none';
+            document.getElementById('planningObservations').value = '';
             return;
         }
         if (!response.ok) {
@@ -1847,6 +1859,8 @@ async function reloadPlanningIfExists(targetDate) {
             planningData = data.planning || data;
         }
         currentRoomAssignments = { ...planningData.room_assignments || {} };
+        document.getElementById('planningObservations').value = data.observations || '';
+        document.getElementById('observations-section').style.display = '';
         await Promise.all([syncPreparedStates(), standardOccupationPromise]);
         renderPlanningGrid();
         updateStats();
@@ -1858,6 +1872,22 @@ async function reloadPlanningIfExists(targetDate) {
     }
 }
 
+
+let _obsDebounce = null;
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('planningObservations').addEventListener('input', () => {
+        clearTimeout(_obsDebounce);
+        _obsDebounce = setTimeout(async () => {
+            const date = document.getElementById('target-date').value;
+            if (!date) return;
+            await fetch('/api/planning-observations', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, observations: document.getElementById('planningObservations').value })
+            });
+        }, 1500);
+    });
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     // Attach reloadPlanning to the window object to make it globally accessible
