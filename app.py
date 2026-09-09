@@ -2496,8 +2496,8 @@ def get_planning():
                     cursor2.execute(f'SELECT id, labo_observations FROM material_requests WHERE id IN ({placeholders_list})', req_ids)
                     for r in cursor2.fetchall():
                         rid = r['id'] if isinstance(r, dict) else r[0]
-                        obs = r['labo_observations'] if isinstance(r, dict) else r[1]
-                        labo_map[rid] = obs or ''
+                        labo_obs = r['labo_observations'] if isinstance(r, dict) else r[1]
+                        labo_map[rid] = labo_obs or ''
                     conn2.close()
 
                 for c in courses:
