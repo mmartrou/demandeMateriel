@@ -705,6 +705,7 @@
     </div>
     
     <!-- Zone d'édition du planning par salle -->
+    <h4 id="planning-date-heading" class="text-center mb-3" style="font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-weight:600; color:var(--pe-ink);"></h4>
     <div class="planning-editor">
         <div class="row" id="rooms-container">
             <!-- Les salles seront générées dynamiquement -->
@@ -846,6 +847,7 @@
         tomorrow.setDate(tomorrow.getDate() + 1);
         const targetDate = tomorrow.toISOString().split('T')[0];
         document.getElementById('target-date').value = targetDate;
+        updatePlanningDateHeading();
         reloadPlanningIfExists(targetDate);
     });
     
@@ -903,6 +905,19 @@
         }
     }
     
+    // Affiche "Mercredi 09/09/2026" au-dessus de la grille, à partir de la date sélectionnée
+    function updatePlanningDateHeading() {
+        const heading = document.getElementById('planning-date-heading');
+        if (!heading) return;
+        const dateStr = document.getElementById('target-date').value;
+        if (!dateStr) { heading.textContent = ''; return; }
+        const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+        const d = new Date(`${dateStr}T00:00:00`);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        heading.textContent = `${dayNames[d.getDay()]} ${dd}/${mm}/${d.getFullYear()}`;
+    }
+
     // Afficher le planning en grille type Excel
     function renderPlanningGrid() {
         console.log('🎨 renderPlanningGrid() appelée, planningData:', planningData);
@@ -910,6 +925,7 @@
             console.log('❌ Pas de planningData, arrêt');
             return;
         }
+        updatePlanningDateHeading();
         
         const container = document.getElementById('rooms-container');
         console.log('📦 Container trouvé:', container);
@@ -1885,6 +1901,7 @@
     // Note : savePlanningData() est appelé automatiquement dans loadPlanningData() et après chaque drag.
     
     document.getElementById('target-date').addEventListener('change', function() {
+        updatePlanningDateHeading();
         if (this.value) {
             reloadPlanningIfExists(this.value);
         }
