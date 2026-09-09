@@ -607,7 +607,10 @@
     
     <!-- Observations du planning -->
     <div class="mt-4" id="observations-section" style="display:none;">
-        <label for="planningObservations" class="form-label fw-bold">Observations du planning</label>
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <label for="planningObservations" class="form-label fw-bold mb-0">Observations du planning</label>
+            <small id="obs-save-status" class="text-muted" style="font-size:0.8em;"></small>
+        </div>
         <textarea id="planningObservations" class="form-control" rows="3"
                   placeholder="Notes internes pour ce planning…"
                   style="resize:vertical;"></textarea>
@@ -1874,18 +1877,40 @@ async function reloadPlanningIfExists(targetDate) {
 
 
 let _obsDebounce = null;
+async function saveObservations() {
+    const date = document.getElementById('target-date').value;
+    const statusEl = document.getElementById('obs-save-status');
+    if (!date) return;
+    statusEl.textContent = 'Sauvegarde…';
+    statusEl.className = 'text-muted';
+    try {
+        const resp = await fetch('/api/planning-observations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, observations: document.getElementById('planningObservations').value })
+        });
+        if (resp.ok) {
+            statusEl.textContent = '✓ Sauvegardé';
+            statusEl.className = 'text-success';
+            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            statusEl.textContent = '✗ Erreur: ' + (err.error || resp.status);
+            statusEl.className = 'text-danger';
+        }
+    } catch (e) {
+        statusEl.textContent = '✗ Erreur réseau';
+        statusEl.className = 'text-danger';
+        console.error('saveObservations:', e);
+    }
+}
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('planningObservations').addEventListener('input', () => {
+        const statusEl = document.getElementById('obs-save-status');
+        statusEl.textContent = '…';
+        statusEl.className = 'text-muted';
         clearTimeout(_obsDebounce);
-        _obsDebounce = setTimeout(async () => {
-            const date = document.getElementById('target-date').value;
-            if (!date) return;
-            await fetch('/api/planning-observations', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date, observations: document.getElementById('planningObservations').value })
-            });
-        }, 1500);
+        _obsDebounce = setTimeout(saveObservations, 1500);
     });
 });
 

@@ -2459,13 +2459,21 @@ def get_planning():
 
         # Récupérer les données du planning
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        cursor.execute(f"SELECT data, observations FROM plannings WHERE date = {placeholder}", (date,))
+        try:
+            cursor.execute(f"SELECT data, observations FROM plannings WHERE date = {placeholder}", (date,))
+        except Exception:
+            cursor.execute(f"SELECT data FROM plannings WHERE date = {placeholder}", (date,))
         row = cursor.fetchone()
         conn.close()
 
         if row:
-            raw = row[0] if not isinstance(row, dict) else row['data']
-            obs = (row[1] if not isinstance(row, dict) else row.get('observations')) or ''
+            if isinstance(row, dict):
+                raw = row['data']
+                obs = row.get('observations') or ''
+            else:
+                raw = row[0]
+                obs = row[1] if len(row) > 1 else ''
+            obs = obs or ''
             planning = json.loads(raw) if isinstance(raw, str) else raw
 
             # Enrichir les courses avec les noms courts et labo_observations à jour
