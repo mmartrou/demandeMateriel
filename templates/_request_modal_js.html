@@ -85,6 +85,9 @@ document.addEventListener('DOMContentLoaded', function() {
         setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
         const qtyField = document.getElementById('editQuantity');
         if (qtyField) qtyField.value = groupesParNiveau(this.value);
+        // Les TP de la base sont classés par niveau : la liste doit suivre le niveau choisi.
+        const teacherField = document.getElementById('editTeacher');
+        if (teacherField) loadDraftTpOptions(teacherField.value, this.value);
     });
     document.getElementById('editDate').addEventListener('change', updateBulkEditAvailability);
 });
@@ -397,12 +400,19 @@ function applyTpTemplateToDraft(tpId) {
     fetch(`/api/tp-templates/${tpId}`)
         .then(r => r.json())
         .then(tp => {
+            // Champs qui appartiennent au créneau et non au TP : on les conserve tels quels,
+            // sinon appliquer un TP sur une demande existante effacerait le travail du labo.
+            const prepBtnActuel = document.getElementById('modalPreparedBtn');
             const merged = {
                 id: document.getElementById('editRequestId').value,
                 teacher_id: document.getElementById('editTeacher').value,
                 request_date: document.getElementById('editDate').value,
                 horaire: document.getElementById('editHoraire').value,
                 class_name: document.getElementById('editClassName').value,
+                custom_duration: getCustomDurationValue('editCustomDuration'),
+                is_lab_test: !!document.getElementById('editLabTest')?.checked,
+                labo_observations: document.getElementById('editLaboObservations')?.value || '',
+                prepared: prepBtnActuel ? prepBtnActuel.classList.contains('btn-outline-secondary') : false,
                 request_name: tp.request_name || '',
                 material_description: tp.material_description || '',
                 selected_materials: tp.selected_materials || '',
@@ -411,7 +421,7 @@ function applyTpTemplateToDraft(tpId) {
                 group_count: tp.group_count ?? 1,
                 notes: tp.notes || '',
                 image_url: tp.image_url || '',
-                prepared: false
+                room_type: tp.room_type || 'Mixte'
             };
             populateEditForm(merged);
             toggleEditSpecialModes();
@@ -479,14 +489,12 @@ function editRequest(requestOrId) {
 
             populateEditForm(request);
 
+            // Le sélecteur reste disponible même si un TP est déjà affecté :
+            // il sert aussi à remplacer un TP par un autre de la base de l'enseignant.
             const pickerSection = document.getElementById('draftTpPickerSection');
             if (pickerSection) {
-                if (request.is_draft) {
-                    pickerSection.style.display = '';
-                    loadDraftTpOptions(request.teacher_id, request.class_name);
-                } else {
-                    pickerSection.style.display = 'none';
-                }
+                pickerSection.style.display = '';
+                loadDraftTpOptions(request.teacher_id, request.class_name);
             }
 
             const saveBtn = document.querySelector('#editRequestModal .btn-primary');
