@@ -1,0 +1,2026 @@
+{% extends "base.html" %}
+
+{% block title %}Éditeur de planning interactif{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+    /* --- Refonte visuelle (test) : palette et typographie --------------------- */
+    :root {
+        --pe-ground: #f5f2ea;
+        --pe-surface: #ffffff;
+        --pe-surface-2: #faf8f2;
+        --pe-ink: #23231f;
+        --pe-ink-soft: #6f6d62;
+        --pe-ink-faint: #a19e8f;
+        --pe-line: #e6e2d4;
+        --pe-line-strong: #cfc9b4;
+        --pe-accent: #2f6f6b;
+        --pe-accent-tint: #e3eeec;
+
+        --pe-physics: #4f6d8c;
+        --pe-physics-tint: #e9eef4;
+        --pe-chemistry: #4a7c66;
+        --pe-chemistry-tint: #e8f1eb;
+        --pe-other: #a5762f;
+        --pe-other-tint: #f6ecd9;
+
+        --pe-good: #3f7d54;
+        --pe-good-tint: #e4f1e7;
+        --pe-warn: #b1473f;
+        --pe-warn-tint: #f8e8e6;
+
+        --pe-utility: #8a8778;
+        --pe-utility-tint: #f1efe6;
+    }
+
+    .planning-editor, .controls-panel, .stats-panel, .legend {
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        color: var(--pe-ink);
+    }
+
+    .planning-editor {
+        max-width: 100%;
+        overflow-x: auto;
+        background: var(--pe-surface);
+        border: 1px solid var(--pe-line-strong);
+        border-radius: 10px;
+        padding: 4px;
+    }
+
+    /* Layout type Excel avec CSS Grid */
+    .planning-grid {
+        display: grid;
+        grid-template-columns: 80px repeat(9, minmax(100px, 1fr)) 90px 28px 28px;
+        gap: 1px;
+        width: 100%;
+        font-size: 0.85em;
+        margin: 0;
+        background-color: var(--pe-line);
+        min-width: 906px;
+        position: relative;
+    }
+
+    /* Colonnes additionnelles : stockage temporaire / occupation standard / occupation calculée */
+    .extra-col-header {
+        background: var(--pe-utility-tint);
+    }
+
+    .temp-storage-cell {
+        background-color: var(--pe-utility-tint);
+    }
+
+    .temp-storage-cell.row-odd {
+        background-color: var(--pe-utility-tint);
+    }
+
+    .extra-col-cell {
+        border: 1px solid var(--pe-line);
+        height: 40px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9em;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    .standard-occupation-cell {
+        background: var(--pe-surface);
+    }
+
+    .standard-occupation-input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        padding: 0;
+        text-align: center;
+        font-weight: 600;
+        font-size: inherit;
+        font-family: inherit;
+        color: var(--pe-ink);
+        background: transparent;
+        /* Masquer les flèches +/- pour rester très étroit (un seul chiffre) */
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+
+    .standard-occupation-input::-webkit-outer-spin-button,
+    .standard-occupation-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .standard-occupation-input:focus {
+        outline: 2px solid var(--pe-accent);
+        outline-offset: -2px;
+    }
+
+    .computed-occupation-cell {
+        background: var(--pe-utility-tint);
+        color: var(--pe-ink-soft);
+        font-weight: 600;
+    }
+
+    .computed-occupation-cell.occupation-match {
+        background-color: var(--pe-good-tint);
+        color: var(--pe-good);
+    }
+
+    .computed-occupation-cell.occupation-mismatch {
+        background-color: var(--pe-warn-tint);
+        color: var(--pe-warn);
+    }
+
+    /* Repères horaires dessinés par-dessus les cartes de cours (colonnes des salles uniquement) */
+    .time-lines-overlay {
+        position: absolute;
+        top: 0;
+        /* 80px de colonne horaire + 1px de gap de la grille */
+        left: 81px;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        pointer-events: none;
+    }
+
+    /* Repères horaires : lignes fines et discrètes plutôt qu'un trait noir épais */
+    .time-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        border-top: 1px solid var(--pe-line-strong);
+    }
+
+    .time-line.time-line-dashed {
+        border-top-style: dashed;
+    }
+
+    /* Repère pause (12h15 / 15h15) : une bande ambrée douce plutôt qu'un trait noir */
+    .time-line.time-line-strong {
+        border-top: 1px solid var(--pe-other);
+        height: 6px;
+        transform: translateY(-3px);
+        background: var(--pe-other-tint);
+        opacity: 0.9;
+    }
+    
+    .grid-header {
+        display: contents;
+    }
+    
+    .time-header {
+        background: var(--pe-surface-2);
+        color: var(--pe-ink-faint);
+        text-align: center;
+        padding: 12px 8px;
+        font-weight: 600;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.72em;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border: 1px solid var(--pe-line-strong);
+        position: sticky;
+        left: 0;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .room-header-cell {
+        background: var(--pe-accent);
+        color: #ffffff;
+        text-align: center;
+        padding: 12px 4px;
+        font-weight: 600;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        border: 1px solid var(--pe-line-strong);
+        font-size: 1.05em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .grid-row {
+        display: contents;
+    }
+
+    .time-cell {
+        background: var(--pe-ground);
+        color: var(--pe-ink-faint);
+        text-align: center;
+        padding: 0 8px;
+        font-weight: 500;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.92em;
+        border: 1px solid var(--pe-line);
+        border-right: 1px solid var(--pe-line-strong);
+        position: sticky;
+        left: 0;
+        z-index: 25;
+        height: 40px;
+    }
+
+    /* L'horaire est positionné pile sur la ligne de début du créneau,
+       pas centré dans la cellule qui suit */
+    .time-cell .time-label {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        transform: translateY(-50%);
+        line-height: 1;
+        pointer-events: none;
+    }
+
+    .time-cell.first-slot .time-label {
+        /* Le tout premier horaire (9h00) ne peut pas déborder sur l'en-tête */
+        top: 4px;
+        transform: none;
+    }
+
+    /* Zébrage très discret : les repères horaires suffisent, pas besoin d'un damier marqué */
+    .time-cell.row-odd,
+    .room-cell.row-odd {
+        background-color: var(--pe-surface-2);
+    }
+
+    /* Repère pause déjeuner / après-midi : une bande ambrée douce, pas un trait noir */
+    .room-cell.time-boundary-strong {
+        background-color: var(--pe-other-tint);
+    }
+    .room-cell.time-boundary-strong.row-odd {
+        background-color: var(--pe-other-tint);
+    }
+
+    .room-cell {
+        border: 1px solid var(--pe-line);
+        padding: 2px;
+        height: 40px;
+        background: var(--pe-surface);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        /* Permettre aux cours de déborder avec position absolute */
+        overflow: visible;
+    }
+    
+    .room-cell > .course-card {
+        display: block !important;
+        margin-bottom: 2px;
+    }
+    
+    .room-column {
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        background-color: #f8f9fa;
+        min-height: 400px;
+        display: none; /* Masquer l'ancien layout */
+    }
+    
+    .room-header {
+        background-color: #007bff;
+        color: white;
+        padding: 15px;
+        border-radius: 6px 6px 0 0;
+        font-weight: bold;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .room-content {
+        padding: 15px;
+        min-height: 350px;
+    }
+    
+    .time-slot-group {
+        margin-bottom: 15px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background-color: white;
+    }
+    
+    .time-slot-header {
+        background-color: #e9ecef;
+        padding: 8px 12px;
+        font-weight: bold;
+        color: #495057;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .time-slot-courses {
+        padding: 10px;
+        min-height: 60px;
+    }
+    
+    .course-card {
+        background: var(--pe-physics-tint);
+        color: var(--pe-ink);
+        border-radius: 6px;
+        padding: 4px 6px;
+        margin: 1px;
+        cursor: move;
+        font-size: 1.35em;
+        box-shadow: 0 1px 2px rgba(35,35,31,0.08);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        border: 1px solid var(--pe-line-strong);
+        border-left: 4px solid var(--pe-physics);
+        /* Positionné par CSS Grid pour s'étaler précisément selon la durée */
+        align-self: stretch;
+        width: calc(100% - 6px);
+        overflow: hidden;
+        z-index: 10;
+        /* Empêcher le débordement sur les autres colonnes */
+        justify-self: stretch;
+        text-align: center;
+        line-height: 1.1;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .course-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(35,35,31,0.14);
+    }
+
+    .course-card.dragging {
+        opacity: 0.6;
+        transform: rotate(5deg);
+        z-index: 1000;
+    }
+
+    .course-card .course-title {
+        font-weight: bold;
+        margin-bottom: 1px;
+        font-size: 0.85em;
+        line-height: 1;
+    }
+
+    .course-card .course-level {
+        font-size: 0.75em;
+        opacity: 0.9;
+        line-height: 1;
+    }
+
+    .course-card .course-teacher {
+        font-size: 0.7em;
+        opacity: 0.8;
+        margin-top: 1px;
+        line-height: 1;
+    }
+
+    .course-card.physics {
+        background: var(--pe-physics-tint);
+        border-left-color: var(--pe-physics);
+    }
+
+    .course-card.chemistry {
+        background: var(--pe-chemistry-tint);
+        border-left-color: var(--pe-chemistry);
+    }
+
+    .course-card.other {
+        background: var(--pe-other-tint);
+        border-left-color: var(--pe-other);
+        color: var(--pe-ink);
+    }
+
+    .drop-zone {
+        min-height: 60px;
+        background-color: transparent;
+        border: 1px dashed var(--pe-line);
+        border-radius: 4px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        padding: 5px;
+        transition: all 0.3s ease;
+    }
+    
+    /* Cellule vide : silencieuse au repos, discrète au survol seulement */
+    .room-cell.drop-zone {
+        min-height: 27px !important;
+        border: 1px solid var(--pe-line) !important;
+        background-color: var(--pe-surface) !important;
+        transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+    .room-cell.drop-zone.row-odd {
+        background-color: var(--pe-surface-2) !important;
+    }
+    .room-cell.drop-zone:hover {
+        border-color: var(--pe-line-strong) !important;
+        background-color: var(--pe-surface-2) !important;
+    }
+
+    /* Défilement horizontal pour les écrans étroits */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+
+    .table-responsive .planning-grid {
+        margin-bottom: 0;
+    }
+
+    .drop-zone.drag-over {
+        border-color: var(--pe-accent) !important;
+        background-color: var(--pe-accent-tint) !important;
+        transform: scale(1.04);
+        box-shadow: 0 0 0 2px var(--pe-accent);
+        position: relative;
+        z-index: 35;
+    }
+
+    .room-header-cell.drag-target,
+    .time-cell.drag-target {
+        background: var(--pe-other) !important;
+        color: #ffffff !important;
+        transform: scale(1.05);
+        box-shadow: 0 0 8px rgba(165,118,47,0.5);
+        position: relative;
+        z-index: 40;
+    }
+
+    /* Le texte d'invite ne s'affiche qu'au survol : les dizaines de cases vides
+       de la grille restent silencieuses le reste du temps */
+    .drop-zone:empty::before {
+        content: "";
+        color: var(--pe-ink-faint);
+        font-style: italic;
+        font-size: 0.85em;
+        align-self: center;
+        width: 100%;
+        text-align: center;
+    }
+    .room-cell.drop-zone:hover:empty::before {
+        content: "+";
+        font-style: normal;
+        font-size: 1.1em;
+    }
+
+    .stats-panel {
+        background-color: var(--pe-surface-2);
+        border: 1px solid var(--pe-line-strong);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-item {
+        display: inline-block;
+        margin-right: 20px;
+        padding: 8px 12px;
+        background-color: var(--pe-surface);
+        border: 1px solid var(--pe-line);
+        border-radius: 5px;
+        border-left: 4px solid var(--pe-accent);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.92em;
+    }
+
+    .stat-item.warning {
+        border-left-color: var(--pe-other);
+    }
+
+    .stat-item.error {
+        border-left-color: var(--pe-warn);
+    }
+
+    .controls-panel {
+        background-color: var(--pe-surface);
+        border: 1px solid var(--pe-line-strong);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 2px rgba(35,35,31,.05);
+    }
+
+    .legend {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 10px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .legend-color {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid var(--pe-line-strong);
+    }
+
+    .legend-color.physics {
+        background: var(--pe-physics-tint);
+        border-left: 3px solid var(--pe-physics);
+    }
+
+    .legend-color.chemistry {
+        background: var(--pe-chemistry-tint);
+        border-left: 3px solid var(--pe-chemistry);
+    }
+
+    .legend-color.other {
+        background: var(--pe-other-tint);
+        border-left: 3px solid var(--pe-other);
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+    
+    .prepared-badge {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        background: white;
+        color: #198754;
+        border-radius: 50%;
+        width: 17px;
+        height: 17px;
+        font-size: 11px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    @media (max-width: 768px) {
+        .planning-editor {
+            font-size: 0.8em;
+        }
+        
+        .planning-grid th,
+        .planning-grid td {
+            min-width: 80px;
+            padding: 4px;
+        }
+        
+        .course-card {
+            min-height: 40px;
+            font-size: 0.7em;
+        }
+        
+        .controls-panel {
+            padding: 10px;
+        }
+        
+        .stat-item {
+            display: block;
+            margin-right: 0;
+            margin-bottom: 10px;
+        }
+    }
+
+    /* Touche d'ensemble : accorder les contrôles Bootstrap à la nouvelle palette */
+    .container-fluid:has(.planning-editor) h2 {
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        font-weight: 600;
+        color: var(--pe-ink);
+    }
+    .btn-primary {
+        --bs-btn-bg: var(--pe-accent);
+        --bs-btn-border-color: var(--pe-accent);
+        --bs-btn-hover-bg: #275b58;
+        --bs-btn-hover-border-color: #275b58;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-calendar-alt"></i> Éditeur de planning interactif <span class="badge" style="background:var(--pe-other-tint);color:var(--pe-other);font-weight:600;font-size:.5em;vertical-align:middle;">test visuel</span></h2>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" onclick="resetPlanning()">
+                        <i class="fas fa-undo"></i> Réinitialiser
+                    </button>
+                    <a href="/admin" class="btn btn-secondary me-2">
+                        <i class="fas fa-arrow-left"></i> Retour admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Panneau de contrôles -->
+    <div class="controls-panel">
+        <div class="row">
+            <div class="col-md-6">
+                <h5>Configuration du jour</h5>
+                <div class="row">
+                    <div class="col-6">
+                        <label for="target-date" class="form-label">Date du planning:</label>
+                        <input type="date" id="target-date" class="form-control" required>
+                    </div>
+                    <div class="col-6 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary" onclick="loadPlanningData()">
+                            <i class="fas fa-cogs"></i> Générer et éditer le planning
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted">Le planning sera généré automatiquement par OR-Tools puis affiché pour édition manuelle.</small>
+            </div>
+            <div class="col-md-6">
+                <h5>Actions</h5>
+                <button type="button" class="btn btn-success" onclick="generateFinalPlanning()" id="generate-btn">
+                    <i class="fas fa-file-excel"></i> Générer planning Excel final
+                </button>
+                <button type="button" class="btn btn-info" onclick="reloadPlanning()">
+                    <i class="fas fa-sync"></i> Recharger le planning
+                </button>
+                <div class="legend mt-2">
+                    <strong>Légende:</strong>
+                    <div class="legend-item">
+                        <div class="legend-color physics"></div>
+                        <span>Physique</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color chemistry"></div>
+                        <span>Chimie</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color other"></div>
+                        <span>Autre</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Panneau de statistiques -->
+    <div class="stats-panel" id="stats-panel" style="display: none;">
+        <h5>Statistiques du planning</h5>
+        <div id="stats-content">
+            <!-- Les statistiques seront chargées ici -->
+        </div>
+    </div>
+    
+    <!-- Zone d'édition du planning par salle -->
+    <div class="planning-editor">
+        <div class="row" id="rooms-container">
+            <!-- Les salles seront générées dynamiquement -->
+        </div>
+    </div>
+    
+    <!-- Observations du planning -->
+    <div class="mt-4" id="observations-section" style="display:none;">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <label for="planningObservations" class="form-label fw-bold mb-0">Observations du planning</label>
+            <small id="obs-save-status" class="text-muted" style="font-size:0.8em;"></small>
+        </div>
+        <textarea id="planningObservations" class="form-control" rows="3"
+                  placeholder="Notes internes pour ce planning…"
+                  style="resize:vertical;"></textarea>
+    </div>
+
+    <!-- Message quand aucun planning n'est chargé -->
+    <div id="no-planning-message" class="text-center py-5">
+        <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+        <h4 class="text-muted">Aucun planning chargé</h4>
+        <p class="text-muted">Sélectionnez une date et cliquez sur "Générer et éditer le planning" pour que OR-Tools optimise automatiquement les assignations de salles.</p>
+        <p class="text-muted">Vous pourrez ensuite modifier manuellement le planning avant l'export Excel.</p>
+    </div>
+
+    <!-- Conteneur pour le planning généré -->
+    <div id="planningContainer"></div>
+
+    <!-- Conteneur pour afficher l'état de chargement -->
+    <div id="loading-container"></div>
+</div>
+
+<!-- Modal détail TP (read-only, même structure que "Voir les demandes") -->
+
+<!-- Overlay de chargement -->
+<div id="loading-overlay" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h5 class="mt-3">Chargement en cours...</h5>
+        <p class="text-muted mb-0" id="loading-message">Génération du planning initial...</p>
+    </div>
+</div>
+
+<!-- Conteneur pour les alertes -->
+<div id="alert-container" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 1050; width: 50%;"></div>
+
+{% include '_request_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+{% include '_request_modal_js.html' %}
+<script>
+    // Rafraîchit la carte d'une demande modifiée/supprimée via la modale,
+    // sans relancer l'optimiseur (les autres cours ne bougent pas).
+    async function loadRequests() {
+        if (!planningData) return;
+        const requestId = document.getElementById('editRequestId').value;
+        if (!requestId) return;
+
+        const idx = planningData.courses.findIndex(c => String(c.request_id) === String(requestId));
+        if (idx === -1) return;
+
+        const targetDate = document.getElementById('target-date').value;
+        try {
+            const response = await fetch(`/api/planning-editor/course/${requestId}?date=${targetDate}`);
+            if (response.status === 404) {
+                // La demande a été supprimée : retirer la carte et son emplacement
+                const removedId = planningData.courses[idx].id;
+                planningData.courses.splice(idx, 1);
+                delete currentRoomAssignments[removedId];
+                if (planningData.room_assignments) delete planningData.room_assignments[removedId];
+            } else if (response.ok) {
+                const updated = await response.json();
+                const oldId = planningData.courses[idx].id;
+                planningData.courses[idx] = Object.assign({}, planningData.courses[idx], updated, { id: oldId });
+            } else {
+                return;
+            }
+            await syncPreparedStates();
+            renderPlanningGrid();
+            updateStats();
+            await savePlanningData();
+        } catch (e) {
+            console.warn('loadRequests: rafraîchissement impossible:', e);
+        }
+    }
+    // Hook: update prepared badge on card when toggled from the modal
+    window.onPreparedToggled = function(requestId, isPrepared) {
+        const card = document.querySelector(`.course-card[data-request-id="${requestId}"]`);
+        if (!card) return;
+        const badge = card.querySelector('.prepared-badge');
+        if (isPrepared && !badge) {
+            const span = document.createElement('span');
+            span.className = 'prepared-badge';
+            span.textContent = '✓';
+            card.insertBefore(span, card.firstChild);
+        } else if (!isPrepared && badge) {
+            badge.remove();
+        }
+        card.dataset.prepared = isPrepared ? '1' : '0';
+        const course = planningData?.courses?.find(c => c.request_id == requestId);
+        if (course) course.prepared = isPrepared;
+    };
+
+    let planningData = null;
+    let currentAssignments = {};
+    let currentRoomAssignments = {};
+    let draggedElement = null;
+    let originalPosition = null;
+
+    // Identifiant de la colonne "stockage temporaire" (pas une vraie salle) et données
+    // de la colonne "Occupation standard" ({slot: valeur}) pour le jour de semaine affiché
+    const TEMP_STORAGE_ID = '__TEMP__';
+    let standardOccupationData = {};
+
+    async function syncPreparedStates() {
+        if (!planningData?.courses) return;
+        const ids = planningData.courses.map(c => c.request_id).filter(id => id != null && Number.isInteger(Number(id)));
+        if (ids.length === 0) return;
+        try {
+            const resp = await fetch(`/api/requests/prepared-states?ids=${ids.join(',')}`);
+            if (!resp.ok) return;
+            const states = await resp.json();
+            planningData.courses.forEach(course => {
+                if (course.request_id != null) {
+                    const s = states[String(course.request_id)];
+                    if (s !== undefined) course.prepared = s;
+                }
+            });
+        } catch (e) {
+            console.warn('syncPreparedStates failed:', e);
+        }
+    }
+    const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
+    
+    // Initialiser la date par défaut (demain) et charger le planning correspondant s'il existe
+    document.addEventListener('DOMContentLoaded', function() {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const targetDate = tomorrow.toISOString().split('T')[0];
+        document.getElementById('target-date').value = targetDate;
+        reloadPlanningIfExists(targetDate);
+    });
+    
+    // Charger les données du planning
+    async function loadPlanningData() {
+        const targetDate = document.getElementById('target-date').value;
+        
+        if (!targetDate) {
+            showAlert('Veuillez sélectionner une date.', 'warning');
+            return;
+        }
+        
+        showLoading('loading-container');
+
+        try {
+            console.log('🔄 Appel API avec date:', targetDate);
+            // Lancée en parallèle de la requête principale (pas après) pour ne pas ajouter
+            // un aller-retour réseau supplémentaire au temps de chargement perçu.
+            const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+            const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
+            console.log('📡 Réponse API status:', response.status);
+            const data = await response.json();
+            console.log('📋 Données reçues:', data);
+
+            if (response.ok) {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                if (!data.courses || data.courses.length === 0) {
+                    throw new Error('Aucun cours trouvé pour cette date.');
+                }
+
+                planningData = data;
+                currentAssignments = { ...data.assignments };
+                currentRoomAssignments = { ...data.room_assignments || {} };
+
+                document.getElementById('observations-section').style.display = '';
+
+                await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+                renderPlanningGrid();
+                updateStats();
+                document.getElementById('generate-btn').disabled = false;
+                showAlert('Planning généré et prêt à éditer!', 'success');
+
+                // Enregistrement automatique dès la première génération
+                await savePlanningData();
+            } else {
+                throw new Error(data.error || 'Erreur lors de la génération');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
+        } finally {
+            hideLoading('loading-container');
+        }
+    }
+    
+    // Afficher le planning en grille type Excel
+    function renderPlanningGrid() {
+        console.log('🎨 renderPlanningGrid() appelée, planningData:', planningData);
+        if (!planningData) {
+            console.log('❌ Pas de planningData, arrêt');
+            return;
+        }
+        
+        const container = document.getElementById('rooms-container');
+        console.log('📦 Container trouvé:', container);
+        
+        // IMPORTANT: Réinitialiser complètement le container pour éviter les cours fantômes
+        console.log('🧹 Nettoyage du container avant re-rendu');
+        container.innerHTML = '';
+        container.className = 'table-responsive'; // Ajouter classe responsive pour défilement horizontal
+        
+        const rooms = planningData.rooms;
+        console.log('🔍 DEBUG: planningData structure:', Object.keys(planningData));
+        console.log('🔍 DEBUG: rooms variable:', rooms);
+        console.log('🔍 DEBUG: rooms type:', typeof rooms);
+        console.log('🔍 DEBUG: rooms is array?', Array.isArray(rooms));
+        
+        // Générer tous les créneaux de 15 minutes de 9h00 à 19h15 côté client
+        const timeSlots = generateAllTimeSlots();
+        
+        console.log('🏢 Salles disponibles:', rooms);
+        console.log('⏰ Créneaux horaires complets (15min):', timeSlots);
+        console.log('📊 Total créneaux:', timeSlots.length);
+        
+        // Créer la grille principale
+        const grid = document.createElement('div');
+        grid.className = 'planning-grid';
+        console.log('📋 Grille créée:', grid);
+        
+        // En-tête avec les noms des salles
+        const headerRow = document.createElement('div');
+        headerRow.className = 'grid-header';
+        
+        // Cellule vide pour l'angle
+        const cornerCell = document.createElement('div');
+        cornerCell.className = 'time-header';
+        cornerCell.textContent = 'Horaire';
+        headerRow.appendChild(cornerCell);
+        
+        // En-têtes des salles
+        rooms.forEach(room => {
+            const roomHeaderCell = document.createElement('div');
+            roomHeaderCell.className = 'room-header-cell';
+            roomHeaderCell.dataset.room = room.name;
+            roomHeaderCell.textContent = room.name;
+            headerRow.appendChild(roomHeaderCell);
+        });
+
+        // En-têtes des 3 colonnes additionnelles : stockage temporaire, occupation standard, occupation calculée
+        const tempHeaderCell = document.createElement('div');
+        tempHeaderCell.className = 'room-header-cell extra-col-header';
+        tempHeaderCell.dataset.room = TEMP_STORAGE_ID;
+        tempHeaderCell.textContent = 'Stockage';
+        tempHeaderCell.title = 'Zone temporaire pour échanger deux cours (à vider avant enregistrement)';
+        headerRow.appendChild(tempHeaderCell);
+
+        const standardHeaderCell = document.createElement('div');
+        standardHeaderCell.className = 'room-header-cell extra-col-header';
+        standardHeaderCell.title = 'Occupation standard';
+        headerRow.appendChild(standardHeaderCell);
+
+        const computedHeaderCell = document.createElement('div');
+        computedHeaderCell.className = 'room-header-cell extra-col-header';
+        computedHeaderCell.title = 'Cours simultanés';
+        headerRow.appendChild(computedHeaderCell);
+
+        grid.appendChild(headerRow);
+        
+        // Debug des correspondances IDs
+        console.log('🔍 Premiers cours (IDs):', planningData.courses.slice(0, 3).map(c => ({id: c.id, teacher: c.teacher, subject: c.subject})));
+        console.log('🔍 Room assignments (clés):', Object.keys(currentRoomAssignments).slice(0, 5));
+        console.log('🔍 currentRoomAssignments complet:', currentRoomAssignments);
+        console.log('🔍 Correspondance ID cours 0:', {
+            courseId: planningData.courses[0]?.id,
+            assignment: currentRoomAssignments[planningData.courses[0]?.id]
+        });
+        
+        // Compteur de placement des cours
+        let totalCoursesPlaced = 0;
+        let placementByRoom = {};
+        rooms.forEach(room => placementByRoom[room.name] = 0);
+        
+        // Créneaux dont la ligne de début doit être davantage mise en évidence
+        // (repère pause déjeuner / après-midi)
+        const strongBoundarySlots = ['12h15', '15h15'];
+        // Référence des cellules horaires, pour positionner les repères une fois la grille insérée dans le DOM
+        // (mesure réelle plutôt qu'un calcul manuel, pour rester fiable quel que soit le rendu du CSS Grid)
+        const slotBoundaryCells = [];
+
+        // Créer une ligne pour chaque créneau horaire avec hauteur proportionnelle à la durée
+        timeSlots.forEach((slot, slotIndex) => {
+            const row = document.createElement('div');
+            row.className = 'grid-row';
+
+            // Calculer la hauteur en fonction de la durée du créneau
+            const slotDuration = getSlotDuration(slot);
+            // Base: 40px pour 30min, 60px pour 45min, 80px pour 60min
+            const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
+            const isOddRow = slotIndex % 2 === 1;
+            const isStrongBoundary = strongBoundarySlots.includes(slot);
+
+            // Cellule de l'horaire
+            const timeCell = document.createElement('div');
+            timeCell.className = 'time-cell';
+            if (isOddRow) timeCell.classList.add('row-odd');
+            if (slotIndex === 0) timeCell.classList.add('first-slot');
+            timeCell.dataset.slot = slot;
+            timeCell.style.height = `${cellHeight}px`;
+            const timeLabel = document.createElement('span');
+            timeLabel.className = 'time-label';
+            timeLabel.textContent = slot;
+            timeCell.appendChild(timeLabel);
+            row.appendChild(timeCell);
+            slotBoundaryCells.push({ el: timeCell, isStrong: isStrongBoundary, isOdd: isOddRow });
+
+            // Cellules vides pour chaque salle (les cours seront positionnés par position absolute)
+            rooms.forEach((room, roomIndex) => {
+                const roomCell = document.createElement('div');
+                roomCell.className = 'room-cell drop-zone';
+                if (isOddRow) roomCell.classList.add('row-odd');
+                if (isStrongBoundary) roomCell.classList.add('time-boundary-strong');
+                roomCell.dataset.room = room.name;
+                roomCell.dataset.slot = slot;
+                roomCell.dataset.slotIndex = slotIndex;
+                roomCell.dataset.roomIndex = roomIndex;
+                roomCell.style.height = `${cellHeight}px`;
+
+                // Configurer les événements de drop
+                setupDropZone(roomCell);
+
+                row.appendChild(roomCell);
+            });
+
+            // Colonne de stockage temporaire (échange de deux cours) : se comporte comme une salle
+            // "virtuelle" pour le drag & drop, mais n'est jamais persistée comme une vraie salle
+            const tempCell = document.createElement('div');
+            tempCell.className = 'room-cell drop-zone temp-storage-cell';
+            if (isOddRow) tempCell.classList.add('row-odd');
+            if (isStrongBoundary) tempCell.classList.add('time-boundary-strong');
+            tempCell.dataset.room = TEMP_STORAGE_ID;
+            tempCell.dataset.slot = slot;
+            tempCell.dataset.slotIndex = slotIndex;
+            tempCell.style.height = `${cellHeight}px`;
+            setupDropZone(tempCell);
+            row.appendChild(tempCell);
+
+            // Colonne "Occupation standard" : saisie manuelle, persistée par jour de semaine + créneau
+            const standardCell = document.createElement('div');
+            standardCell.className = 'extra-col-cell standard-occupation-cell';
+            if (isOddRow) standardCell.classList.add('row-odd');
+            if (isStrongBoundary) standardCell.classList.add('time-boundary-strong');
+            standardCell.style.height = `${cellHeight}px`;
+            const standardInput = document.createElement('input');
+            standardInput.type = 'number';
+            standardInput.min = '0';
+            standardInput.className = 'standard-occupation-input';
+            const existingStandardValue = standardOccupationData[slot];
+            standardInput.value = (existingStandardValue === undefined || existingStandardValue === null) ? '' : existingStandardValue;
+            standardCell.appendChild(standardInput);
+            row.appendChild(standardCell);
+
+            // Colonne "Cours simultanés" : calculée par l'application, comparée à l'occupation standard
+            const computedCell = document.createElement('div');
+            computedCell.className = 'extra-col-cell computed-occupation-cell';
+            if (isOddRow) computedCell.classList.add('row-odd');
+            if (isStrongBoundary) computedCell.classList.add('time-boundary-strong');
+            computedCell.style.height = `${cellHeight}px`;
+            row.appendChild(computedCell);
+
+            const refreshComputedCell = () => {
+                const count = countSimultaneousCourses(slot);
+                computedCell.textContent = count;
+                const standardValue = standardOccupationData[slot];
+                computedCell.classList.remove('occupation-match', 'occupation-mismatch');
+                if (standardValue !== undefined && standardValue !== null && standardValue !== '') {
+                    computedCell.classList.add(count === Number(standardValue) ? 'occupation-match' : 'occupation-mismatch');
+                }
+            };
+            refreshComputedCell();
+
+            standardInput.addEventListener('change', async () => {
+                const raw = standardInput.value;
+                const value = raw === '' ? null : parseInt(raw, 10);
+                if (value !== null) standardOccupationData[slot] = value;
+                else delete standardOccupationData[slot];
+                refreshComputedCell();
+                await saveStandardOccupation(document.getElementById('target-date').value, slot, value);
+            });
+
+            grid.appendChild(row);
+        });
+
+        // Placer les cours dans leurs cellules de début avec débordement contrôlé
+        planningData.courses.forEach(course => {
+            const assignedRoom = currentRoomAssignments[course.id];
+            if (!assignedRoom) return;
+            
+            // Trouver l'index du créneau de début
+            const startSlotIndex = timeSlots.findIndex(slot => slot === course.time);
+            if (startSlotIndex === -1) {
+                console.warn(`⚠️ Créneau introuvable pour ${course.time}`, timeSlots);
+                return;
+            }
+            
+            // Trouver l'index de la salle (le stockage temporaire n'est pas une vraie salle mais reste valide)
+            const roomIndex = rooms.findIndex(room => room.name === assignedRoom);
+            if (roomIndex === -1 && assignedRoom !== TEMP_STORAGE_ID) return;
+            
+            // Trouver la cellule de départ
+            const startCell = grid.querySelector(`[data-slot="${course.time}"][data-room="${assignedRoom}"]`);
+            if (!startCell) {
+                console.warn(`⚠️ Cellule introuvable pour ${course.time} - ${assignedRoom}`);
+                return;
+            }
+            
+            // Créer le cours avec débordement sur plusieurs cellules
+            const courseCard = createCourseCardWithOverflow(course, startSlotIndex, timeSlots);
+            
+            // L'ajouter à la cellule de départ
+            startCell.appendChild(courseCard);
+            
+            totalCoursesPlaced++;
+            if (placementByRoom[assignedRoom] !== undefined) placementByRoom[assignedRoom]++;
+        });
+        
+        container.appendChild(grid);
+        console.log('✅ Grille ajoutée au container');
+
+        // Overlay de repères horaires dessiné par-dessus les cartes de cours :
+        // une ligne fine, la suivante en pointillé, en alternance, avec 12h15/15h15 renforcées.
+        // Positionné par mesure réelle (getBoundingClientRect) une fois la grille dans le DOM,
+        // pour rester fiable quels que soient les gaps/bordures du CSS Grid.
+        const linesOverlay = document.createElement('div');
+        linesOverlay.className = 'time-lines-overlay';
+        const gridRect = grid.getBoundingClientRect();
+        slotBoundaryCells.forEach(boundary => {
+            const cellRect = boundary.el.getBoundingClientRect();
+            const line = document.createElement('div');
+            line.className = 'time-line' + (boundary.isStrong ? ' time-line-strong' : (boundary.isOdd ? ' time-line-dashed' : ''));
+            line.style.top = `${cellRect.top - gridRect.top}px`;
+            linesOverlay.appendChild(line);
+        });
+        grid.appendChild(linesOverlay);
+        
+        // Debug du placement final
+        console.log('📊 PLACEMENT FINAL:', {
+            totalCoursesPlaced: totalCoursesPlaced,
+            placementByRoom: placementByRoom,
+            totalCoursesExpected: planningData.courses.length
+        });
+        
+        // Masquer le message "aucun planning"
+        const noMsg = document.getElementById('no-planning-message');
+        const statsPanel = document.getElementById('stats-panel');
+        console.log('🎭 Masquage du message "aucun planning", éléments:', noMsg, statsPanel);
+        
+        if (noMsg) noMsg.style.display = 'none';
+        if (statsPanel) statsPanel.style.display = 'block';
+        
+        console.log('✅ renderPlanningGrid() terminé avec succès');
+    }
+    
+    // Créer une carte de cours
+    function createCourseCard(course, startSlotIndex, timeSlots) {
+        const card = document.createElement('div');
+        card.className = `course-card ${getCourseType(course.subject)}`;
+        card.draggable = true;
+        card.dataset.courseId = course.id;
+        
+        // Calculer la position de fin précise du cours
+        const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+        const endSlotPosition = calculateEndSlotPosition(startSlotIndex, durationInMinutes);
+        
+        // Utiliser CSS Grid pour positionner et étendre le cours
+        // +2 car nous avons une ligne d'en-tête (index 1), les créneaux commencent à l'index 2
+        const gridRowStart = startSlotIndex + 2;
+        const gridRowEnd = endSlotPosition + 2;
+        
+        card.style.gridRowStart = gridRowStart;
+        card.style.gridRowEnd = gridRowEnd;
+        card.style.zIndex = '10';
+        
+        // Formatage de la durée pour affichage
+        const durationText = course.duration ? formatDuration(course.duration) : '';
+        
+        // Construire la liste des équipements spécifiques
+        const equipments = [];
+        if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
+        if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
+        if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
+        if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
+        if (course.obscurite_totale > 0) equipments.push(`🌑 Obscurité totale`);
+        if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
+        if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
+        if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
+        if (course.examen > 0) equipments.push(`📝 Examen`);
+        
+        const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
+        const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
+        
+        card.innerHTML = `
+            <div class="course-title">${course.subject}</div>
+            <div class="course-level">${course.level}</div>
+            <div class="course-teacher">${course.teacher}</div>
+            <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
+            ${requestNameLine}
+            ${equipmentLine}
+        `;
+        
+        console.log(`📅 Cours ${course.subject} - Grid: lignes ${gridRowStart} à ${gridRowEnd} (${durationInMinutes}min)`);
+        
+        // Ajouter les événements de drag
+        setupDragEvents(card);
+        
+        return card;
+    }
+
+    // Créer une carte de cours avec débordement contrôlé
+    function createCourseCardWithOverflow(course, startSlotIndex, timeSlots) {
+        const card = document.createElement('div');
+        card.className = `course-card ${getCourseType(course.subject)}`;
+        card.draggable = true;
+        card.dataset.courseId = course.id;
+        
+        // Calculer la durée en minutes
+        const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+        
+        // Calculer la hauteur totale en cumulant les hauteurs des créneaux traversés
+        let totalHeight = 0;
+        let remainingDuration = durationInMinutes;
+        let currentSlotIndex = startSlotIndex;
+        
+        while (remainingDuration > 0 && currentSlotIndex < timeSlots.length) {
+            const slot = timeSlots[currentSlotIndex];
+            const slotDuration = getSlotDuration(slot);
+            const usedDuration = Math.min(remainingDuration, slotDuration);
+            
+            // Calculer la hauteur proportionnelle de ce créneau
+            const baseCellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
+            const proportionalHeight = (usedDuration / slotDuration) * baseCellHeight;
+            
+            totalHeight += proportionalHeight;
+            remainingDuration -= usedDuration;
+            currentSlotIndex++;
+        }
+
+        // Utiliser position absolute pour déborder sur les cellules suivantes
+        card.style.position = 'absolute';
+        card.style.top = '1px';
+        card.style.left = '1px';
+        card.style.right = '1px';
+        card.style.height = `${totalHeight - 2}px`; // -2px pour les marges
+        card.style.zIndex = '10';
+        
+        // Formatage de la durée pour affichage
+        const durationText = course.duration ? formatDuration(course.duration) : '';
+
+        // Supprimer les mots "chimie", "physique" ou "mixte" du sujet
+        const filteredSubject = course.subject.replace(/\b(chimie|physique|mixte)\b/gi, '').trim();
+
+        // Construire la liste des équipements spécifiques
+        const equipments = [];
+        if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
+        if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
+        if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
+        if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
+        if (course.obscurite_totale > 0) equipments.push(`🌑 Obscurité totale`);
+        if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
+        if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
+        if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
+        if (course.examen > 0) equipments.push(`📝 Examen`);
+        
+        const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
+        const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
+
+        const preparedBadge = course.prepared ? '<span class="prepared-badge">✓</span>' : '';
+
+        const teacherDisplay = course.teacher_short_name || course.teacher;
+        const levelDisplay = course.level_short_name || course.level;
+        const laboObs = course.labo_observations ? `<div style="font-size:0.75em; color:#555; margin-top:2px; font-style:italic;">${course.labo_observations}</div>` : '';
+        const isClasseEntiere = course.level === '2nd Classe';
+        const studentLine = (isClasseEntiere && course.students > 0)
+            ? `<div style="font-weight:bold; font-size:1.5em; margin-top:1px;">${course.students}</div>` : '';
+
+        card.innerHTML = `
+            ${preparedBadge}
+            <div style="font-weight:bold; font-size:1.5em; line-height:1.2;">${teacherDisplay}</div>
+            <div style="font-size:0.9em;">${levelDisplay}</div>
+            ${laboObs}
+            ${studentLine}
+        `;
+
+        card.dataset.prepared = course.prepared ? '1' : '0';
+        if (course.request_id) card.dataset.requestId = course.request_id;
+
+        console.log(`📅 Cours ${course.subject} - Hauteur cumulée: ${totalHeight.toFixed(1)}px (${durationInMinutes}min)`);
+
+        // Ajouter les événements de drag
+        setupDragEvents(card);
+
+        // Double-clic : ouvrir la modale de modification
+        card.addEventListener('dblclick', function(e) {
+            e.stopPropagation();
+            const dbId = course.request_id && Number.isInteger(Number(course.request_id)) ? course.request_id : null;
+            if (!dbId) {
+                showAlert('Régénérez le planning (bouton "Générer et éditer") pour activer la visualisation des demandes.', 'warning');
+                return;
+            }
+            editRequest(dbId);
+        });
+
+        return card;
+    }
+    
+    // Calculer la hauteur d'un cours basée sur sa durée
+    function calculateCourseHeight(duration) {
+        // Système de hauteur proportionnelle à la durée réelle
+        // Base : 40px pour 55min (cours le plus court)
+        // Échelle : 55min=40px, 85min=60px, 110min=80px
+        const baseHeight = 40; // pixels pour 55 minutes (cours le plus court)
+        const baseDuration = 55; // minutes (cours le plus court)
+        
+        // Convertir la durée en minutes si nécessaire
+        let durationInMinutes = duration;
+        if (typeof duration === 'string') {
+            // Parser la durée si c'est une chaîne (ex: "1h30", "90min", "1.5h")
+            durationInMinutes = parseDurationToMinutes(duration);
+        }
+        
+        // Calculer la hauteur proportionnelle avec un facteur d'échelle légèrement réduit
+        const scaleFactor = 0.7; // Pour éviter des cours trop hauts
+        const rawHeight = (durationInMinutes / baseDuration) * baseHeight;
+        const calculatedHeight = Math.max(35, Math.min(120, rawHeight * scaleFactor));
+        
+        console.log(`📏 Durée: ${duration} (${durationInMinutes}min) -> Hauteur: ${Math.round(calculatedHeight)}px`);
+        return Math.round(calculatedHeight);
+    }
+    
+    // Mesurer dynamiquement la hauteur réelle des lignes de la grille
+    function getCellHeight() {
+        // Chercher une ligne de la grille (grid-row) existante pour mesurer sa hauteur réelle
+        const gridRow = document.querySelector('.grid-row .time-cell');
+        if (gridRow) {
+            const computedHeight = gridRow.getBoundingClientRect().height;
+            console.log(`📏 Hauteur ligne grille mesurée: ${computedHeight}px`);
+            return computedHeight;
+        }
+        
+        // Alternative: mesurer une cellule room-cell si time-cell n'est pas disponible
+        const roomCell = document.querySelector('.room-cell');
+        if (roomCell) {
+            const computedHeight = roomCell.getBoundingClientRect().height;
+            console.log(`📏 Hauteur cellule salle mesurée: ${computedHeight}px`);
+            return computedHeight;
+        }
+        
+        // Valeur de fallback si aucune cellule n'est trouvée
+        console.log('📏 Hauteur cellule fallback: 27px');
+        return 27; // Correspond au min-height du CSS
+    }
+
+    // Recalculer la hauteur des cours lors du redimensionnement
+    function updateCourseHeights() {
+        const courseCards = document.querySelectorAll('.course-card');
+        const newCellHeight = getCellHeight();
+        
+        courseCards.forEach(card => {
+            const courseId = card.dataset.courseId;
+            const course = planningData?.courses?.find(c => c.id === courseId);
+            if (course) {
+                const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
+                const newHeight = (durationInMinutes / 15) * newCellHeight * 1.3;
+                card.style.height = `${newHeight}px`;
+                console.log(`🔄 Cours ${courseId}: nouvelle hauteur ${newHeight}px`);
+            }
+        });
+    }
+
+    // Événement de redimensionnement de la fenêtre
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        // Debounce pour éviter trop d'appels
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            if (planningData) {
+                console.log('🔄 Redimensionnement détecté, recalcul des hauteurs...');
+                updateCourseHeights();
+            }
+        }, 250);
+    });
+
+    // Générer les créneaux horaires autorisés pour le début des cours
+    function generateAllTimeSlots() {
+        // Horaires de début de cours autorisés avec leurs durées jusqu'au prochain créneau
+        const authorizedSlots = [
+            '9h00',   // 30min jusqu'à 9h30
+            '9h30',   // 30min jusqu'à 10h00
+            '10h00',  // 45min jusqu'à 10h45
+            '10h45',  // 30min jusqu'à 11h15
+            '11h15',  // 30min jusqu'à 11h45
+            '11h45',  // 30min jusqu'à 12h15
+            '12h15',  // 30min jusqu'à 12h45
+            '12h45',  // 30min jusqu'à 13h15
+            '13h15',  // 30min jusqu'à 13h45
+            '13h45',  // 30min jusqu'à 14h15
+            '14h15',  // 30min jusqu'à 14h45
+            '14h45',  // 30min jusqu'à 15h15
+            '15h15',  // 30min jusqu'à 15h45
+            '15h45',  // 30min jusqu'à 16h15
+            '16h15',  // 30min jusqu'à 16h45
+            '16h45',  // 30min jusqu'à 17h15
+            '17h15',  // 30min jusqu'à 17h45
+            '17h45',  // 30min jusqu'à 18h15
+            '18h15',  // 30min jusqu'à 18h45
+            '18h45'   // 30min jusqu'à 19h15
+        ];
+        
+        console.log(`📅 Créneaux autorisés: ${authorizedSlots.length} horaires de début`);
+        console.log(`📅 Horaires: ${authorizedSlots.join(', ')}`);
+        
+        return authorizedSlots;
+    }
+    
+    // Calculer la durée en minutes entre deux créneaux horaires
+    function getSlotDuration(slot) {
+        const slotDurations = {
+            '9h00': 30,
+            '9h30': 30,
+            '10h00': 45,  // Durée spéciale
+            '10h45': 30,
+            '11h15': 30,
+            '11h45': 30,
+            '12h15': 30,
+            '12h45': 30,
+            '13h15': 30,
+            '13h45': 30,
+            '14h15': 30,
+            '14h45': 30,
+            '15h15': 30,
+            '15h45': 30,
+            '16h15': 30,
+            '16h45': 30,
+            '17h15': 30,
+            '17h45': 30,
+            '18h15': 30,
+            '18h45': 30
+        };
+        return slotDurations[slot] || 30;
+    }
+
+    // Convertir un horaire "9h30" en minutes depuis minuit
+    function slotToMinutes(slot) {
+        const m = /^(\d+)h(\d+)$/.exec(slot || '');
+        if (!m) return null;
+        return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+
+    // Nombre de cours réellement en cours (assignés à une vraie salle, hors stockage temporaire)
+    // à l'instant de début du créneau donné
+    function countSimultaneousCourses(slot) {
+        if (!planningData || !planningData.courses) return 0;
+        const slotStart = slotToMinutes(slot);
+        if (slotStart === null) return 0;
+
+        return planningData.courses.filter(course => {
+            const room = currentRoomAssignments[course.id];
+            if (!room || room === 'Non assigné' || room === TEMP_STORAGE_ID) return false;
+
+            const courseStart = slotToMinutes(course.time);
+            if (courseStart === null) return false;
+            const duration = course.duration || 0;
+
+            return slotStart >= courseStart && slotStart < courseStart + duration;
+        }).length;
+    }
+
+    // Nom du jour de semaine en français (lundi, mardi, ...) pour une date "YYYY-MM-DD"
+    function getWeekdayName(dateStr) {
+        const dayNames = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+        const date = new Date(`${dateStr}T00:00:00`);
+        return dayNames[date.getDay()];
+    }
+
+    // Charger l'occupation standard (colonne 2) pour le jour de semaine correspondant à la date affichée
+    async function loadStandardOccupationForDate(dateStr) {
+        standardOccupationData = {};
+        const day = getWeekdayName(dateStr);
+        if (!['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'].includes(day)) return;
+        try {
+            const response = await fetch(`/api/standard-occupation?day=${day}`);
+            if (response.ok) {
+                standardOccupationData = await response.json();
+            }
+        } catch (e) {
+            console.warn('loadStandardOccupationForDate a échoué:', e);
+        }
+    }
+
+    // Enregistrer une valeur de la colonne "Occupation standard"
+    async function saveStandardOccupation(dateStr, slot, value) {
+        const day = getWeekdayName(dateStr);
+        try {
+            await fetch('/api/standard-occupation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day, slot, value })
+            });
+        } catch (e) {
+            console.warn('saveStandardOccupation a échoué:', e);
+        }
+    }
+
+    // Calculer la position de fin exacte d'un cours selon sa durée
+    function calculateEndSlotPosition(startSlotIndex, durationInMinutes) {
+        // Chaque créneau = 15 minutes
+        // Position de fin = position de début + (durée / 15)
+        // Utilisation de nombres décimaux pour CSS Grid (ex: 5.5 pour s'arrêter au milieu du 6ème créneau)
+        const exactEndPosition = startSlotIndex + (durationInMinutes / 15);
+        
+        console.log(`📐 Position: début=${startSlotIndex}, durée=${durationInMinutes}min, fin=${exactEndPosition}`);
+        
+        return exactEndPosition;
+    }
+
+    // Calculer combien de créneaux de 15min un cours doit occuper (fonction de compatibilité)
+    function calculateSlotsNeeded(duration) {
+        const durationInMinutes = typeof duration === 'number' ? duration : parseDurationToMinutes(duration);
+        const slotsNeeded = Math.ceil(durationInMinutes / 15);
+        console.log(`📐 Durée ${duration} (${durationInMinutes}min) = ${slotsNeeded} créneaux de 15min`);
+        return slotsNeeded;
+    }
+
+    // Parser une durée en string vers des minutes
+    function parseDurationToMinutes(durationStr) {
+        if (typeof durationStr === 'number') return durationStr;
+        if (!durationStr) return 60; // Durée par défaut
+        
+        const str = durationStr.toString().toLowerCase();
+        
+        // Format "XhY" ou "Xh Y" (ex: "1h30", "2h 15")
+        const hoursMinutesMatch = str.match(/(\d+)h\s*(\d*)/);
+        if (hoursMinutesMatch) {
+            const hours = parseInt(hoursMinutesMatch[1]) || 0;
+            const minutes = parseInt(hoursMinutesMatch[2]) || 0;
+            return hours * 60 + minutes;
+        }
+        
+        // Format "X.Yh" (ex: "1.5h")
+        const decimalHoursMatch = str.match(/(\d+\.?\d*)h/);
+        if (decimalHoursMatch) {
+            const hours = parseFloat(decimalHoursMatch[1]);
+            return Math.round(hours * 60);
+        }
+        
+        // Format "Xmin" (ex: "90min")
+        const minutesMatch = str.match(/(\d+)min/);
+        if (minutesMatch) {
+            return parseInt(minutesMatch[1]);
+        }
+        
+        // Format numérique simple (assumé en minutes)
+        const numberMatch = str.match(/^(\d+)$/);
+        if (numberMatch) {
+            return parseInt(numberMatch[1]);
+        }
+        
+        // Par défaut, retourner 60 minutes
+        console.warn(`⚠️ Impossible de parser la durée "${durationStr}", utilisation de 60min par défaut`);
+        return 60;
+    }
+
+    // Formater une durée en minutes vers une chaîne lisible
+    function formatDuration(duration) {
+        const minutes = typeof duration === 'number' ? duration : parseDurationToMinutes(duration);
+        
+        if (minutes < 60) {
+            return `${minutes}min`;
+        } else {
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            if (remainingMinutes === 0) {
+                return `${hours}h`;
+            } else {
+                return `${hours}h${remainingMinutes.toString().padStart(2, '0')}`;
+            }
+        }
+    }
+
+    // Obtenir le type de cours pour le style
+    function getCourseType(subject) {
+        const subjectLower = subject.toLowerCase();
+        if (subjectLower.includes('physique') || subjectLower.includes('physics')) {
+            return 'physics';
+        } else if (subjectLower.includes('chimie') || subjectLower.includes('chemistry')) {
+            return 'chemistry';
+        } else {
+            return 'other';
+        }
+    }
+    
+    // Formater l'en-tête des jours
+    function formatDayHeader(day) {
+        const date = new Date(day);
+        const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+        const dayName = dayNames[date.getDay()];
+        const dayNum = date.getDate();
+        const month = date.getMonth() + 1;
+        return `${dayName} ${dayNum}/${month}`;
+    }
+    
+    // Configurer les événements de drag pour les cours
+    function setupDragEvents(card) {
+        card.addEventListener('dragstart', function(e) {
+            draggedElement = this;
+            originalPosition = this.parentElement;
+            this.classList.add('dragging');
+            
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.outerHTML);
+        });
+        
+        card.addEventListener('dragend', function(e) {
+            this.classList.remove('dragging');
+            clearDragHighlights();
+            draggedElement = null;
+            originalPosition = null;
+        });
+    }
+    
+    // Effacer toutes les mises en relief de drag (case, ligne d'horaire, colonne de salle)
+    function clearDragHighlights() {
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        document.querySelectorAll('.drag-target').forEach(el => el.classList.remove('drag-target'));
+    }
+
+    // Configurer les zones de drop
+    function setupDropZone(cell) {
+        cell.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            if (!this.classList.contains('drag-over')) {
+                clearDragHighlights();
+                this.classList.add('drag-over');
+
+                // Mettre en relief l'horaire et la salle de destination
+                const targetRoom = this.dataset.room;
+                const targetSlot = this.dataset.slot;
+                const headerCell = document.querySelector(`.room-header-cell[data-room="${targetRoom}"]`);
+                if (headerCell) headerCell.classList.add('drag-target');
+                const timeCell = document.querySelector(`.time-cell[data-slot="${targetSlot}"]`);
+                if (timeCell) timeCell.classList.add('drag-target');
+            }
+        });
+
+        cell.addEventListener('dragleave', function(e) {
+            this.classList.remove('drag-over');
+        });
+
+        cell.addEventListener('drop', function(e) {
+            e.preventDefault();
+            clearDragHighlights();
+            
+            if (draggedElement) {
+                const courseId = draggedElement.dataset.courseId; // Ne pas convertir en int !
+                const newRoom = this.dataset.room;
+                const newSlot = this.dataset.slot;
+                
+                console.log(`🔄 Déplacement: ${courseId} vers ${newRoom} à ${newSlot}`);
+                
+                // Mettre à jour l'assignation de salle
+                if (newRoom && courseId) {
+                    currentRoomAssignments[courseId] = newRoom;
+                    
+                    // IMPORTANT: Mettre à jour aussi planningData.room_assignments pour la sauvegarde
+                    if (planningData && planningData.room_assignments) {
+                        planningData.room_assignments[courseId] = newRoom;
+                    }
+                    
+                    // Mettre à jour le cours dans planningData
+                    const course = planningData.courses.find(c => c.id === courseId); // Comparaison stricte
+                    if (course) {
+                        course.room = newRoom;
+                        course.time = newSlot;
+                        console.log(`✅ Cours mis à jour:`, course);
+                    } else {
+                        console.log(`❌ Cours non trouvé: ${courseId}`);
+                    }
+                    
+                    console.log(`💾 Assignations mises à jour pour sauvegarde:`, planningData.room_assignments[courseId]);
+                }
+                
+                // Re-rendre la grille
+                renderPlanningGrid();
+                updateStats();
+                savePlanningData();
+
+                showAlert(`Cours déplacé vers ${newRoom} à ${newSlot}`, 'success');
+            }
+        });
+    }
+    
+    // Obtenir l'info de position à partir de la cellule
+    function getPositionFromCell(cell) {
+        if (!cell || !cell.dataset) return null;
+        return {
+            room: cell.dataset.room,
+            slot: cell.dataset.slot
+        };
+    }
+    
+    // Mettre à jour les statistiques
+    function updateStats() {
+        if (!planningData) return;
+        
+        const statsContent = document.getElementById('stats-content');
+        const totalCourses = planningData.courses.length;
+        
+        // Compter les cours assignés à des salles (le stockage temporaire ne compte pas comme une vraie salle)
+        const assignedCourses = planningData.courses.filter(c =>
+            currentRoomAssignments[c.id] && currentRoomAssignments[c.id] !== 'Non assigné' && currentRoomAssignments[c.id] !== TEMP_STORAGE_ID
+        ).length;
+        const unassignedCourses = totalCourses - assignedCourses;
+
+        // Détecter les conflits (plusieurs cours même salle même heure)
+        const conflicts = new Map();
+        planningData.courses.forEach(course => {
+            const room = currentRoomAssignments[course.id];
+            if (!room || room === 'Non assigné' || room === TEMP_STORAGE_ID) return;
+            const key = `${room}_${course.time}`;
+            if (!conflicts.has(key)) {
+                conflicts.set(key, []);
+            }
+            conflicts.get(key).push(course.id);
+        });
+
+        const conflictCount = Array.from(conflicts.values()).filter(courses => courses.length > 1).length;
+
+        // Compter les salles utilisées
+        const usedRooms = new Set(Object.values(currentRoomAssignments).filter(room => room !== 'Non assigné' && room !== TEMP_STORAGE_ID)).size;
+        
+        statsContent.innerHTML = `
+            <div class="stat-item">
+                <strong>Cours total:</strong> ${totalCourses}
+            </div>
+            <div class="stat-item">
+                <strong>Cours assignés:</strong> ${assignedCourses}
+            </div>
+            <div class="stat-item ${unassignedCourses > 0 ? 'warning' : ''}">
+                <strong>Non assignés:</strong> ${unassignedCourses}
+            </div>
+            <div class="stat-item ${conflictCount > 0 ? 'error' : ''}">
+                <strong>Conflits salle/heure:</strong> ${conflictCount}
+            </div>
+            <div class="stat-item">
+                <strong>Salles utilisées:</strong> ${usedRooms}/${planningData.rooms.length}
+            </div>
+        `;
+    }
+    
+    // Réinitialiser le planning
+    function resetPlanning() {
+        if (planningData && confirm('Êtes-vous sûr de vouloir réinitialiser le planning aux assignations automatiques ?')) {
+            currentAssignments = { ...planningData.assignments };
+            renderPlanningGrid();
+            updateStats();
+            showAlert('Planning réinitialisé!', 'info');
+        }
+    }
+    
+    // Générer le planning Excel final
+    async function generateFinalPlanning() {
+        if (!planningData) {
+            showAlert('Aucun planning chargé.', 'warning');
+            return;
+        }
+
+        const coursesInTempStorage = planningData.courses.filter(c => currentRoomAssignments[c.id] === TEMP_STORAGE_ID).length;
+        if (coursesInTempStorage > 0) {
+            showAlert(`Impossible de générer: ${coursesInTempStorage} cours reste(nt) dans la colonne de stockage temporaire. Placez-les dans une salle d'abord.`, 'danger');
+            return;
+        }
+
+        const targetDate = document.getElementById('target-date').value;
+
+        showLoading('loading-container');
+        
+        try {
+            // Créer les assignments basés sur les positions actuelles des cours
+            const finalAssignments = {};
+            planningData.courses.forEach(course => {
+                const slotKey = `${planningData.days[0]}_${course.time}`;
+                if (!finalAssignments[slotKey]) {
+                    finalAssignments[slotKey] = [];
+                }
+                finalAssignments[slotKey].push(course.id);
+            });
+            
+            const response = await fetch('/api/planning-editor/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    assignments: finalAssignments,
+                    room_assignments: currentRoomAssignments,
+                    date: targetDate
+                })
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `planning_personnalise_${targetDate}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showAlert('Planning Excel généré avec succès!', 'success');
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Erreur lors de la génération');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
+        } finally {
+            hideLoading('loading-container');
+        }
+    }
+    
+    // Enregistrer le planning dans la base de données
+    async function savePlanningData() {
+        if (!planningData) {
+            console.log('❌ Aucun planning à enregistrer.');
+            showAlert('Aucun planning à enregistrer.', 'warning');
+            return;
+        }
+
+        const coursesInTempStorage = planningData.courses.filter(c => currentRoomAssignments[c.id] === TEMP_STORAGE_ID).length;
+        if (coursesInTempStorage > 0) {
+            showAlert(`Attention: ${coursesInTempStorage} cours reste(nt) dans la colonne de stockage temporaire.`, 'warning');
+        }
+
+        const targetDate = document.getElementById('target-date').value;
+        const payload = {
+            date: targetDate,
+            data: planningData
+        };
+
+        try {
+            console.log('🔄 Envoi des données à /api/save-planning:', payload);
+            const response = await fetch('/api/save-planning', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            console.log('📡 Réponse API status:', response.status);
+            if (response.ok) {
+                showAlert('Planning enregistré avec succès!', 'success');
+            } else {
+                const errorData = await response.json();
+                showAlert(`Erreur: ${errorData.error}`, 'danger');
+            }
+        } catch (error) {
+            console.error('Erreur lors de l\'enregistrement du planning:', error);
+            showAlert('Erreur lors de l\'enregistrement du planning.', 'danger');
+        }
+    }
+
+    // Note : savePlanningData() est appelé automatiquement dans loadPlanningData() et après chaque drag.
+    
+    document.getElementById('target-date').addEventListener('change', function() {
+        if (this.value) {
+            reloadPlanningIfExists(this.value);
+        }
+    });
+
+// Fonctions supprimées car on utilise maintenant reloadPlanning() automatiquement
+
+// Move the reloadPlanning function definition to global scope
+async function reloadPlanning() {
+    const targetDate = document.getElementById('target-date').value;
+
+    if (!targetDate) {
+        showAlert('Veuillez sélectionner une date.', 'warning');
+        return;
+    }
+
+    showLoading('loading-container');
+
+    try {
+        // Lancée en parallèle de la requête principale (pas après)
+        const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+        const response = await fetch(`/api/get-planning?date=${targetDate}`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('🔍 Raw API response:', data);
+
+            // Parse the JSON string if needed
+            if (typeof data.planning === 'string') {
+                planningData = JSON.parse(data.planning);
+            } else {
+                planningData = data.planning || data;
+            }
+
+            // Update currentRoomAssignments with loaded data
+            currentRoomAssignments = { ...planningData.room_assignments || {} };
+
+            console.log('🔍 Assigned planningData:', planningData);
+            console.log('🔍 planningData.rooms:', planningData.rooms);
+            console.log('🔍 Updated currentRoomAssignments:', currentRoomAssignments);
+            await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+            renderPlanningGrid(); // Fonction existante pour afficher le planning
+            showAlert('Planning chargé avec succès!', 'success');
+        } else {
+            const errorData = await response.json();
+            showAlert(`Erreur: ${errorData.error}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement du planning:', error);
+        showAlert('Erreur lors du chargement du planning.', 'danger');
+    } finally {
+        hideLoading('loading-container');
+    }
+}
+
+async function reloadPlanningIfExists(targetDate) {
+    try {
+        // Lancée en parallèle de la requête principale (pas après)
+        const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+        const response = await fetch(`/api/get-planning?date=${targetDate}`);
+        if (response.status === 404) {
+            // Aucun planning sauvegardé pour cette date : état vide sans erreur
+            planningData = null;
+            currentAssignments = {};
+            currentRoomAssignments = {};
+            document.getElementById('rooms-container').innerHTML = '';
+            document.getElementById('rooms-container').className = 'row';
+            document.getElementById('no-planning-message').style.display = '';
+            document.getElementById('stats-panel').style.display = 'none';
+            document.getElementById('generate-btn').disabled = true;
+            document.getElementById('observations-section').style.display = 'none';
+            document.getElementById('planningObservations').value = '';
+            return;
+        }
+        if (!response.ok) {
+            return; // Autre erreur serveur : on n'affiche rien
+        }
+        const data = await response.json();
+        if (typeof data.planning === 'string') {
+            planningData = JSON.parse(data.planning);
+        } else {
+            planningData = data.planning || data;
+        }
+        currentRoomAssignments = { ...planningData.room_assignments || {} };
+        document.getElementById('planningObservations').value = data.observations || '';
+        document.getElementById('observations-section').style.display = '';
+        await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+        renderPlanningGrid();
+        updateStats();
+        document.getElementById('generate-btn').disabled = false;
+        showAlert('Planning existant chargé.', 'info');
+    } catch (error) {
+        // Erreur réseau ou parse : on ignore silencieusement
+        console.warn('reloadPlanningIfExists:', error);
+    }
+}
+
+
+let _obsDebounce = null;
+async function saveObservations() {
+    const date = document.getElementById('target-date').value;
+    const statusEl = document.getElementById('obs-save-status');
+    if (!date) return;
+    statusEl.textContent = 'Sauvegarde…';
+    statusEl.className = 'text-muted';
+    try {
+        const resp = await fetch('/api/planning-observations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, observations: document.getElementById('planningObservations').value })
+        });
+        if (resp.ok) {
+            statusEl.textContent = '✓ Sauvegardé';
+            statusEl.className = 'text-success';
+            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            statusEl.textContent = '✗ Erreur: ' + (err.error || resp.status);
+            statusEl.className = 'text-danger';
+        }
+    } catch (e) {
+        statusEl.textContent = '✗ Erreur réseau';
+        statusEl.className = 'text-danger';
+        console.error('saveObservations:', e);
+    }
+}
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('planningObservations').addEventListener('input', () => {
+        const statusEl = document.getElementById('obs-save-status');
+        statusEl.textContent = '…';
+        statusEl.className = 'text-muted';
+        clearTimeout(_obsDebounce);
+        _obsDebounce = setTimeout(saveObservations, 1500);
+    });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Attach reloadPlanning to the window object to make it globally accessible
+    window.reloadPlanning = reloadPlanning;
+    console.log('reloadPlanning function attached to window:', window.reloadPlanning);
+    
+    window.savePlanningData = savePlanningData;
+    window.reloadPlanningIfExists = reloadPlanningIfExists;
+});
+</script>
+{% endblock %}
