@@ -18,12 +18,18 @@
         --pe-accent: #2f6f6b;
         --pe-accent-tint: #e3eeec;
 
-        --pe-physics: #4f6d8c;
-        --pe-physics-tint: #e9eef4;
-        --pe-chemistry: #4a7c66;
-        --pe-chemistry-tint: #e8f1eb;
-        --pe-other: #a5762f;
-        --pe-other-tint: #f6ecd9;
+        /* Physique = jaune, Chimie = bleue, Autre = gris (texte toujours sombre sur ces fonds) */
+        --pe-physics: #8a6d1f;
+        --pe-physics-tint: #f6eed0;
+        --pe-chemistry: #33628f;
+        --pe-chemistry-tint: #e7eef5;
+        --pe-other: #5c5f59;
+        --pe-other-tint: #eceae3;
+
+        /* Accent ambré générique (repère pause, survol de dépose, avertissement) -
+           distinct des couleurs de matière ci-dessus */
+        --pe-amber: #a5762f;
+        --pe-amber-tint: #f6ecd9;
 
         --pe-good: #3f7d54;
         --pe-good-tint: #e4f1e7;
@@ -158,10 +164,10 @@
 
     /* Repère pause (12h15 / 15h15) : une bande ambrée douce plutôt qu'un trait noir */
     .time-line.time-line-strong {
-        border-top: 1px solid var(--pe-other);
+        border-top: 1px solid var(--pe-amber);
         height: 6px;
         transform: translateY(-3px);
-        background: var(--pe-other-tint);
+        background: var(--pe-amber-tint);
         opacity: 0.9;
     }
     
@@ -248,10 +254,10 @@
 
     /* Repère pause déjeuner / après-midi : une bande ambrée douce, pas un trait noir */
     .room-cell.time-boundary-strong {
-        background-color: var(--pe-other-tint);
+        background-color: var(--pe-amber-tint);
     }
     .room-cell.time-boundary-strong.row-odd {
-        background-color: var(--pe-other-tint);
+        background-color: var(--pe-amber-tint);
     }
 
     .room-cell {
@@ -442,7 +448,7 @@
 
     .room-header-cell.drag-target,
     .time-cell.drag-target {
-        background: var(--pe-other) !important;
+        background: var(--pe-amber) !important;
         color: #ffffff !important;
         transform: scale(1.05);
         box-shadow: 0 0 8px rgba(165,118,47,0.5);
@@ -488,7 +494,7 @@
     }
 
     .stat-item.warning {
-        border-left-color: var(--pe-other);
+        border-left-color: var(--pe-amber);
     }
 
     .stat-item.error {
@@ -515,29 +521,29 @@
     .legend-item {
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 8px;
     }
 
     .legend-color {
-        width: 14px;
-        height: 14px;
-        border-radius: 3px;
+        width: 26px;
+        height: 26px;
+        border-radius: 5px;
         border: 1px solid var(--pe-line-strong);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
     }
 
+    /* Remplissage plein (pas la teinte pastel des cartes) pour que la légende
+       reste identifiable au premier coup d'œil */
     .legend-color.physics {
-        background: var(--pe-physics-tint);
-        border-left: 3px solid var(--pe-physics);
+        background: var(--pe-physics);
     }
 
     .legend-color.chemistry {
-        background: var(--pe-chemistry-tint);
-        border-left: 3px solid var(--pe-chemistry);
+        background: var(--pe-chemistry);
     }
 
     .legend-color.other {
-        background: var(--pe-other-tint);
-        border-left: 3px solid var(--pe-other);
+        background: var(--pe-other);
     }
     
     .loading-overlay {
@@ -632,7 +638,7 @@
     <div class="row">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fas fa-calendar-alt"></i> Éditeur de planning interactif <span class="badge" style="background:var(--pe-other-tint);color:var(--pe-other);font-weight:600;font-size:.5em;vertical-align:middle;">test visuel</span></h2>
+                <h2><i class="fas fa-calendar-alt"></i> Éditeur de planning interactif <span class="badge" style="background:var(--pe-amber-tint);color:var(--pe-amber);font-weight:600;font-size:.5em;vertical-align:middle;">test visuel</span></h2>
                 <div>
                     <button type="button" class="btn btn-outline-secondary me-2" onclick="resetPlanning()">
                         <i class="fas fa-undo"></i> Réinitialiser
