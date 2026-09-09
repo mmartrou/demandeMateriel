@@ -630,6 +630,42 @@
         --bs-btn-hover-bg: #275b58;
         --bs-btn-hover-border-color: #275b58;
     }
+
+    /* Impression : seule #print-area-wrapper (date + grille + observations) est visible.
+       #print-area est mis à l'échelle par JS (printPlanning()) pour remplir la page A4 ;
+       #print-area-wrapper réserve exactement l'espace obtenu après mise à l'échelle,
+       sinon la pagination d'impression réserverait la hauteur non réduite du contenu
+       et laisserait une seconde page blanche. */
+    @page {
+        size: A4 landscape;
+        margin: 8mm;
+    }
+
+    @media print {
+        body.printing-planning nav,
+        body.printing-planning footer,
+        body.printing-planning .toast-container {
+            display: none !important;
+        }
+
+        body.printing-planning .container.mt-4 {
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: none !important;
+        }
+
+        body.printing-planning .container-fluid > *:not(#print-area-wrapper) {
+            display: none !important;
+        }
+
+        body.printing-planning #print-area-wrapper {
+            margin: 0 !important;
+        }
+
+        body.printing-planning #print-area {
+            transform-origin: top left;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -677,6 +713,9 @@
                 <button type="button" class="btn btn-info" onclick="reloadPlanning()">
                     <i class="fas fa-sync"></i> Recharger le planning
                 </button>
+                <button type="button" class="btn btn-outline-dark" onclick="printPlanning()">
+                    <i class="fas fa-print"></i> Imprimer le planning
+                </button>
                 <div class="legend mt-2">
                     <strong>Légende:</strong>
                     <div class="legend-item">
@@ -705,13 +744,16 @@
     </div>
     
     <!-- Zone d'édition du planning par salle -->
+    <!-- print-area-wrapper/print-area : périmètre imprimé par printPlanning(), voir extra_js -->
+    <div id="print-area-wrapper">
+    <div id="print-area">
     <h4 id="planning-date-heading" class="text-center mb-3" style="font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-weight:600; color:var(--pe-ink);"></h4>
     <div class="planning-editor">
         <div class="row" id="rooms-container">
             <!-- Les salles seront générées dynamiquement -->
         </div>
     </div>
-    
+
     <!-- Observations du planning -->
     <div class="mt-4" id="observations-section" style="display:none;">
         <div class="d-flex align-items-center gap-2 mb-1">
@@ -721,6 +763,8 @@
         <textarea id="planningObservations" class="form-control" rows="3"
                   placeholder="Notes internes pour ce planning…"
                   style="resize:vertical;"></textarea>
+    </div>
+    </div>
     </div>
 
     <!-- Message quand aucun planning n'est chargé -->
@@ -1954,6 +1998,70 @@ async function reloadPlanning() {
     } finally {
         hideLoading('loading-container');
     }
+}
+
+// Imprime la zone #print-area (date + grille + observations) sur une page A4 paysage,
+// mise à l'échelle pour occuper tout l'espace disponible.
+//
+// Les repères horaires (.time-lines-overlay) sont positionnés en pixels absolus, mesurés
+// une seule fois au chargement du planning (voir renderPlanningGrid). Si la grille se
+// réorganisait pour l'impression (ses colonnes sont en largeur "1fr", donc dépendantes de
+// la largeur du conteneur), ces repères se désaligneraient comme lorsqu'ils avaient été mal
+// positionnés par le passé. On fige donc la largeur de la grille en pixels AVANT
+// d'appliquer un simple `transform: scale()` (une opération purement visuelle qui ne
+// redéclenche aucune réorganisation) plutôt que de laisser le CSS d'impression redimensionner
+// la grille lui-même.
+function printPlanning() {
+    const printArea = document.getElementById('print-area');
+    const wrapper = document.getElementById('print-area-wrapper');
+    const grid = printArea.querySelector('.planning-grid');
+    if (!grid) {
+        showAlert('Aucun planning chargé à imprimer.', 'warning');
+        return;
+    }
+    const editor = printArea.querySelector('.planning-editor');
+
+    // Largeur réelle de la grille, y compris la partie masquée par le défilement horizontal.
+    const gridWidth = grid.scrollWidth;
+
+    editor.style.overflow = 'visible';
+    editor.style.width = gridWidth + 'px';
+    grid.style.width = gridWidth + 'px';
+
+    const contentWidth = Math.max(printArea.scrollWidth, gridWidth);
+    const contentHeight = printArea.scrollHeight;
+
+    const MM_TO_PX = 96 / 25.4;
+    const marginMm = 8;
+    const pageWidthPx = (297 - marginMm * 2) * MM_TO_PX;
+    const pageHeightPx = (210 - marginMm * 2) * MM_TO_PX;
+    const scale = Math.min(pageWidthPx / contentWidth, pageHeightPx / contentHeight);
+
+    printArea.style.width = contentWidth + 'px';
+    printArea.style.transform = `scale(${scale})`;
+
+    // Réserve exactement l'espace occupé après mise à l'échelle, sinon la pagination
+    // d'impression se base sur la taille non réduite du contenu et ajoute une page blanche.
+    wrapper.style.width = (contentWidth * scale) + 'px';
+    wrapper.style.height = (contentHeight * scale) + 'px';
+
+    document.body.classList.add('printing-planning');
+
+    const cleanup = () => {
+        document.body.classList.remove('printing-planning');
+        printArea.style.width = '';
+        printArea.style.transform = '';
+        editor.style.overflow = '';
+        editor.style.width = '';
+        grid.style.width = '';
+        wrapper.style.width = '';
+        wrapper.style.height = '';
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    // Laisse le navigateur appliquer les styles avant d'ouvrir le dialogue d'impression.
+    setTimeout(() => window.print(), 50);
 }
 
 async function reloadPlanningIfExists(targetDate) {
