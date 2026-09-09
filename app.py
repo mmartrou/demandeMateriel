@@ -32,10 +32,16 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_standard_occupation, set_standard_occupation)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
-from database import get_db_connection
+from database import get_db_connection, close_request_connection
 import json
 
 app = Flask(__name__)
+
+# Une seule connexion à la base par requête HTTP, refermée automatiquement ici.
+# Sans cela, chaque fonction de database.py rouvrait sa propre connexion (~690 ms
+# de handshake vers Neon à chaque fois, contre ~106 ms pour la requête elle-même).
+app.teardown_appcontext(close_request_connection)
+
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.getenv('SECRET_KEY', secrets.token_hex(32)))
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
