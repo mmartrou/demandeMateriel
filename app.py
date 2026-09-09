@@ -1619,6 +1619,12 @@ def planning_editor():
     teachers = get_all_teachers()
     return render_template('planning_editor.html', teachers=teachers)
 
+@app.route('/admin/planning-editor-test')
+def planning_editor_test():
+    """Variante de test de l'éditeur de planning (refonte visuelle) - mêmes données, même API"""
+    teachers = get_all_teachers()
+    return render_template('planning_editor_test.html', teachers=teachers)
+
 @app.route('/api/pending-modifications', methods=['GET', 'POST'])
 def api_pending_modifications():
     """API endpoint to get all pending modifications or add a new one"""
