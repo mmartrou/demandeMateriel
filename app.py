@@ -747,6 +747,48 @@ def api_calendar_events():
 
     return jsonify(events)
 
+
+# Nom généré automatiquement pour les cours issus de l'emploi du temps (voir
+# database.create_draft_requests_for_week) : ce n'est pas un nom de TP choisi par l'enseignant.
+def _est_nom_brouillon_auto(request_name, class_name):
+    return bool(class_name) and request_name.strip() == f"{class_name} (cours régulier)"
+
+
+def _enregistrer_template_tp(data, group_count):
+    """Enregistre la demande dans la base de TP de l'enseignant, si c'en est bien un.
+
+    'Absent' et 'Examen' décrivent l'état d'un créneau, pas un TP réutilisable.
+    En revanche 'Pas besoin de matériel' est un vrai cours (théorique, parfois avec
+    ordinateurs) : il doit pouvoir être enregistré et réutilisé, sinon un cours de
+    l'emploi du temps simplement renommé n'entre jamais dans la base de TP.
+    """
+    sm = data.get('selected_materials', '')
+    request_name = (data.get('request_name') or '').strip()
+    class_name = data.get('class_name')
+    if sm in ('Absent', 'Examen'):
+        return
+    if not request_name or not class_name:
+        return
+    if _est_nom_brouillon_auto(request_name, class_name):
+        return
+    try:
+        upsert_tp_template(
+            teacher_id=data['teacher_id'],
+            level=class_name,
+            request_name=request_name,
+            material_description=data.get('material_description', ''),
+            selected_materials=sm,
+            material_prof=data.get('material_prof', ''),
+            computers_needed=data.get('computers_needed', 0),
+            group_count=group_count,
+            notes=data.get('notes', ''),
+            image_url=data.get('image_url', ''),
+            room_type=data.get('room_type', 'Mixte')
+        )
+    except Exception:
+        pass  # Echec silencieux : ne pas bloquer l'enregistrement de la demande
+
+
 @app.route('/api/requests', methods=['POST'])
 def api_add_request():
     """API endpoint to add a new material request"""
@@ -856,26 +898,8 @@ def api_add_request():
                 )
                 request_ids.append(request_id)
 
-                # Sauvegarder comme template TP si c'est un vrai TP (pas absent/no_material/examen)
-                sm = data.get('selected_materials', '')
-                is_special = sm in ('Absent', 'Pas besoin de matériel', 'Examen')
-                if not is_special and data.get('request_name') and data.get('class_name'):
-                    try:
-                        upsert_tp_template(
-                            teacher_id=data['teacher_id'],
-                            level=data['class_name'],
-                            request_name=data['request_name'],
-                            material_description=data.get('material_description', ''),
-                            selected_materials=sm,
-                            material_prof=data.get('material_prof', ''),
-                            computers_needed=data.get('computers_needed', 0),
-                            group_count=data.get('group_count', data.get('quantity', 1)),
-                            notes=data.get('notes', ''),
-                            image_url=data.get('image_url', ''),
-                            room_type=data.get('room_type', 'Mixte')
-                        )
-                    except Exception:
-                        pass  # Echec silencieux : ne pas bloquer la création
+                # Sauvegarder comme template TP dans la base de l'enseignant
+                _enregistrer_template_tp(data, data.get('group_count', data.get('quantity', 1)))
 
         return jsonify({'success': True, 'request_ids': request_ids}), 201
         
@@ -1126,25 +1150,7 @@ def api_update_request(request_id):
         )
         
         if success:
-            sm = data.get('selected_materials', '')
-            is_special = sm in ('Absent', 'Pas besoin de matériel', 'Examen')
-            if not is_special and data.get('request_name') and data.get('class_name'):
-                try:
-                    upsert_tp_template(
-                        teacher_id=data['teacher_id'],
-                        level=data['class_name'],
-                        request_name=data['request_name'],
-                        material_description=data.get('material_description', ''),
-                        selected_materials=sm,
-                        material_prof=data.get('material_prof', ''),
-                        computers_needed=data.get('computers_needed', 0),
-                        group_count=data.get('group_count', 1),
-                        notes=data.get('notes', ''),
-                        image_url=data.get('image_url', ''),
-                        room_type=data.get('room_type', 'Mixte')
-                    )
-                except Exception:
-                    pass
+            _enregistrer_template_tp(data, data.get('group_count', 1))
             return jsonify({'message': 'Demande mise à jour avec succès'})
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404
