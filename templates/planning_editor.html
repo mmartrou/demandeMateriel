@@ -551,12 +551,29 @@
             display: none !important;
         }
 
+        body.printing-planning html,
+        body.printing-planning body {
+            overflow: hidden !important;
+        }
+
+        /* Le rectangle imprimé doit avoir exactement la taille mise à l'échelle : un
+           `transform: scale()` ne réduit que le rendu visuel, pas la place réservée
+           dans la mise en page. Sans ce overflow:hidden, #print-area (resté à sa
+           largeur/hauteur d'origine, non réduite) déborde de son wrapper : la page
+           déborde sur une 2e feuille et affiche les barres de défilement internes. */
         body.printing-planning #print-area-wrapper {
             margin: 0 !important;
+            overflow: hidden !important;
         }
 
         body.printing-planning #print-area {
             transform-origin: top left;
+        }
+
+        /* Filet de sécurité : quel que soit l'état laissé par printPlanning(), la grille
+           ne doit jamais afficher sa propre barre de défilement dans l'impression. */
+        body.printing-planning .planning-editor {
+            overflow: visible !important;
         }
     }
 </style>
@@ -1953,8 +1970,10 @@ function printPlanning() {
     };
     window.addEventListener('afterprint', cleanup);
 
-    // Laisse le navigateur appliquer les styles avant d'ouvrir le dialogue d'impression.
-    setTimeout(() => window.print(), 50);
+    // Laisse le navigateur peindre les nouveaux styles avant d'ouvrir le dialogue
+    // d'impression (deux frames : la 1ère prend en compte les changements, la 2e est
+    // certaine d'avoir été peinte).
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
 }
 
 async function reloadPlanningIfExists(targetDate) {
