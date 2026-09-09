@@ -594,13 +594,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const absentCheckbox = document.getElementById('absent');
     const noMaterialCheckbox = document.getElementById('no_material');
     const examModeCheckbox = document.getElementById('exam_mode');
+    // Sections masquées dès qu'un mode spécial est coché
     const sectionsToHide = [
         'material-section',
-        'computers-section', 
         'description-section',
         'notes-section',
-        'quantity-section',
         'image-section'
+    ];
+    // Un cours sans matériel de labo peut quand même avoir besoin d'ordinateurs
+    // et d'un nombre de groupes : ces deux sections restent visibles dans ce mode-là.
+    const sectionsGardeesSansMateriel = [
+        'computers-section',
+        'quantity-section'
     ];
 
     function toggleSpecialModes() {
@@ -625,43 +630,53 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const shouldHideSections = absentCheckbox.checked || noMaterialCheckbox.checked || examModeCheckbox.checked;
-        
-        sectionsToHide.forEach(sectionId => {
+        // Seul le mode "pas besoin de matériel" conserve ordinateurs et groupes
+        const sansMaterielSeul = noMaterialCheckbox.checked && !absentCheckbox.checked && !examModeCheckbox.checked;
+
+        function appliquerVisibilite(sectionId, masquer) {
             const section = document.getElementById(sectionId);
-            if (section) {
-                if (shouldHideSections) {
-                    section.style.display = 'none';
-                    // Désactiver les champs requis 
-                    const requiredFields = section.querySelectorAll('[required]');
-                    requiredFields.forEach(field => {
-                        field.removeAttribute('required');
-                        field.dataset.wasRequired = 'true';
-                    });
-                } else {
-                    section.style.display = 'block';
-                    // Réactiver les champs requis
-                    const wasRequiredFields = section.querySelectorAll('[data-was-required="true"]');
-                    wasRequiredFields.forEach(field => {
-                        field.setAttribute('required', 'required');
-                        field.removeAttribute('data-was-required');
-                    });
-                }
+            if (!section) return;
+            if (masquer) {
+                section.style.display = 'none';
+                // Désactiver les champs requis
+                const requiredFields = section.querySelectorAll('[required]');
+                requiredFields.forEach(field => {
+                    field.removeAttribute('required');
+                    field.dataset.wasRequired = 'true';
+                });
+            } else {
+                // '' plutôt que 'block' : laisse le CSS d'origine s'appliquer
+                section.style.display = '';
+                // Réactiver les champs requis
+                const wasRequiredFields = section.querySelectorAll('[data-was-required="true"]');
+                wasRequiredFields.forEach(field => {
+                    field.setAttribute('required', 'required');
+                    field.removeAttribute('data-was-required');
+                });
             }
-        });
+        }
+
+        sectionsToHide.forEach(sectionId => appliquerVisibilite(sectionId, shouldHideSections));
+        sectionsGardeesSansMateriel.forEach(sectionId =>
+            appliquerVisibilite(sectionId, shouldHideSections && !sansMaterielSeul));
 
         // Afficher/masquer le message d'information
-        const infoMessage = document.getElementById('special-mode-info');
-        if (shouldHideSections && !infoMessage) {
-            const alertDiv = document.createElement('div');
-            alertDiv.id = 'special-mode-info';
-            alertDiv.className = 'alert alert-info mt-2';
-            let modeText = 'mode spécial';
-            if (absentCheckbox.checked) modeText = 'absence';
-            else if (noMaterialCheckbox.checked) modeText = 'cours sans matériel';
-            else if (examModeCheckbox.checked) modeText = 'examen';
-            alertDiv.innerHTML = `<i class="fas fa-info-circle"></i> Mode ${modeText} activé : seuls l'enseignant et le niveau sont requis.`;
-            absentCheckbox.closest('.mb-3').appendChild(alertDiv);
-        } else if (!shouldHideSections && infoMessage) {
+        let infoMessage = document.getElementById('special-mode-info');
+        if (shouldHideSections) {
+            if (!infoMessage) {
+                infoMessage = document.createElement('div');
+                infoMessage.id = 'special-mode-info';
+                infoMessage.className = 'alert alert-info mt-2';
+                absentCheckbox.closest('.mb-3').appendChild(infoMessage);
+            }
+            // Le texte est recalculé à chaque fois : on peut passer d'un mode à l'autre
+            if (sansMaterielSeul) {
+                infoMessage.innerHTML = `<i class="fas fa-info-circle"></i> Mode cours sans matériel activé : aucun matériel de labo ne sera préparé, mais vous pouvez toujours demander des ordinateurs et préciser le nombre de groupes.`;
+            } else {
+                const modeText = absentCheckbox.checked ? 'absence' : 'examen';
+                infoMessage.innerHTML = `<i class="fas fa-info-circle"></i> Mode ${modeText} activé : seuls l'enseignant et le niveau sont requis.`;
+            }
+        } else if (infoMessage) {
             infoMessage.remove();
         }
     }
@@ -821,13 +836,14 @@ document.addEventListener('DOMContentLoaded', function() {
             data.quantity = '1';
             data.group_count = '1';
         } else if (isNoMaterial) {
-            // En mode pas besoin de matériel
+            // En mode pas besoin de matériel : aucun matériel de labo, mais on conserve
+            // les ordinateurs et le nombre de groupes saisis (sections restées visibles)
             data.selected_materials = 'Pas besoin de matériel';
-            data.computers_needed = '0';
+            data.computers_needed = document.getElementById('computers_needed').value;
             data.material_description = 'Cours théorique sans matériel';
             data.notes = '';
-            data.quantity = '1';
-            data.group_count = '1';
+            data.quantity = document.getElementById('quantity').value;
+            data.group_count = document.getElementById('quantity').value;
         } else if (isExamMode) {
             // En mode examen
             data.selected_materials = 'Examen';

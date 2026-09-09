@@ -863,10 +863,20 @@ function toggleEditSpecialModes() {
     const isExam     = document.getElementById('editExamMode').checked;
 
     const hide = isAbsent || isNoMat || isExam;
-    ['editQuantitySection', 'editMaterialSection', 'editMaterialProfSection', 'editMaterialCheckboxSection'].forEach(id => {
+    // Un cours sans matériel de labo peut quand même demander des ordinateurs et des groupes :
+    // seule cette section reste visible dans ce mode-là.
+    const sansMaterielSeul = isNoMat && !isAbsent && !isExam;
+
+    ['editMaterialSection', 'editMaterialProfSection', 'editMaterialCheckboxSection'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = hide ? 'none' : 'block';
+        // '' plutôt que 'block' : laisse le CSS d'origine s'appliquer (les .row Bootstrap sont en flex)
+        if (el) el.style.display = hide ? 'none' : '';
     });
+
+    const quantitySection = document.getElementById('editQuantitySection');
+    if (quantitySection) {
+        quantitySection.style.display = (hide && !sansMaterielSeul) ? 'none' : '';
+    }
     const desc = document.getElementById('editMaterialDescription');
     if (desc) {
         if (hide) desc.removeAttribute('required'); else desc.setAttribute('required', 'required');
