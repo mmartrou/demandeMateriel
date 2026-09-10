@@ -823,9 +823,15 @@
     
     // Initialiser la date par défaut (demain) et charger le planning correspondant s'il existe
     document.addEventListener('DOMContentLoaded', function() {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const targetDate = tomorrow.toISOString().split('T')[0];
+        let targetDate;
+        if (isPrivileged) {
+            try { targetDate = localStorage.getItem('planningEditorDate'); } catch(e) {}
+        }
+        if (!targetDate) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            targetDate = tomorrow.toISOString().split('T')[0];
+        }
         document.getElementById('target-date').value = targetDate;
         updatePlanningDateHeading();
         reloadPlanningIfExists(targetDate);
@@ -2005,6 +2011,7 @@
     document.getElementById('target-date').addEventListener('change', function() {
         updatePlanningDateHeading();
         if (this.value) {
+            if (isPrivileged) { try { localStorage.setItem('planningEditorDate', this.value); } catch(e) {} }
             reloadPlanningIfExists(this.value);
         }
     });
