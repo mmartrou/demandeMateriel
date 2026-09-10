@@ -834,12 +834,22 @@
     // Charger les données du planning
     async function loadPlanningData() {
         const targetDate = document.getElementById('target-date').value;
-        
+
         if (!targetDate) {
             showAlert('Veuillez sélectionner une date.', 'warning');
             return;
         }
-        
+
+        if (planningData && planningData.courses && planningData.courses.length > 0) {
+            const d = new Date(`${targetDate}T00:00:00`);
+            const dateAffichee = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            const confirme = confirm(
+                `Un planning existe déjà pour le ${dateAffichee}.\n\n` +
+                `Voulez-vous vraiment en générer un nouveau ? Toutes les assignations de salles actuelles (y compris les modifications manuelles) seront perdues et remplacées.`
+            );
+            if (!confirme) return;
+        }
+
         showLoading('loading-container');
 
         try {
