@@ -110,11 +110,11 @@ function updateBulkEditAvailability() {
         relatedInfo.className = 'text-warning fw-bold';
     } else if (currentRelatedCount > 1) {
         bulkCb.disabled = false;
-        relatedInfo.textContent = `${currentRelatedCount} demandes liées disponibles (même enseignant + même nom "${requestName}"). Cochez pour toutes les modifier.`;
+        relatedInfo.textContent = `${currentRelatedCount} demandes liées disponibles dans le délai de dépôt (même enseignant + même nom "${requestName}"). Cochez pour toutes les modifier.`;
         relatedInfo.className = 'text-info fw-bold';
     } else {
         bulkCb.checked = false; bulkCb.disabled = true;
-        relatedInfo.textContent = 'Aucune autre demande liée trouvée. Seule cette demande sera modifiée.';
+        relatedInfo.textContent = 'Aucune autre demande liée dans le délai de dépôt. Seule cette demande sera modifiée.';
         relatedInfo.className = 'text-muted';
     }
 }
@@ -177,16 +177,16 @@ function generateDiffDisplay(originalText, newText) {
 }
 
 // --- Edit permission ---
-// Retourne null si l'édition est possible, sinon une raison : 'not_owner' ou 'deadline'
-function getEditBlockReason(request) {
-    if (['admin', 'labo'].includes('{{ effective_user_mode }}')) return null;
-    if (isTeacherMode && myTeacherId) {
-        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) return 'not_owner';
-    }
-    if (!request.request_date) return null;
+// Le délai de dépôt (jours ouvrés avant la date de la demande) est une propriété de la date
+// elle-même, indépendante du rôle de qui édite : admin/labo ont le droit de forcer la
+// modification d'une demande déjà trop proche (voir getEditBlockReason ci-dessous), mais ça
+// ne veut pas dire qu'une AUTRE demande liée déjà passée mérite d'être proposée pour un
+// changement groupé (voir son usage dans editRequest() et saveRequestChanges()).
+function respectsDepositDeadline(requestDateRaw) {
+    if (!requestDateRaw) return true;
     try {
         let requestDate;
-        const dateStr = request.request_date.toString();
+        const dateStr = requestDateRaw.toString();
         if (dateStr.includes('GMT') || dateStr.includes(',')) {
             requestDate = new Date(dateStr);
         } else if (dateStr.includes('/')) {
@@ -195,7 +195,7 @@ function getEditBlockReason(request) {
         } else {
             requestDate = new Date(dateStr + 'T00:00:00');
         }
-        if (isNaN(requestDate.getTime())) return null;
+        if (isNaN(requestDate.getTime())) return true;
 
         const now = new Date();
         let checkDate = new Date(now);
@@ -210,10 +210,20 @@ function getEditBlockReason(request) {
             if (d >= 1 && d <= 5) workingDaysCount++;
             checkDate.setDate(checkDate.getDate() + 1);
         }
-        return workingDaysCount >= window.deadlineWorkingDays ? null : 'deadline';
+        return workingDaysCount >= window.deadlineWorkingDays;
     } catch (e) {
-        return null;
+        return true;
     }
+}
+
+// Retourne null si l'édition est possible, sinon une raison : 'not_owner' ou 'deadline'
+function getEditBlockReason(request) {
+    if (['admin', 'labo'].includes('{{ effective_user_mode }}')) return null;
+    if (isTeacherMode && myTeacherId) {
+        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) return 'not_owner';
+    }
+    if (!request.request_date) return null;
+    return respectsDepositDeadline(request.request_date) ? null : 'deadline';
 }
 
 function canEditRequest(request) {
@@ -514,8 +524,13 @@ function editRequest(requestOrId) {
 
             currentRelatedCount = 0;
             if (window.allRequests && request.request_name) {
+                // Une demande déjà passée (délai de dépôt non respecté) n'a aucun intérêt à être
+                // proposée pour une modification groupée — sauf la demande en cours d'édition
+                // elle-même, qui doit toujours être comptée puisqu'on est justement en train de
+                // la modifier.
                 currentRelatedCount = window.allRequests.filter(r =>
                     r.teacher_id === request.teacher_id && r.request_name === request.request_name && r.request_name
+                    && (String(r.id) === String(request.id) || respectsDepositDeadline(r.request_date))
                 ).length;
             }
             const bulkCbReset = document.getElementById('editAllRelated');
@@ -741,7 +756,12 @@ function saveRequestChanges() {
             if (!window.allRequests || window.allRequests.length === 0) {
                 savePromise = saveRequestDirect(requestId, formData);
             } else {
-                const related = window.allRequests.filter(r => r.teacher_id === origTeacherId && r.request_name === origRequestName);
+                // Même filtre que pour currentRelatedCount : on ne balaie pas les demandes liées
+                // déjà passées, mais la demande en cours d'édition reste toujours incluse.
+                const related = window.allRequests.filter(r =>
+                    r.teacher_id === origTeacherId && r.request_name === origRequestName
+                    && (String(r.id) === String(requestId) || respectsDepositDeadline(r.request_date))
+                );
                 relatedCount = related.length;
                 const changedFields = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]));
                 savePromise = Promise.all(related.map(r => saveRequestDirect(r.id, Object.assign({
