@@ -626,6 +626,10 @@
                 <button type="button" class="btn btn-outline-dark" onclick="printPlanning()">
                     <i class="fas fa-print"></i> Imprimer le planning
                 </button>
+                <button type="button" class="btn btn-warning position-relative" id="new-requests-btn" onclick="checkNewRequests(false)">
+                    <i class="fas fa-bell"></i> Nouvelles demandes
+                    <span id="new-requests-badge" class="badge bg-danger rounded-pill" style="display:none;"></span>
+                </button>
                 <div class="legend mt-2">
                     <strong>Légende:</strong>
                     <div class="legend-item">
@@ -705,6 +709,28 @@
 
 <!-- Conteneur pour les alertes -->
 <div id="alert-container" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 1050; width: 50%;"></div>
+
+<!-- Modal : nouvelles demandes non encore intégrées au planning -->
+<div class="modal fade" id="newRequestsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-bell"></i> Nouvelles demandes à intégrer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">Ces demandes ont été créées après la génération du planning. Choisissez une salle (suggestions libres et compatibles) puis ajoutez-les sans relancer l'optimiseur — les cours déjà placés ne bougeront pas.</p>
+                <div id="new-requests-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                <button type="button" class="btn btn-primary" id="add-all-suggested-btn" onclick="addAllSuggestedRequests()">
+                    <i class="fas fa-check-double"></i> Tout ajouter (salles suggérées)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% include '_request_modal.html' %}
 {% endblock %}
@@ -848,6 +874,7 @@
 
                 // Enregistrement automatique dès la première génération
                 await savePlanningData();
+                checkNewRequests(true);
             } else {
                 throw new Error(data.error || 'Erreur lors de la génération');
             }
@@ -1852,6 +1879,117 @@
         }
     }
 
+    // --- Ajout à chaud d'un TP créé après la génération du planning (sans relancer OR-Tools) ---
+    let pendingNewRequests = [];
+
+    async function checkNewRequests(silent) {
+        const date = document.getElementById('target-date').value;
+        if (!date || !planningData) return;
+        try {
+            const resp = await fetch(`/api/planning-editor/new-requests?date=${date}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            pendingNewRequests = data.new_requests || [];
+            const badge = document.getElementById('new-requests-badge');
+            if (pendingNewRequests.length > 0) {
+                badge.textContent = pendingNewRequests.length;
+                badge.style.display = '';
+            } else {
+                badge.style.display = 'none';
+            }
+            if (!silent) renderNewRequestsModal();
+        } catch (e) {
+            console.warn('checkNewRequests:', e);
+        }
+    }
+
+    function renderNewRequestsModal() {
+        const container = document.getElementById('new-requests-list');
+        const addAllBtn = document.getElementById('add-all-suggested-btn');
+        if (pendingNewRequests.length === 0) {
+            container.innerHTML = '<p class="text-muted mb-0">Aucune nouvelle demande à intégrer.</p>';
+            addAllBtn.style.display = 'none';
+        } else {
+            addAllBtn.style.display = '';
+            container.innerHTML = pendingNewRequests.map((r, idx) => {
+                const teacherDisplay = r.teacher_short_name || r.teacher;
+                const levelDisplay = r.level_short_name || r.level;
+                const options = (r.suggested_rooms || []).map(room => `<option value="${room}">${room}</option>`).join('');
+                const noRoomWarning = (!r.suggested_rooms || r.suggested_rooms.length === 0)
+                    ? '<div class="text-danger small mt-1 mb-0">⚠️ Aucune salle compatible libre — sera placé en stockage temporaire.</div>' : '';
+                return `
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div>
+                                    <strong>${teacherDisplay}</strong> — ${levelDisplay}
+                                    <span class="text-muted">(${r.time}, ${r.duration} min)</span>
+                                    ${r.request_name ? `<div class="small fst-italic text-muted">${r.request_name}</div>` : ''}
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <select class="form-select form-select-sm" id="room-select-${idx}" style="width:auto;">
+                                        ${options}
+                                        <option value="__TEMP__">Stockage temporaire (à placer manuellement)</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-success" onclick="addPendingRequest(${idx})">
+                                        <i class="fas fa-plus"></i> Ajouter
+                                    </button>
+                                </div>
+                            </div>
+                            ${noRoomWarning}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        const modalEl = document.getElementById('newRequestsModal');
+        (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+    }
+
+    function _insertCourseIntoPlanning(course, room) {
+        const id = 'new_' + course.request_id;
+        if (planningData.courses.some(c => c.id === id)) return id; // déjà ajouté
+        planningData.courses.push(Object.assign({}, course, { id }));
+        currentRoomAssignments[id] = room;
+        planningData.room_assignments = planningData.room_assignments || {};
+        planningData.room_assignments[id] = room;
+        return id;
+    }
+
+    async function addPendingRequest(idx) {
+        const req = pendingNewRequests[idx];
+        if (!req || !planningData) return;
+        const select = document.getElementById(`room-select-${idx}`);
+        const room = select ? select.value : '__TEMP__';
+        _insertCourseIntoPlanning(req, room);
+        pendingNewRequests.splice(idx, 1);
+        renderPlanningGrid();
+        updateStats();
+        await savePlanningData();
+        renderNewRequestsModal();
+        const badge = document.getElementById('new-requests-badge');
+        if (pendingNewRequests.length > 0) {
+            badge.textContent = pendingNewRequests.length;
+        } else {
+            badge.style.display = 'none';
+            bootstrap.Modal.getInstance(document.getElementById('newRequestsModal'))?.hide();
+        }
+    }
+
+    async function addAllSuggestedRequests() {
+        if (!planningData || pendingNewRequests.length === 0) return;
+        pendingNewRequests.forEach(req => {
+            const room = (req.suggested_rooms && req.suggested_rooms.length > 0) ? req.suggested_rooms[0] : '__TEMP__';
+            _insertCourseIntoPlanning(req, room);
+        });
+        pendingNewRequests = [];
+        renderPlanningGrid();
+        updateStats();
+        await savePlanningData();
+        document.getElementById('new-requests-badge').style.display = 'none';
+        bootstrap.Modal.getInstance(document.getElementById('newRequestsModal'))?.hide();
+    }
+
     // Note : savePlanningData() est appelé automatiquement dans loadPlanningData() et après chaque drag.
     
     document.getElementById('target-date').addEventListener('change', function() {
@@ -1993,6 +2131,8 @@ async function reloadPlanningIfExists(targetDate) {
             document.getElementById('generate-btn').disabled = true;
             document.getElementById('observations-section').style.display = 'none';
             document.getElementById('planningObservations').value = '';
+            document.getElementById('new-requests-badge').style.display = 'none';
+            pendingNewRequests = [];
             return;
         }
         if (!response.ok) {
@@ -2012,6 +2152,7 @@ async function reloadPlanningIfExists(targetDate) {
         updateStats();
         document.getElementById('generate-btn').disabled = false;
         showAlert('Planning existant chargé.', 'info');
+        checkNewRequests(true);
     } catch (error) {
         // Erreur réseau ou parse : on ignore silencieusement
         console.warn('reloadPlanningIfExists:', error);

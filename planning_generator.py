@@ -292,6 +292,136 @@ def h_to_min(hstr):
     except:
         return 8 * 60  # Défaut 8h00
 
+
+def _build_salles_dict(raw_rooms):
+    """Convertit les lignes de la table rooms en dict {nom_salle: {champs...}}
+    au format attendu par compatible()."""
+    salles = {}
+    for raw_room in raw_rooms:
+        room = dict(raw_room) if hasattr(raw_room, 'keys') else raw_room
+        room_name = room.get('name', f'Room_{len(salles)}')
+        salles[room_name] = {
+            "nom": room_name,
+            "type": str(room.get('type', 'mixte') or 'mixte').strip().lower(),
+            "ordinateurs": room.get('ordinateurs', 0) or 0,
+            "chaises": room.get('chaises', 20) or 20,
+            "eviers": room.get('eviers', 0) or 0,
+            "hotte": room.get('hotte', 0) or 0,
+            "bancs_optiques": room.get('bancs_optiques', 0) or 0,
+            "obscurite_totale": room.get('obscurite_totale', 0) or 0,
+            "becs_electriques": room.get('becs_electriques', 0) or 0,
+            "support_filtration": room.get('support_filtration', 0) or 0,
+            "imprimante": room.get('imprimante', 0) or 0,
+            "examen": room.get('examen', 0) or 0
+        }
+    return salles
+
+
+def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slots=None, saved_planning=None):
+    """
+    Pour une demande (TP) donnée, cherche les salles libres et compatibles à son
+    créneau horaire en se basant sur le planning déjà sauvegardé pour cette date,
+    sans relancer l'optimiseur OR-Tools (donc sans déplacer les cours déjà placés).
+    Permet l'ajout rapide d'un TP de dernière minute après la génération du planning.
+
+    Retourne (course_data, suggested_rooms) :
+      - course_data : dict au format 'courses_data' (voir build_course_data_entry)
+      - suggested_rooms : liste des noms de salles libres et compatibles, dans
+        l'ordre d'affichage habituel des salles.
+    """
+    course = build_course_data_entry(request_id)
+    if course is None:
+        return None, []
+
+    if salles is None:
+        salles = _build_salles_dict(database.get_all_rooms())
+    if c21_slots is None:
+        c21_slots = database.get_c21_availability()
+    if saved_planning is None:
+        saved_planning = database.get_saved_planning(date_str) or {}
+
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+    jours_semaine = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+    jour_planning = jours_semaine[date_obj.weekday()]
+
+    besoin = {
+        "matiere": course.get('subject', 'mixte'),
+        "chaises": course.get('students', 20),
+        "ordinateurs": course.get('ordinateurs', 0),
+        "eviers": course.get('eviers', 0),
+        "hotte": course.get('hotte', 0),
+        "bancs_optiques": course.get('bancs_optiques', 0),
+        "obscurite_totale": course.get('obscurite_totale', 0),
+        "becs_electriques": course.get('becs_electriques', 0),
+        "support_filtration": course.get('support_filtration', 0),
+        "imprimante": course.get('imprimante', 0),
+        "examen": course.get('examen', 0),
+        "horaire": course.get('time', '9h00'),
+        "duree": course.get('duration', 85),
+        "jour": jour_planning,
+    }
+
+    debut_new = h_to_min(besoin['horaire'])
+    fin_new = debut_new + besoin['duree']
+
+    # Déterminer les salles déjà occupées sur ce créneau, d'après les cours
+    # déjà placés dans le planning sauvegardé (on exclut cette demande elle-même
+    # si elle y figure déjà, au cas où on rappellerait la fonction après ajout).
+    room_assignments = saved_planning.get('room_assignments', {}) or {}
+    occupied_rooms = set()
+    for c in (saved_planning.get('courses', []) or []):
+        if c.get('request_id') == request_id:
+            continue
+        room = room_assignments.get(str(c.get('id')))
+        if not room or room in ('Non assigné', '__TEMP__'):
+            continue
+        debut_c = h_to_min(c.get('time', '9h00'))
+        fin_c = debut_c + (c.get('duration') or 85)
+        if debut_new < fin_c and debut_c < fin_new:
+            occupied_rooms.add(room)
+
+    ordered_rooms = ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']
+    suggested_rooms = [
+        room_name for room_name in ordered_rooms
+        if room_name in salles and room_name not in occupied_rooms
+        and compatible(salles[room_name], besoin, c21_slots)
+    ]
+
+    return course, suggested_rooms
+
+
+def get_new_requests_for_date(date_str):
+    """
+    Liste les demandes de la base pour cette date qui ne figurent pas encore dans
+    le planning sauvegardé (typiquement une demande créée après la génération du
+    planning). Pour chacune, calcule les salles libres et compatibles à son
+    créneau, sans relancer OR-Tools.
+    """
+    saved_planning = database.get_saved_planning(date_str) or {}
+    existing_request_ids = {
+        c.get('request_id') for c in (saved_planning.get('courses', []) or [])
+        if c.get('request_id') is not None
+    }
+
+    raw_requests = database.get_planning_data(date_str) or []
+    salles = _build_salles_dict(database.get_all_rooms())
+    c21_slots = database.get_c21_availability()
+
+    result = []
+    for raw_req in raw_requests:
+        req = to_dict_request(raw_req)
+        req_id = req.get('id')
+        if req_id in existing_request_ids:
+            continue
+        course, suggested_rooms = find_available_rooms_for_request(
+            req_id, date_str, salles=salles, c21_slots=c21_slots, saved_planning=saved_planning
+        )
+        if course is None:
+            continue
+        result.append({**course, 'suggested_rooms': suggested_rooms})
+    return result
+
+
 def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_param=None, custom_room_assignments=None):
     """Génération Excel optimisée avec le solveur CP - Style grille horaire."""
     try:

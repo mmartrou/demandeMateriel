@@ -1385,6 +1385,21 @@ def get_planning_data(date_str):
     conn.close()
     return requests
 
+
+def get_saved_planning(date_str):
+    """Retourne le planning sauvegardé (dict) pour une date, ou None si absent."""
+    import json
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT data FROM plannings WHERE date = {placeholder}', (date_str,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    raw = row['data'] if isinstance(row, dict) else row[0]
+    return json.loads(raw) if isinstance(raw, str) else raw
+
 # === GESTION DES JOURS OUVRÉS ===
 
 def get_working_days_config(start_date=None, end_date=None):

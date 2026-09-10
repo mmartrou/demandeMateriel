@@ -31,7 +31,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_all_levels, add_level, delete_level, update_level,
                       get_standard_occupation, set_standard_occupation)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
-from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry
+from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry, get_new_requests_for_date
 from database import get_db_connection, close_request_connection
 import json
 
@@ -2333,6 +2333,20 @@ def api_planning_editor_course(request_id):
         return jsonify(course)
     except Exception as e:
         return api_error('Erreur lors de la récupération du cours', e)
+
+@app.route('/api/planning-editor/new-requests', methods=['GET'])
+def api_planning_new_requests():
+    """Liste les demandes de la date qui ne sont pas encore dans le planning
+    sauvegardé (ajoutées après la génération), avec suggestion de salles libres
+    et compatibles pour un ajout rapide sans relancer OR-Tools."""
+    try:
+        target_date = request.args.get('date')
+        if not target_date:
+            return jsonify({'error': 'La date est requise'}), 400
+        new_requests = get_new_requests_for_date(target_date)
+        return jsonify({'new_requests': new_requests})
+    except Exception as e:
+        return api_error('Erreur lors de la détection des nouvelles demandes', e)
 
 @app.route('/api/planning-editor/generate', methods=['POST'])
 def api_generate_planning_from_editor():
