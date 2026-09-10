@@ -94,37 +94,83 @@ function validateDate(elementId, message) {
     return true;
 }
 
-function getMinimumValidDate() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    // Backend logic: after 17h, start from J+2, before 17h from J+1
-    let startDate = new Date(now);
-    if (currentHour >= 17) {
-        startDate.setDate(now.getDate() + 2);
-    } else {
-        startDate.setDate(now.getDate() + 1);
-    }
-    startDate.setHours(8, 0, 0, 0); // Requests are for 8am
+// ---------------------------------------------------------------------------
+// Délai de dépôt : miroir JS de deadline_utils.py. Le couperet est fixé à 8h00, heure de
+// Madrid, le premier des N jours ouvrés requis avant la date demandée (N = window.deadline-
+// WorkingDays, 2 par défaut) — voir deadline_utils._deadline_moment() côté serveur pour le
+// détail de la règle. Ces fonctions ne servent qu'à guider l'utilisateur avant l'envoi : le
+// serveur reste toujours la source de vérité finale, qui revalide indépendamment.
+// Les jours fériés/exceptions (configurés en base) ne sont pas connus du client : seuls les
+// week-ends sont exclus ici. Cela peut rendre ce calcul légèrement optimiste autour d'un jour
+// férié — dans ce cas le serveur refusera et affichera son propre message.
+// ---------------------------------------------------------------------------
 
-    // Find the first date with at least 2 full working days between now and candidate
-    let candidate = new Date(startDate);
+// Convertit un triplet {year, month, day} en Date UTC "neutre", utilisée uniquement pour des
+// calculs calendaires (jour de la semaine, +/- N jours) indépendants du fuseau du navigateur.
+function _utcCalendarDate(year, month, day) {
+    return new Date(Date.UTC(year, month - 1, day));
+}
+
+// "Maintenant" en heure de Madrid, quel que soit le fuseau du navigateur.
+// Renvoie {date: Date UTC-neutre à minuit, minutesSinceMidnight}.
+function nowInMadrid() {
+    const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Madrid',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        }).formatToParts(new Date()).map(p => [p.type, p.value])
+    );
+    return {
+        date: _utcCalendarDate(parseInt(parts.year, 10), parseInt(parts.month, 10), parseInt(parts.day, 10)),
+        minutesSinceMidnight: parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10)
+    };
+}
+
+// Miroir JS de deadline_utils._deadline_moment() : couperet à 8h00 (heure de Madrid) le
+// premier des `requiredDays` jours ouvrés avant `targetUtcDate` (Date UTC-neutre, minuit).
+function deadlineMoment(targetUtcDate, requiredDays) {
+    if (requiredDays <= 0) return { date: new Date(targetUtcDate), minutesSinceMidnight: 0 };
+    let d = new Date(targetUtcDate);
+    let found = 0;
+    let deadlineDay = targetUtcDate;
+    while (found < requiredDays) {
+        d.setUTCDate(d.getUTCDate() - 1);
+        if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) {
+            found++;
+            deadlineDay = new Date(d);
+        }
+    }
+    return { date: deadlineDay, minutesSinceMidnight: 8 * 60 };
+}
+
+function _isBeforeMoment(a, b) {
+    if (a.date.getTime() !== b.date.getTime()) return a.date.getTime() < b.date.getTime();
+    return a.minutesSinceMidnight < b.minutesSinceMidnight;
+}
+
+// Le délai de dépôt est-il encore respecté, à l'instant présent, pour `targetUtcDate`
+// (Date UTC-neutre à minuit) ? Miroir JS de deadline_utils.is_request_deadline_respected().
+function isBeforeDepositDeadline(targetUtcDate, requiredDays) {
+    return _isBeforeMoment(nowInMadrid(), deadlineMoment(targetUtcDate, requiredDays));
+}
+
+// Retourne la première date (objet Date construit en heure LOCALE du navigateur, pour rester
+// compatible avec getFullYear()/getMonth()/getDate()) pour laquelle une nouvelle demande
+// serait encore acceptée. Miroir JS de deadline_utils.get_earliest_valid_date().
+function getMinimumValidDate() {
+    const requiredDays = Number.isFinite(window.deadlineWorkingDays) ? window.deadlineWorkingDays : 2;
+    const now = nowInMadrid();
+    let candidate = new Date(now.date);
+    candidate.setUTCDate(candidate.getUTCDate() + 1); // jamais aujourd'hui
+
     while (true) {
-        // Count working days between now and candidate (exclusive)
-        let workingDays = 0;
-        let checkDate = new Date(now);
-        checkDate.setHours(8, 0, 0, 0);
-        while (checkDate < candidate) {
-            const dayOfWeek = checkDate.getDay();
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                workingDays++;
+        if (candidate.getUTCDay() !== 0 && candidate.getUTCDay() !== 6) {
+            if (isBeforeDepositDeadline(candidate, requiredDays)) {
+                return new Date(candidate.getUTCFullYear(), candidate.getUTCMonth(), candidate.getUTCDate());
             }
-            checkDate.setDate(checkDate.getDate() + 1);
         }
-        if (workingDays >= 2) {
-            candidate.setHours(0, 0, 0, 0);
-            return candidate;
-        }
-        candidate.setDate(candidate.getDate() + 1);
+        candidate.setUTCDate(candidate.getUTCDate() + 1);
     }
 }
 

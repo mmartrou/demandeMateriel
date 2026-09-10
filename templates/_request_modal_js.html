@@ -182,6 +182,8 @@ function generateDiffDisplay(originalText, newText) {
 // modification d'une demande déjà trop proche (voir getEditBlockReason ci-dessous), mais ça
 // ne veut pas dire qu'une AUTRE demande liée déjà passée mérite d'être proposée pour un
 // changement groupé (voir son usage dans editRequest() et saveRequestChanges()).
+// nowInMadrid()/deadlineMoment()/isBeforeDepositDeadline() (couperet 8h00 heure de Madrid,
+// voir deadline_utils._deadline_moment() côté serveur) sont définies dans static/js/main.js.
 function respectsDepositDeadline(requestDateRaw) {
     if (!requestDateRaw) return true;
     try {
@@ -197,20 +199,10 @@ function respectsDepositDeadline(requestDateRaw) {
         }
         if (isNaN(requestDate.getTime())) return true;
 
-        const now = new Date();
-        let checkDate = new Date(now);
-        checkDate.setHours(0, 0, 0, 0);
-        checkDate.setDate(checkDate.getDate() + (now.getHours() >= 17 ? 2 : 1));
-
-        const requestDateOnly = new Date(requestDate);
-        requestDateOnly.setHours(0, 0, 0, 0);
-        let workingDaysCount = 0;
-        while (checkDate < requestDateOnly) {
-            const d = checkDate.getDay();
-            if (d >= 1 && d <= 5) workingDaysCount++;
-            checkDate.setDate(checkDate.getDate() + 1);
-        }
-        return workingDaysCount >= window.deadlineWorkingDays;
+        // requestDate n'a pas de fuseau propre (chaîne d'origine sans heure/offset réels) :
+        // ses composantes locales représentent déjà telles quelles le jour visé.
+        const targetUtcDate = _utcCalendarDate(requestDate.getFullYear(), requestDate.getMonth() + 1, requestDate.getDate());
+        return isBeforeDepositDeadline(targetUtcDate, window.deadlineWorkingDays);
     } catch (e) {
         return true;
     }

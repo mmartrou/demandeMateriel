@@ -1163,29 +1163,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Nombre de jours ouvrés requis avant une demande (configurable dans /admin/working-days)
     // Valeur par défaut en attendant la réponse de l'API ; recalculée dès que la vraie valeur arrive.
-    let deadlineWorkingDays = 2;
-
-    // Retourne la première date valide selon la règle des N jours ouvrés
-    // Miroir JS de deadline_utils.get_earliest_valid_date()
-    function getMinimumValidDate() {
-        const now = new Date();
-        // Après 17h le jour courant est "perdu", on commence à compter à partir de J+2
-        const startDay = new Date(now);
-        startDay.setHours(0, 0, 0, 0);
-        startDay.setDate(startDay.getDate() + (now.getHours() >= 17 ? 2 : 1));
-
-        let workingDayCount = 0;
-        let d = new Date(startDay);
-        while (workingDayCount < deadlineWorkingDays) {
-            if (d.getDay() !== 0 && d.getDay() !== 6) workingDayCount++;
-            d.setDate(d.getDate() + 1);
-        }
-        // Avancer si on atterrit sur un week-end
-        while (d.getDay() === 0 || d.getDay() === 6) {
-            d.setDate(d.getDate() + 1);
-        }
-        return d;
-    }
+    // window.deadlineWorkingDays et getMinimumValidDate() sont partagés avec la modale de
+    // modification : voir leur définition dans static/js/main.js.
+    window.deadlineWorkingDays = window.deadlineWorkingDays || 2;
 
     // Configuration de la date minimum (N jours ouvrés)
     // Labo et admin sont exemptés : ils peuvent choisir n'importe quelle date
@@ -1218,7 +1198,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data && Number.isFinite(data.deadline_working_days)) {
-                    deadlineWorkingDays = data.deadline_working_days;
+                    window.deadlineWorkingDays = data.deadline_working_days;
                     applyMinimumDateToAllFields();
                 }
             })
