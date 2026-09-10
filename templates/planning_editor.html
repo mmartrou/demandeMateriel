@@ -845,7 +845,7 @@
             const dateAffichee = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
             const confirme = confirm(
                 `Un planning existe déjà pour le ${dateAffichee}.\n\n` +
-                `Voulez-vous vraiment en générer un nouveau ? Toutes les assignations de salles actuelles (y compris les modifications manuelles) seront perdues et remplacées.`
+                `Voulez-vous vraiment en générer un nouveau ?`
             );
             if (!confirme) return;
         }
