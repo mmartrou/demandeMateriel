@@ -349,6 +349,11 @@
 {% include '_request_modal_js.html' %}
 <script>
 let currentWeekStart = getStartOfWeek(new Date());
+// Passage, samedi ou dimanche directement au lundi suivant
+const todayDayOfWeek = new Date().getDay(); // Cela donne 0 pour dimanche et 6 pour samedi
+if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+}
 let events = [];
 
 // myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par _request_modal_js.html (inclus plus haut)
