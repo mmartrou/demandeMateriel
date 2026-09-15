@@ -1400,6 +1400,59 @@ def get_saved_planning(date_str):
     raw = row['data'] if isinstance(row, dict) else row[0]
     return json.loads(raw) if isinstance(raw, str) else raw
 
+def get_planning_observations(date_str):
+    """Retourne les observations (notes internes) du planning sauvegardé pour une date."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    try:
+        cursor.execute(f'SELECT observations FROM plannings WHERE date = {placeholder}', (date_str,))
+    except Exception:
+        conn.close()
+        return ''
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return ''
+    obs = row['observations'] if isinstance(row, dict) else row[0]
+    return obs or ''
+
+def get_lab_test_requests(date_str):
+    """Liste les demandes 'Test au labo' (sans salle attribuée) pour une date."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    cursor.execute(f'''
+        SELECT mr.horaire, mr.class_name, mr.request_name, t.name as teacher_name
+        FROM material_requests mr
+        JOIN teachers t ON mr.teacher_id = t.id
+        WHERE mr.request_date = {placeholder} AND mr.is_lab_test = {true_val}
+        ORDER BY mr.horaire, mr.created_at
+    ''', (date_str,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) if hasattr(r, 'keys') else
+            {'horaire': r[0], 'class_name': r[1], 'request_name': r[2], 'teacher_name': r[3]}
+            for r in rows]
+
+def get_labo_observations_map(request_ids):
+    """Retourne {request_id: labo_observations} pour une liste d'IDs de demandes."""
+    if not request_ids:
+        return {}
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    placeholders_list = ','.join([placeholder] * len(request_ids))
+    cursor.execute(f'SELECT id, labo_observations FROM material_requests WHERE id IN ({placeholders_list})', request_ids)
+    result = {}
+    for r in cursor.fetchall():
+        rid = r['id'] if isinstance(r, dict) else r[0]
+        labo_obs = r['labo_observations'] if isinstance(r, dict) else r[1]
+        result[rid] = labo_obs or ''
+    conn.close()
+    return result
+
 # === GESTION DES JOURS OUVRÉS ===
 
 def get_working_days_config(start_date=None, end_date=None):

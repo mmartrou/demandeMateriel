@@ -1052,7 +1052,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                 runs.append(TextBlock(InlineFont(rFont="Calibri", sz=11), "\n" + rest))
             return CellRichText(*runs)
 
-        def _apply_print_setup(ws, n_rooms, n_rows):
+        def _apply_print_setup(ws, n_rooms, last_row):
             ws.page_setup.orientation = 'landscape'
             ws.page_setup.paperSize = ws.PAPERSIZE_A4
             ws.page_setup.fitToWidth = 1
@@ -1060,10 +1060,31 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             ws.sheet_properties.pageSetUpPr.fitToPage = True
             ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.3, bottom=0.3, header=0, footer=0)
             last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
-            ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
+            ws.print_area = f"A1:{last_col_letter}{last_row}"
 
         courses = planning_data.get('courses', [])
         room_assignments = planning_data.get('room_assignments', {})
+
+        # Rafraîchir depuis la base les infos qui peuvent avoir changé depuis
+        # l'enregistrement du planning (noms courts, observations labo, effectifs),
+        # pour que l'Excel reflète toujours l'état actuel comme l'éditeur de planning.
+        teacher_short_map = {t['name']: t['short_name'] for t in database.get_all_teachers()}
+        level_short_map = {l['name']: l['short_name'] for l in database.get_all_levels()}
+        student_count_map = {s['teacher_name']: s['student_count'] for s in database.get_all_student_numbers() if s.get('level') == '2nde'}
+        req_ids = [c['request_id'] for c in courses if c.get('request_id')]
+        labo_map = database.get_labo_observations_map(req_ids)
+        for c in courses:
+            c['teacher_short_name'] = teacher_short_map.get(c.get('teacher', ''), c.get('teacher_short_name', ''))
+            c['level_short_name'] = level_short_map.get(c.get('level', ''), c.get('level_short_name', ''))
+            if c.get('request_id'):
+                c['labo_observations'] = labo_map.get(c['request_id'], '')
+            if c.get('level') == '2nd Classe':
+                c['students'] = student_count_map.get(c.get('teacher', ''), c.get('students', 20))
+
+        # Demandes "Test au labo" (pas de salle attribuée, donc absentes de `courses`)
+        # et observations internes du planning : à afficher sous la grille.
+        lab_tests = database.get_lab_test_requests(date_str)
+        observations = database.get_planning_observations(date_str)
 
         wb = Workbook()
 
@@ -1177,26 +1198,25 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                 merge_len = idx_end - idx_start
                 salle_idx = salle_list.index(room)
                 matiere   = c.get('subject', 'mixte') or 'mixte'
-                teacher   = c.get('teacher', '')
                 level     = c.get('level', '')
-                tp_name   = c.get('request_name', '')
 
                 if use_techniciens_content:
-                    equip = []
-                    if c.get('eviers', 0):        equip.append("Éviers")
-                    if c.get('hotte', 0):          equip.append("Hotte")
-                    if c.get('bancs_optiques', 0): equip.append("Bancs optiques")
-                    if c.get('obscurite_totale', 0): equip.append("Obscurité totale")
-                    if c.get('becs_electriques', 0): equip.append("Becs électriques")
-                    if c.get('support_filtration', 0): equip.append("Support de filtration")
-                    if c.get('imprimante', 0):     equip.append("Imprimante")
-                    if tp_name and tp_name.strip():
-                        equip.append(tp_name.strip())
-                    rest_lines = [level]
-                    if equip:
-                        rest_lines.append(", ".join(equip))
+                    # Même contenu que la carte de cours de l'éditeur de planning :
+                    # nom court, niveau court, observations labo, effectif (2nde classe
+                    # entière) et nombre d'ordinateurs.
+                    teacher = c.get('teacher_short_name') or c.get('teacher', '')
+                    level_display = c.get('level_short_name') or level
+                    rest_lines = [level_display]
+                    labo_obs = (c.get('labo_observations') or '').strip()
+                    if labo_obs:
+                        rest_lines.append(labo_obs)
+                    if level == '2nd Classe' and c.get('students', 0):
+                        rest_lines.append(f"Effectif : {c.get('students')}")
+                    if c.get('ordinateurs', 0):
+                        rest_lines.append(f"💻 {c.get('ordinateurs')} PC")
                     content = _teacher_rich_text(teacher, rest_lines)
                 else:
+                    teacher = c.get('teacher', '')
                     content = _teacher_rich_text(teacher, [level])
 
                 if idx_start < len(cell_matrix) and salle_idx < len(cell_matrix[idx_start]):
@@ -1263,7 +1283,44 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             for idx_h in range(len(horaires)):
                 ws.row_dimensions[3 + idx_h].height = 25
 
-            _apply_print_setup(ws, len(salle_list), len(horaires))
+            last_row = 2 + len(horaires)
+
+            # Tests au labo (sans salle) et observations internes : uniquement sur la
+            # feuille technicien·ne·s, sous la grille (comme dans l'éditeur de planning).
+            if use_techniciens_content:
+                last_col = 1 + len(salle_list)
+                footer_row = last_row + 2
+
+                if lab_tests:
+                    lab_lines = []
+                    for lt in lab_tests:
+                        piece = lt.get('teacher_name', '') or ''
+                        if lt.get('horaire'):
+                            piece = f"{lt['horaire']} — {piece}"
+                        if lt.get('class_name'):
+                            piece += f" ({lt['class_name']})"
+                        if lt.get('request_name'):
+                            piece += f" — {lt['request_name']}"
+                        lab_lines.append(piece)
+                    cell = ws.cell(row=footer_row, column=1,
+                                    value="🧪 Tests au labo (sans salle attribuée) : " + " ; ".join(lab_lines))
+                    ws.merge_cells(start_row=footer_row, start_column=1, end_row=footer_row, end_column=last_col)
+                    cell.font = Font(bold=True, size=12)
+                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                    ws.row_dimensions[footer_row].height = 30
+                    footer_row += 1
+
+                if observations and observations.strip():
+                    cell = ws.cell(row=footer_row, column=1, value="Observations : " + observations.strip())
+                    ws.merge_cells(start_row=footer_row, start_column=1, end_row=footer_row, end_column=last_col)
+                    cell.font = Font(size=12, italic=True)
+                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                    ws.row_dimensions[footer_row].height = 40
+                    footer_row += 1
+
+                last_row = max(last_row, footer_row - 1)
+
+            _apply_print_setup(ws, len(salle_list), last_row)
 
         _build_sheet(wb, "Planning_Techniciens", use_techniciens_content=True)
         _build_sheet(wb, "Affichage",             use_techniciens_content=False)
