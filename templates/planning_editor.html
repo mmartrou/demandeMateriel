@@ -1304,6 +1304,8 @@
         const isClasseEntiere = course.level === '2nd Classe';
         const studentLine = (isClasseEntiere && course.students > 0)
             ? `<div style="font-weight:bold; font-size:1.5em; margin-top:1px;">${course.students}</div>` : '';
+        const computersLine = (course.ordinateurs > 0)
+            ? `<div style="font-weight:bold; font-size:1.5em; margin-top:1px;">💻 ${course.ordinateurs}</div>` : '';
 
         card.innerHTML = `
             ${preparedBadge}
@@ -1311,6 +1313,7 @@
             <div style="font-size:0.9em;">${levelDisplay}</div>
             ${laboObs}
             ${studentLine}
+            ${computersLine}
         `;
 
         card.dataset.prepared = course.prepared ? '1' : '0';
