@@ -662,6 +662,10 @@
     <div id="print-area-wrapper">
     <div id="print-area">
     <h4 id="planning-date-heading" class="text-center mb-3 fw-bold"></h4>
+
+    <!-- Tests au labo demandés pour cette date (pas de salle attribuée, donc absents de la grille) -->
+    <div class="alert alert-secondary" id="lab-test-box" style="display:none;"></div>
+
     <div class="planning-editor">
         <div class="row" id="rooms-container">
             <!-- Les salles seront générées dynamiquement -->
@@ -863,6 +867,7 @@
             // Lancée en parallèle de la requête principale (pas après) pour ne pas ajouter
             // un aller-retour réseau supplémentaire au temps de chargement perçu.
             const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+            const labTestPromise = loadLabTestRequests(targetDate);
             const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
             console.log('📡 Réponse API status:', response.status);
             const data = await response.json();
@@ -882,7 +887,7 @@
 
                 document.getElementById('observations-section').style.display = '';
 
-                await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+                await Promise.all([syncPreparedStates(), standardOccupationPromise, labTestPromise]);
                 renderPlanningGrid();
                 updateStats();
                 document.getElementById('generate-btn').disabled = false;
@@ -1522,6 +1527,43 @@
         }
     }
 
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    // Charger et afficher les demandes "Test au labo" pour cette date : elles n'ont
+    // pas de salle attribuée (donc absentes de la grille OR-Tools) mais doivent
+    // rester visibles pour le labo.
+    async function loadLabTestRequests(dateStr) {
+        const box = document.getElementById('lab-test-box');
+        if (!box) return;
+        try {
+            const response = await fetch(`/api/requests?start_date=${dateStr}&end_date=${dateStr}`);
+            if (!response.ok) return;
+            const requests = await response.json();
+            const labTests = (requests || []).filter(r => r.is_lab_test);
+            if (labTests.length === 0) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            const items = labTests.map(r => {
+                const time = escapeHtml(r.horaire || '');
+                const teacher = escapeHtml(r.teacher_name || '');
+                const level = escapeHtml(r.class_name || '');
+                const name = r.request_name ? ` — ${escapeHtml(r.request_name)}` : '';
+                const desc = r.material_description ? `<div class="small text-muted">${escapeHtml(r.material_description)}</div>` : '';
+                return `<li>${time ? `<strong>${time}</strong> — ` : ''}${teacher}${level ? ` (${level})` : ''}${name}${desc}</li>`;
+            }).join('');
+            box.innerHTML = `<strong>🧪 Tests au labo (sans salle attribuée) :</strong><ul class="mb-0">${items}</ul>`;
+            box.style.display = '';
+        } catch (e) {
+            console.warn('loadLabTestRequests a échoué:', e);
+        }
+    }
+
     // Enregistrer une valeur de la colonne "Occupation standard"
     async function saveStandardOccupation(dateStr, slot, value) {
         const day = getWeekdayName(dateStr);
@@ -2035,6 +2077,7 @@ async function reloadPlanning() {
     try {
         // Lancée en parallèle de la requête principale (pas après)
         const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+        const labTestPromise = loadLabTestRequests(targetDate);
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.ok) {
             const data = await response.json();
@@ -2053,7 +2096,7 @@ async function reloadPlanning() {
             console.log('🔍 Assigned planningData:', planningData);
             console.log('🔍 planningData.rooms:', planningData.rooms);
             console.log('🔍 Updated currentRoomAssignments:', currentRoomAssignments);
-            await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+            await Promise.all([syncPreparedStates(), standardOccupationPromise, labTestPromise]);
             renderPlanningGrid(); // Fonction existante pour afficher le planning
             showAlert('Planning chargé avec succès!', 'success');
         } else {
@@ -2138,6 +2181,7 @@ async function reloadPlanningIfExists(targetDate) {
     try {
         // Lancée en parallèle de la requête principale (pas après)
         const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
+        const labTestPromise = loadLabTestRequests(targetDate);
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.status === 404) {
             // Aucun planning sauvegardé pour cette date : état vide sans erreur
@@ -2153,6 +2197,7 @@ async function reloadPlanningIfExists(targetDate) {
             document.getElementById('planningObservations').value = '';
             document.getElementById('new-requests-badge').style.display = 'none';
             pendingNewRequests = [];
+            await labTestPromise;
             return;
         }
         if (!response.ok) {
@@ -2167,7 +2212,7 @@ async function reloadPlanningIfExists(targetDate) {
         currentRoomAssignments = { ...planningData.room_assignments || {} };
         document.getElementById('planningObservations').value = data.observations || '';
         document.getElementById('observations-section').style.display = '';
-        await Promise.all([syncPreparedStates(), standardOccupationPromise]);
+        await Promise.all([syncPreparedStates(), standardOccupationPromise, labTestPromise]);
         renderPlanningGrid();
         updateStats();
         document.getElementById('generate-btn').disabled = false;
