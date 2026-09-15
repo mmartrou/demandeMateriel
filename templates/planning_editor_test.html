@@ -1621,7 +1621,7 @@
                 const desc = r.material_description ? `<div class="small text-muted">${escapeHtml(r.material_description)}</div>` : '';
                 return `<li>${time ? `<strong>${time}</strong> — ` : ''}${teacher}${level ? ` (${level})` : ''}${name}${desc}</li>`;
             }).join('');
-            box.innerHTML = `<strong>🧪 Tests au labo (sans salle attribuée) :</strong><ul class="mb-0">${items}</ul>`;
+            box.innerHTML = `<strong>🧪 Tests au labo :</strong><ul class="mb-0">${items}</ul>`;
             box.style.display = '';
         } catch (e) {
             console.warn('loadLabTestRequests a échoué:', e);
