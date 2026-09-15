@@ -1044,12 +1044,17 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             return Border(left=Side(style='thick'), right=Side(style='thick'),
                           top=Side(style=top_style), bottom=Side(style=bottom_style))
 
-        def _teacher_rich_text(teacher, rest_lines):
-            """Nom du professeur en gras, 1.5x plus grand que le reste du contenu."""
+        def _teacher_rich_text(teacher, rest_lines, highlight_lines=None):
+            """Nom du professeur en gras, 1.5x plus grand que le reste du contenu.
+            highlight_lines (effectif, ordinateurs) reprennent la même mise en forme
+            que le nom (gras, grand), une par ligne, comme dans l'éditeur de planning."""
             rest = "\n".join(l for l in rest_lines if l)
             runs = [TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), teacher or "")]
             if rest:
                 runs.append(TextBlock(InlineFont(rFont="Calibri", sz=11), "\n" + rest))
+            for hl in (highlight_lines or []):
+                if hl:
+                    runs.append(TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), "\n" + str(hl)))
             return CellRichText(*runs)
 
         def _apply_print_setup(ws, n_rooms, last_row):
@@ -1210,11 +1215,12 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                     labo_obs = (c.get('labo_observations') or '').strip()
                     if labo_obs:
                         rest_lines.append(labo_obs)
+                    highlight_lines = []
                     if level == '2nd Classe' and c.get('students', 0):
-                        rest_lines.append(f"Effectif : {c.get('students')}")
+                        highlight_lines.append(c.get('students'))
                     if c.get('ordinateurs', 0):
-                        rest_lines.append(f"💻 {c.get('ordinateurs')} PC")
-                    content = _teacher_rich_text(teacher, rest_lines)
+                        highlight_lines.append(f"💻 {c.get('ordinateurs')}")
+                    content = _teacher_rich_text(teacher, rest_lines, highlight_lines)
                 else:
                     teacher = c.get('teacher', '')
                     content = _teacher_rich_text(teacher, [level])
