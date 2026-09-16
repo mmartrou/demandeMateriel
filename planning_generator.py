@@ -148,6 +148,7 @@ def build_course_data_entry(request_id):
     teacher_short_map = {t['name']: t['short_name'] for t in database.get_all_teachers()}
     level_short_map = {l['name']: l['short_name'] for l in all_levels}
     levels_duration_map = {l['name']: l['default_duration'] for l in all_levels}
+    max_ordinateurs = _max_ordinateurs(_build_salles_dict(database.get_all_rooms()))
     matiere = "mixte"
     if req.get('room_type') == 'Physique':
         matiere = "physique"
@@ -182,6 +183,7 @@ def build_course_data_entry(request_id):
         'request_name': req.get('request_name', ''),
         'material_description': req.get('material_description', 'N/A'),
         'ordinateurs': material_needs["ordinateurs"],
+        'ordinateurs_overflow': material_needs["ordinateurs"] > max_ordinateurs,
         'eviers': material_needs["eviers"],
         'hotte': material_needs["hotte"],
         'bancs_optiques': material_needs["bancs_optiques"],
@@ -223,8 +225,15 @@ def est_C21_disponible(cours_info, c21_slots):
     
     return False  # Aucun créneau ne convient
 
-def compatible(salle, besoin, c21_slots=None):
-    """Check if a room is compatible with course needs"""
+def compatible(salle, besoin, c21_slots=None, max_ordinateurs=None):
+    """Check if a room is compatible with course needs.
+
+    max_ordinateurs : nombre maximum d'ordinateurs présents dans une salle,
+    toutes salles confondues. Si la demande dépasse ce maximum, on la borne à
+    ce maximum pour la comparaison : la demande ne peut jamais être satisfaite
+    intégralement, mais on l'assigne quand même à la (aux) salle(s) offrant le
+    plus d'ordinateurs plutôt que de ne l'assigner à aucune salle.
+    """
     room_type = str(salle.get("type", "mixte") or "mixte").strip().lower()
 
     # Vérification spécifique pour C21
@@ -254,7 +263,10 @@ def compatible(salle, besoin, c21_slots=None):
         return False
     
     # Check equipment needs
-    if besoin["ordinateurs"] > salle["ordinateurs"]:
+    ordinateurs_requis = besoin["ordinateurs"]
+    if max_ordinateurs is not None and ordinateurs_requis > max_ordinateurs:
+        ordinateurs_requis = max_ordinateurs
+    if ordinateurs_requis > salle["ordinateurs"]:
         return False
     if besoin["eviers"] > salle["eviers"]:
         return False
@@ -317,6 +329,13 @@ def _build_salles_dict(raw_rooms):
             "examen": room.get('examen', 0) or 0
         }
     return salles
+
+
+def _max_ordinateurs(salles):
+    """Nombre maximum d'ordinateurs disponible dans une salle, toutes salles confondues."""
+    if not salles:
+        return 0
+    return max((s.get("ordinateurs", 0) or 0) for s in salles.values())
 
 
 def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slots=None, saved_planning=None):
@@ -382,11 +401,12 @@ def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slot
         if debut_new < fin_c and debut_c < fin_new:
             occupied_rooms.add(room)
 
+    max_ordinateurs = _max_ordinateurs(salles)
     ordered_rooms = ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']
     suggested_rooms = [
         room_name for room_name in ordered_rooms
         if room_name in salles and room_name not in occupied_rooms
-        and compatible(salles[room_name], besoin, c21_slots)
+        and compatible(salles[room_name], besoin, c21_slots, max_ordinateurs)
     ]
 
     return course, suggested_rooms
@@ -1049,14 +1069,20 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         def _teacher_rich_text(teacher, rest_lines, highlight_lines=None):
             """Nom du professeur en gras, 1.5x plus grand que le reste du contenu.
             highlight_lines (effectif, ordinateurs) reprennent la même mise en forme
-            que le nom (gras, grand), une par ligne, comme dans l'éditeur de planning."""
+            que le nom (gras, grand), une par ligne, comme dans l'éditeur de planning.
+            Un élément de highlight_lines peut être un tuple (texte, couleur_argb)
+            pour surligner un cas particulier (ex : dépassement du nombre d'ordinateurs)."""
             rest = "\n".join(l for l in rest_lines if l)
             runs = [TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), teacher or "")]
             if rest:
                 runs.append(TextBlock(InlineFont(rFont="Calibri", sz=11), "\n" + rest))
             for hl in (highlight_lines or []):
-                if hl:
-                    runs.append(TextBlock(InlineFont(rFont="Calibri", b=True, sz=17), "\n" + str(hl)))
+                if not hl:
+                    continue
+                color = None
+                if isinstance(hl, tuple):
+                    hl, color = hl
+                runs.append(TextBlock(InlineFont(rFont="Calibri", b=True, sz=17, color=color), "\n" + str(hl)))
             return CellRichText(*runs)
 
         def _apply_print_setup(ws, n_rooms, last_row):
@@ -1221,7 +1247,11 @@ def generer_excel_from_saved_planning(planning_data, date_str):
                     if level == '2nd Classe' and c.get('students', 0):
                         highlight_lines.append(c.get('students'))
                     if c.get('ordinateurs', 0):
-                        highlight_lines.append(f"💻 {c.get('ordinateurs')}")
+                        ordi_text = f"💻 {c.get('ordinateurs')}"
+                        if c.get('ordinateurs_overflow'):
+                            highlight_lines.append((ordi_text, "FFDC3545"))
+                        else:
+                            highlight_lines.append(ordi_text)
                     content = _teacher_rich_text(teacher, rest_lines, highlight_lines)
                 else:
                     teacher = c.get('teacher', '')
@@ -1396,7 +1426,9 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "imprimante": room.get('imprimante', 0) or 0,
                 "examen": room.get('examen', 0) or 0
             }
-        
+
+        max_ordinateurs = _max_ordinateurs(salles)
+
         # Déterminer le jour de la semaine à partir de la date
         from datetime import datetime
         if isinstance(date, str):
@@ -1442,6 +1474,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "matiere": matiere,
                 "jour": jour_planning,
                 "ordinateurs": material_needs["ordinateurs"],
+                "ordinateurs_overflow": material_needs["ordinateurs"] > max_ordinateurs,
                 "eviers": material_needs["eviers"],
                 "hotte": material_needs["hotte"],
                 "bancs_optiques": material_needs["bancs_optiques"],
@@ -1472,7 +1505,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         for i, c in enumerate(cours):
             poids_salle[i] = {}
             for s in salles:
-                if compatible(salles[s], c, c21_slots):
+                if compatible(salles[s], c, c21_slots, max_ordinateurs):
                     x[(i,s)] = model.NewBoolVar(f"x_{i}_{s}")
                     
                     # Check if this is a theoretical course (no specific equipment needs)
@@ -1652,6 +1685,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                         'request_name': course.get('request_name', ''),
                         'material_description': course.get('materiel_demande', ''),
                         'ordinateurs': course.get('ordinateurs', 0),
+                        'ordinateurs_overflow': course.get('ordinateurs_overflow', False),
                         'eviers': course.get('eviers', 0),
                         'hotte': course.get('hotte', 0),
                         'bancs_optiques': course.get('bancs_optiques', 0),
