@@ -328,6 +328,9 @@
                                 <h5 id="currentWeek" class="d-inline mx-4 mb-0"></h5>
                                 <button class="btn btn-outline-primary btn-sm" onclick="nextWeek()">Semaine suivante ›</button>
                             </div>
+                            <button id="btnGenerateWeek" class="btn btn-outline-success btn-sm ms-2">
+                                Générer la semaine
+                            </button>
                             <div class="pronote-wrap">
                                 <div class="pronote-timetable" id="pronoteTimetable">
                                     <!-- La grille horaire type Pronote est générée ici -->
@@ -813,5 +816,27 @@ function showErrorToast(message) {
         alert(message);
     }
 }
+
+// Ajout du bouton "Générer la semaine" pour créer automatiquement les demandes de matériel pour la semaine affichée
+
+document.getElementById('btnGenerateWeek').addEventListener('click', function() {
+    const week_start = ymd(currentWeekStart);
+    this.disabled = true;
+    fetch('/api/recurring-courses/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ week_start })
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.error);
+        showToast('success', 'Succès', `${data.created} cours créé(s) pour la semaine du ${week_start}.`);
+        loadCalendar();
+    })
+    .catch(err => showToast('error', 'Erreur', err.message))
+    .finally(() => { this.disabled = false; });
+});
+
+
 </script>
 {% endblock %}
