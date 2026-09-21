@@ -830,10 +830,10 @@ document.getElementById('btnGenerateWeek').addEventListener('click', function() 
     .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
     .then(({ ok, data }) => {
         if (!ok) throw new Error(data.error);
-        showToast('success', 'Succès', `${data.created} cours créé(s) pour la semaine du ${week_start}.`);
+        showSuccessToast(`${data.created} cours créé(s) pour la semaine du ${week_start}.`);
         loadCalendar();
     })
-    .catch(err => showToast('error', 'Erreur', err.message))
+    .catch(err => showErrorToast('Erreur : ' + err.message))
     .finally(() => { this.disabled = false; });
 });
 
