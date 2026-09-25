@@ -987,11 +987,16 @@ def get_material_request_by_id(request_id):
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
                            horaire=None, quantity=1, selected_materials='', computers_needed=0,
                            notes='', group_count=1, material_prof='', request_name='', custom_duration=None,
-                           is_lab_test=False, image_url=None, room_type=None, labo_observations=None):
+                           is_lab_test=False, image_url=None, room_type=None, labo_observations=None,
+                           preserve_prepared=False):
     """Update an existing material request and mark it as modified.
 
     image_url=None leaves the stored image untouched (e.g. bulk edits of related
     requests don't carry an image_url) — pass a string (possibly empty) to set it.
+
+    preserve_prepared=True laisse prepared/modified inchangés : à utiliser quand seule
+    la note interne (labo_observations) change, puisque ce n'est pas un changement du
+    contenu de la demande qui justifierait de redemander une préparation.
     """
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
@@ -1011,6 +1016,7 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     image_clause = f", image_url={placeholder}" if image_url is not None else ""
     room_type_clause = f", room_type={placeholder}" if room_type is not None else ""
     labo_obs_clause = f", labo_observations={placeholder}" if labo_observations is not None else ""
+    prepared_clause = "" if preserve_prepared else f"prepared={false_val}, modified={true_val}, "
     params = [teacher_id, request_date, horaire, class_name, material_description, quantity,
               selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
               bool(is_lab_test)]
@@ -1028,7 +1034,7 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
             class_name={placeholder}, material_description={placeholder}, quantity={placeholder},
             selected_materials={placeholder}, computers_needed={placeholder}, notes={placeholder},
             group_count={placeholder}, material_prof={placeholder}, request_name={placeholder}, custom_duration={placeholder},
-            is_lab_test={placeholder}, prepared={false_val}, modified={true_val}, is_draft={false_val}{image_clause}{room_type_clause}{labo_obs_clause}
+            is_lab_test={placeholder}, {prepared_clause}is_draft={false_val}{image_clause}{room_type_clause}{labo_obs_clause}
         WHERE id={placeholder}
     ''', tuple(params))
     conn.commit()

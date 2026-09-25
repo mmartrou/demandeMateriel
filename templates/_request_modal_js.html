@@ -721,6 +721,11 @@ function saveRequestChanges() {
         return;
     }
 
+    // Si seule la note interne du labo a changé, on le signale au serveur pour qu'il
+    // ne réinitialise pas le statut "préparée" (voir saveRequestDirect / api_update_request).
+    const changedFieldNames = Object.keys(changes);
+    formData.labo_observations_only = changedFieldNames.length === 1 && changedFieldNames[0] === 'labo_observations';
+
     let savePromise;
     let relatedCount = 1;
     let effectiveBulkEdit = false;
@@ -762,7 +767,8 @@ function saveRequestChanges() {
                     material_description: r.material_description || '', selected_materials: r.selected_materials || '',
                     computers_needed: r.computers_needed || 0, notes: r.notes || '',
                     group_count: r.group_count ?? 1, material_prof: r.material_prof || '',
-                    request_name: r.request_name || '', is_lab_test: !!r.is_lab_test
+                    request_name: r.request_name || '', is_lab_test: !!r.is_lab_test,
+                    labo_observations_only: formData.labo_observations_only
                 }, changedFields))));
             }
         } else {

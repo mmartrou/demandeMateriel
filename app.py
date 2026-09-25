@@ -1132,6 +1132,11 @@ def api_update_request(request_id):
                     }), 400
         
         privileged = _is_privileged_user()
+        # Éditer uniquement la note interne du labo ne doit pas faire perdre le statut
+        # "préparée" ni marquer la demande comme modifiée (ce n'est pas un changement du
+        # contenu de la demande) — cohérent avec la synchro vers les demandes liées
+        # ci-dessous, qui ne touche déjà pas à ces statuts.
+        preserve_prepared = bool(data.get('labo_observations_only')) and privileged
         success = update_material_request(
             request_id,
             data['teacher_id'],
@@ -1150,7 +1155,8 @@ def api_update_request(request_id):
             is_lab_test=bool(data.get('is_lab_test', False)),
             image_url=data.get('image_url'),
             room_type=data.get('room_type') if privileged else None,
-            labo_observations=data.get('labo_observations') if privileged else None
+            labo_observations=data.get('labo_observations') if privileged else None,
+            preserve_prepared=preserve_prepared
         )
         
         if success:
