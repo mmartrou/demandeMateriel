@@ -100,7 +100,8 @@ function renderRelatedRequestsList() {
     listEl.innerHTML = '';
     const sorted = [...currentRelatedList].sort((a, b) => (a.request_date || '').localeCompare(b.request_date || ''));
     sorted.forEach(r => {
-        const dateLabel = formatDateToYMD(r.request_date) || r.request_date || '';
+        const ymd = formatDateToYMD(r.request_date);
+        const dateLabel = ymd ? ymd.split('-').reverse().join('/') : (r.request_date || '');
         const horaireLabel = r.horaire ? ` — ${r.horaire}` : '';
         const wrapper = document.createElement('div');
         wrapper.className = 'form-check';
