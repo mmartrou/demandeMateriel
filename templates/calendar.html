@@ -479,6 +479,9 @@ function openNewRequestFromCalendar() {
     document.getElementById('editRequestId').value = '';
     document.getElementById('editRequestId').removeAttribute('data-teacher-id');
     document.getElementById('editRequestId').removeAttribute('data-request-name');
+    currentRelatedList = [];
+    document.getElementById('relatedRequestsList').innerHTML = '';
+    updateBulkEditAvailability();
     document.getElementById('editDate').value = dateStr;
     document.getElementById('editRequestName').value = '';
     document.getElementById('editClassName').value = '';
