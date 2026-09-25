@@ -728,7 +728,7 @@ function saveRequestChanges() {
     if (isCreating) {
         const createData = {
             ...formData,
-            days_horaires: [{ date: formData.request_date, horaire: formData.horaire || '' }]
+            days_horaires: [{ date: formData.request_date, horaires: [formData.horaire || ''] }]
         };
         savePromise = fetch('/api/requests', {
             method: 'POST',

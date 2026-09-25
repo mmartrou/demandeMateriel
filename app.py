@@ -901,6 +901,9 @@ def api_add_request():
                 # Sauvegarder comme template TP dans la base de l'enseignant
                 _enregistrer_template_tp(data, data.get('group_count', data.get('quantity', 1)))
 
+        if not request_ids:
+            return jsonify({'error': "Aucun horaire fourni pour cette demande."}), 400
+
         return jsonify({'success': True, 'request_ids': request_ids}), 201
         
     except Exception as e:
