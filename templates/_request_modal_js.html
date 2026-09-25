@@ -699,7 +699,7 @@ function saveRequestChanges() {
             showErrorToast('Veuillez cocher au moins une option dans "Matériel peu mobile à avoir dans la salle" (ou "Pas de matériel spécifique à la salle").');
             return;
         }
-        const specific = Array.from(checkedMaterials).map(cb => cb.value).filter(v => v !== 'Pas de matériel spécifique à la salle');
+        const specific = Array.from(checkedMaterials).map(cb => cb.value);
         const freeText = document.getElementById('editMaterialDescription').value;
         let allMats = [...specific];
         if (freeText && freeText.trim()) allMats.push(freeText.trim());
