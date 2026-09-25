@@ -29,7 +29,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       generate_draft_requests_for_week, confirm_draft_request,
                       update_teacher_short_name,
                       get_all_levels, add_level, delete_level, update_level,
-                      get_standard_occupation, set_standard_occupation)
+                      get_standard_occupation, set_standard_occupation,
+                      sync_labo_observations)
 from google_drive_service import extract_google_drive_id, validate_google_drive_image, get_image_info
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry, get_new_requests_for_date
 from database import get_db_connection, close_request_connection
@@ -1154,6 +1155,15 @@ def api_update_request(request_id):
         
         if success:
             _enregistrer_template_tp(data, data.get('group_count', 1))
+
+            # Les observations labo sont communes à tous les TPs identiques (même
+            # enseignant + même nom), sauf les cours réguliers (trop nombreux pour
+            # que ça ait du sens de les synchroniser).
+            if privileged and data.get('labo_observations') is not None:
+                request_name = (data.get('request_name') or '').strip()
+                if request_name and '(cours régulier)' not in request_name.lower():
+                    sync_labo_observations(data['teacher_id'], request_name, data['labo_observations'], exclude_id=request_id)
+
             return jsonify({'message': 'Demande mise à jour avec succès'})
         else:
             return jsonify({'error': 'Demande non trouvée'}), 404

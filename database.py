@@ -1453,6 +1453,24 @@ def get_labo_observations_map(request_ids):
     conn.close()
     return result
 
+def sync_labo_observations(teacher_id, request_name, labo_observations, exclude_id):
+    """Reporte les observations labo sur toutes les autres demandes identiques
+    (même enseignant + même nom de demande), sans marquer ces demandes comme
+    modifiées ni toucher à leur statut préparé — seul le champ labo_observations
+    change. Utilisé pour que la note du labo reste commune à tous les TPs
+    identiques (voir appelant : exclut les cours réguliers, trop nombreux)."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'''
+        UPDATE material_requests
+        SET labo_observations={placeholder}
+        WHERE teacher_id={placeholder} AND request_name={placeholder} AND id != {placeholder}
+    ''', (labo_observations, teacher_id, request_name, exclude_id))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount
+
 # === GESTION DES JOURS OUVRÉS ===
 
 def get_working_days_config(start_date=None, end_date=None):
