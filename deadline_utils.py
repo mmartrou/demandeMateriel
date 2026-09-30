@@ -26,40 +26,24 @@ DEADLINE_HOUR = 8
 # Configuration des jours ouvrés (0=lundi, 6=dimanche)
 WORKING_DAYS = [0, 1, 2, 3, 4]  # Lundi à Vendredi
 
-# Jours fériés fixes (format MM-DD)
-FRENCH_HOLIDAYS = [
-    '01-01',  # Jour de l'an
-    '05-01',  # Fête du travail
-    '05-08',  # Victoire 1945
-    '07-14',  # Fête nationale
-    '08-15',  # Assomption
-    '11-01',  # Toussaint
-    '11-11',  # Armistice
-    '12-25',  # Noël
-]
-
 def is_working_day(date):
     """
-    Vérifie si une date est un jour ouvré (lundi-vendredi, hors jours fériés)
-    
+    Vérifie si une date est un jour ouvré par défaut (lundi-vendredi).
+
+    Ceci est uniquement le défaut utilisé quand aucune configuration explicite
+    n'existe dans `working_days_config` pour cette date. Les jours fériés ou
+    autres exceptions (samedi/dimanche travaillé, pont, etc.) ne sont pas
+    déduits automatiquement : ils doivent être déclarés au cas par cas sur
+    /admin/working-days, pour que l'affichage de cette page et la validation
+    des demandes restent toujours cohérents entre eux.
+
     Args:
         date (datetime): Date à vérifier
-        
+
     Returns:
         bool: True si jour ouvré, False sinon
     """
-    # Vérifier si c'est un weekend
-    if date.weekday() not in WORKING_DAYS:
-        return False
-    
-    # Vérifier si c'est un jour férié
-    date_str = date.strftime('%m-%d')
-    if date_str in FRENCH_HOLIDAYS:
-        return False
-    
-    # TODO: Ajouter Pâques, Ascension, Pentecôte (dates variables)
-    
-    return True
+    return date.weekday() in WORKING_DAYS
 
 def add_working_hours(start_datetime, hours_to_add):
     """
