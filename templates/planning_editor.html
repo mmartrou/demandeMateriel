@@ -745,6 +745,7 @@
     // Rafraîchit la carte d'une demande modifiée/supprimée via la modale,
     // sans relancer l'optimiseur (les autres cours ne bougent pas).
     async function loadRequests() {
+        loadAllRequestsForRelatedDetection(); // garde window.allRequests à jour après la sauvegarde
         if (!planningData) return;
         const requestId = document.getElementById('editRequestId').value;
         if (!requestId) return;
@@ -824,7 +825,20 @@
         }
     }
     const isPrivileged = {{ 'true' if current_user and current_user.role in ('admin', 'labo') else 'false' }};
-    
+
+    // Charge les demandes à venir (tous enseignants) pour que la modale d'édition puisse
+    // détecter les demandes liées (même enseignant + même nom), comme sur "Voir les
+    // demandes" et le calendrier — sans ça window.allRequests reste vide ici et aucun TP
+    // lié n'apparaît jamais, alors que c'est justement utile pour voir si l'enseignant a
+    // d'autres TPs identiques prévus plus tard.
+    function loadAllRequestsForRelatedDetection() {
+        const todayStr = new Date().toISOString().split('T')[0];
+        return fetch(`/api/requests?start_date=${todayStr}`, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => { window.allRequests = Array.isArray(data) ? data : []; })
+            .catch(error => console.warn('loadAllRequestsForRelatedDetection:', error));
+    }
+
     // Initialiser la date par défaut (demain) et charger le planning correspondant s'il existe
     document.addEventListener('DOMContentLoaded', function() {
         let targetDate;
@@ -868,6 +882,7 @@
             // un aller-retour réseau supplémentaire au temps de chargement perçu.
             const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
             const labTestPromise = loadLabTestRequests(targetDate);
+            loadAllRequestsForRelatedDetection();
             const response = await fetch(`/api/planning-editor/data?date=${targetDate}`);
             console.log('📡 Réponse API status:', response.status);
             const data = await response.json();
@@ -2079,6 +2094,7 @@ async function reloadPlanning() {
         // Lancée en parallèle de la requête principale (pas après)
         const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
         const labTestPromise = loadLabTestRequests(targetDate);
+        loadAllRequestsForRelatedDetection();
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.ok) {
             const data = await response.json();
@@ -2183,6 +2199,7 @@ async function reloadPlanningIfExists(targetDate) {
         // Lancée en parallèle de la requête principale (pas après)
         const standardOccupationPromise = loadStandardOccupationForDate(targetDate);
         const labTestPromise = loadLabTestRequests(targetDate);
+        loadAllRequestsForRelatedDetection();
         const response = await fetch(`/api/get-planning?date=${targetDate}`);
         if (response.status === 404) {
             // Aucun planning sauvegardé pour cette date : état vide sans erreur
