@@ -1459,20 +1459,27 @@ def get_labo_observations_map(request_ids):
     conn.close()
     return result
 
-def sync_labo_observations(teacher_id, request_name, labo_observations, exclude_id):
-    """Reporte les observations labo sur toutes les autres demandes identiques
-    (même enseignant + même nom de demande), sans marquer ces demandes comme
-    modifiées ni toucher à leur statut préparé — seul le champ labo_observations
-    change. Utilisé pour que la note du labo reste commune à tous les TPs
-    identiques (voir appelant : exclut les cours réguliers, trop nombreux)."""
+# Champs "labo" que l'on reporte sur toutes les demandes identiques (voir
+# sync_field_to_related_requests) — whitelist nécessaire puisque le nom de colonne
+# est interpolé dans le SQL.
+SYNCABLE_REQUEST_FIELDS = {'labo_observations', 'room_type'}
+
+def sync_field_to_related_requests(teacher_id, request_name, field_name, value, exclude_id):
+    """Reporte un champ (observations labo ou salle) sur toutes les autres demandes
+    identiques (même enseignant + même nom de demande), sans marquer ces demandes
+    comme modifiées ni toucher à leur statut préparé — seul ce champ change. Utilisé
+    pour que ces informations restent communes à tous les TPs identiques (voir
+    appelant : exclut les cours réguliers, trop nombreux)."""
+    if field_name not in SYNCABLE_REQUEST_FIELDS:
+        raise ValueError(f'Champ non synchronisable: {field_name}')
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
     cursor.execute(f'''
         UPDATE material_requests
-        SET labo_observations={placeholder}
+        SET {field_name}={placeholder}
         WHERE teacher_id={placeholder} AND request_name={placeholder} AND id != {placeholder}
-    ''', (labo_observations, teacher_id, request_name, exclude_id))
+    ''', (value, teacher_id, request_name, exclude_id))
     conn.commit()
     conn.close()
     return cursor.rowcount
