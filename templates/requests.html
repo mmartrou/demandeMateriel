@@ -214,7 +214,12 @@ function loadRequestsWithPendingModifications() {
     const loadingIndicator = document.getElementById('loadingIndicator');
     const tableBody = document.getElementById('requestsTableBody');
     const noResults = document.getElementById('noResults');
-    
+
+    // Vider puis repeupler le tableau réduit temporairement la hauteur de la page, ce qui
+    // fait remonter le scroll du navigateur pendant le chargement : on le restaure une fois
+    // le tableau repeuplé (voir le .finally() en bas de la chaîne de promesses).
+    const scrollY = window.scrollY;
+
     // Show loading
     loadingIndicator.classList.remove('d-none');
     tableBody.innerHTML = '';
@@ -428,6 +433,9 @@ function loadRequestsWithPendingModifications() {
             console.error('Error:', error);
             loadingIndicator.classList.add('d-none');
             showErrorToast('Erreur lors du chargement des demandes');
+        })
+        .finally(() => {
+            requestAnimationFrame(() => window.scrollTo(0, scrollY));
         });
 }
 
