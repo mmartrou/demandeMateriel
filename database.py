@@ -846,11 +846,23 @@ def get_all_users():
     return result
 
 
+def rien_a_preparer(selected_materials, computers_needed, notes):
+    """Vrai si le labo n'a rien à préparer : la demande peut être marquée préparée d'office."""
+    try:
+        computers = int(computers_needed or 0)
+    except (TypeError, ValueError):
+        computers = 0
+    return (selected_materials == 'Pas besoin de matériel'
+            and computers == 0
+            and not (notes or '').strip())
+
+
 def add_material_request(teacher_id, request_date, class_name, material_description,
                         horaire=None, quantity=1, selected_materials='', computers_needed=0,
                         notes='', exam=False, group_count=1, material_prof='', request_name='', image_url='', custom_duration=None,
                         is_lab_test=False, is_draft=False):
     """Add a new material request"""
+    prepared = rien_a_preparer(selected_materials, computers_needed, notes)
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     # Coerce group_count to an integer with a safe default (0 autorisé : niveaux sans répartition en groupes)
@@ -861,14 +873,14 @@ def add_material_request(teacher_id, request_date, class_name, material_descript
     except Exception:
         group_count = 1
 
-    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 17)
+    placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 18)
     cursor.execute(f'''
         INSERT INTO material_requests
         (teacher_id, request_date, horaire, class_name, material_description, quantity,
-         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, is_lab_test, is_draft)
+         selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, is_lab_test, is_draft, prepared)
         VALUES ({placeholders})
     ''', (teacher_id, request_date, horaire, class_name, material_description, quantity,
-          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, bool(is_lab_test), bool(is_draft)))
+          selected_materials, computers_needed, notes, exam, group_count, material_prof, request_name, image_url, custom_duration, bool(is_lab_test), bool(is_draft), bool(prepared)))
     conn.commit()
     request_id = cursor.lastrowid
     conn.close()
@@ -1016,7 +1028,12 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     image_clause = f", image_url={placeholder}" if image_url is not None else ""
     room_type_clause = f", room_type={placeholder}" if room_type is not None else ""
     labo_obs_clause = f", labo_observations={placeholder}" if labo_observations is not None else ""
-    prepared_clause = "" if preserve_prepared else f"prepared={false_val}, modified={true_val}, "
+    if preserve_prepared:
+        prepared_clause = ""
+    elif rien_a_preparer(selected_materials, computers_needed, notes):
+        prepared_clause = f"prepared={true_val}, modified={false_val}, "
+    else:
+        prepared_clause = f"prepared={false_val}, modified={true_val}, "
     params = [teacher_id, request_date, horaire, class_name, material_description, quantity,
               selected_materials, computers_needed, notes, group_count, material_prof, request_name, custom_duration,
               bool(is_lab_test)]
