@@ -758,15 +758,14 @@ def _est_nom_brouillon_auto(request_name, class_name):
 def _enregistrer_template_tp(data, group_count):
     """Enregistre la demande dans la base de TP de l'enseignant, si c'en est bien un.
 
-    'Absent' et 'Examen' décrivent l'état d'un créneau, pas un TP réutilisable.
-    En revanche 'Pas besoin de matériel' est un vrai cours (théorique, parfois avec
-    ordinateurs) : il doit pouvoir être enregistré et réutilisé, sinon un cours de
-    l'emploi du temps simplement renommé n'entre jamais dans la base de TP.
+    'Absent' décrit l'état d'un créneau, pas un TP réutilisable. En revanche un
+    examen nommé ou un cours 'Pas besoin de matériel' renommé doivent pouvoir être
+    réutilisés ; les noms automatiques "(cours régulier)" sont exclus plus bas.
     """
     sm = data.get('selected_materials', '')
     request_name = (data.get('request_name') or '').strip()
     class_name = data.get('class_name')
-    if sm in ('Absent', 'Examen'):
+    if sm == 'Absent':
         return
     if not request_name or not class_name:
         return

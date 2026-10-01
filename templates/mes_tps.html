@@ -281,23 +281,39 @@
         (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
     }
 
+    // Mêmes conventions que saveRequestChanges() dans _request_modal_js.html
+    function buildMaterialFields() {
+        if (document.getElementById('editAbsent')?.checked) {
+            return { selected_materials: 'Absent', material_description: 'Enseignant absent' };
+        }
+        if (document.getElementById('editNoMaterial')?.checked) {
+            return { selected_materials: 'Pas besoin de matériel', material_description: 'Cours théorique sans matériel' };
+        }
+        if (document.getElementById('editExamMode')?.checked) {
+            return { selected_materials: 'Examen', material_description: "Surveillance d'examen" };
+        }
+        const checkedMaterials = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked'))
+            .map(cb => cb.value);
+        const freeText = (document.getElementById('editMaterialDescription')?.value || '').trim();
+        const allMats = [...checkedMaterials];
+        if (freeText) allMats.push(freeText);
+        return {
+            selected_materials:   allMats.length ? '- ' + allMats.join('\n- ') : '',
+            material_description: freeText ? `Matériel requis: ${freeText}` : 'Cours sans matériel spécifique'
+        };
+    }
+
     function createTpTemplate(level) {
         const requestName = (document.getElementById('editRequestName')?.value || '').trim();
         if (!requestName) {
             showErrorToast('Le nom du TP est obligatoire.');
             return;
         }
-        const checkedMaterials = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked'))
-            .map(cb => cb.value);
-        const freeText = (document.getElementById('editMaterialDescription')?.value || '').trim();
-        let allMats = [...checkedMaterials];
-        if (freeText) allMats.push(freeText);
 
         const data = {
             level:                level,
             request_name:         requestName,
-            material_description: freeText ? `Matériel requis: ${freeText}` : 'Cours sans matériel spécifique',
-            selected_materials:   allMats.length ? '- ' + allMats.join('\n- ') : '',
+            ...buildMaterialFields(),
             material_prof:        document.getElementById('editMaterialProf')?.value || '',
             computers_needed:     parseInt(document.getElementById('editComputersNeeded')?.value, 10) || 0,
             group_count:          parseGroupCount(document.getElementById('editQuantity')?.value),
@@ -356,16 +372,9 @@
     }
 
     function saveTpTemplate(templateId) {
-        const checkedMaterials = Array.from(document.querySelectorAll('input[name="editMaterials"]:checked'))
-            .map(cb => cb.value);
-        const freeText = (document.getElementById('editMaterialDescription')?.value || '').trim();
-        let allMats = [...checkedMaterials];
-        if (freeText) allMats.push(freeText);
-
         const data = {
             request_name:        document.getElementById('editRequestName')?.value || '',
-            material_description: freeText ? `Matériel requis: ${freeText}` : 'Cours sans matériel spécifique',
-            selected_materials:  allMats.length ? '- ' + allMats.join('\n- ') : '',
+            ...buildMaterialFields(),
             material_prof:       document.getElementById('editMaterialProf')?.value || '',
             computers_needed:    parseInt(document.getElementById('editComputersNeeded')?.value, 10) || 0,
             group_count:         parseGroupCount(document.getElementById('editQuantity')?.value),
