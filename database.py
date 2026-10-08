@@ -247,6 +247,7 @@ def init_database():
             material_prof {text_type},
             request_name {text_type},
             room_type {text_type} DEFAULT 'Mixte',
+            room_type_manual BOOLEAN DEFAULT FALSE,
             image_url {text_type},
             exam BOOLEAN DEFAULT FALSE,
             custom_duration INTEGER,
@@ -274,7 +275,8 @@ def init_database():
         ('custom_duration', 'INTEGER'),
         ('is_lab_test', 'BOOLEAN DEFAULT FALSE'),
         ('is_draft', 'BOOLEAN DEFAULT FALSE'),
-        ('labo_observations', 'TEXT')
+        ('labo_observations', 'TEXT'),
+        ('room_type_manual', 'BOOLEAN DEFAULT FALSE')
     ]
     
     for column_name, column_type in columns_to_add:
@@ -951,7 +953,7 @@ def get_material_request_by_id(request_id):
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
                t.name as teacher_name, mr.custom_duration, mr.is_lab_test, mr.is_draft,
-               mr.labo_observations
+               mr.labo_observations, mr.room_type_manual
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.id = {placeholder}
@@ -993,7 +995,8 @@ def get_material_request_by_id(request_id):
             'custom_duration': request[20] if len(request) > 20 else None,
             'is_lab_test': bool(request[21]) if len(request) > 21 and request[21] is not None else False,
             'is_draft': bool(request[22]) if len(request) > 22 and request[22] is not None else False,
-            'labo_observations': request[23] if len(request) > 23 else None
+            'labo_observations': request[23] if len(request) > 23 else None,
+            'room_type_manual': bool(request[24]) if len(request) > 24 and request[24] is not None else False
         }
 
 def update_material_request(request_id, teacher_id, request_date, class_name, material_description,
@@ -1026,7 +1029,7 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
 
     image_clause = f", image_url={placeholder}" if image_url is not None else ""
-    room_type_clause = f", room_type={placeholder}" if room_type is not None else ""
+    room_type_clause = f", room_type={placeholder}, room_type_manual={true_val}" if room_type is not None else ""
     labo_obs_clause = f", labo_observations={placeholder}" if labo_observations is not None else ""
     if preserve_prepared:
         prepared_clause = ""
@@ -1143,13 +1146,16 @@ def get_grouped_requests_by_name(teacher_id, request_name):
         columns = [description[0] for description in (cursor.description or [])]
         return [dict(zip(columns, row)) for row in results]
 
-def update_room_type(request_id, room_type):
-    """Update the room type of a material request"""
+def update_room_type(request_id, room_type, manual=True):
+    """Update the room type of a material request.
+
+    manual=True fige ce choix : le planning ne devinera plus la matière par mots-clés."""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    
+
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    cursor.execute(f'UPDATE material_requests SET room_type = {placeholder} WHERE id = {placeholder}', (room_type, request_id))
+    cursor.execute(f'UPDATE material_requests SET room_type = {placeholder}, room_type_manual = {placeholder} WHERE id = {placeholder}',
+                   (room_type, bool(manual), request_id))
     conn.commit()
     updated = cursor.rowcount > 0
     conn.close()
@@ -1396,7 +1402,7 @@ def get_planning_data(date_str):
                mr.material_description, mr.quantity, mr.selected_materials, mr.computers_needed,
                mr.notes, mr.prepared, mr.modified, mr.group_count, mr.material_prof,
                mr.request_name, mr.room_type, mr.image_url, mr.exam, mr.created_at,
-               t.name as teacher_name, mr.custom_duration, mr.labo_observations
+               t.name as teacher_name, mr.custom_duration, mr.labo_observations, mr.room_type_manual
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.request_date = {placeholder}
@@ -1492,9 +1498,11 @@ def sync_field_to_related_requests(teacher_id, request_name, field_name, value, 
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
+    true_val = 'TRUE' if db_type == 'postgresql' else '1'
+    manual_clause = f", room_type_manual={true_val}" if field_name == 'room_type' else ""
     cursor.execute(f'''
         UPDATE material_requests
-        SET {field_name}={placeholder}
+        SET {field_name}={placeholder}{manual_clause}
         WHERE teacher_id={placeholder} AND request_name={placeholder} AND id != {placeholder}
     ''', (value, teacher_id, request_name, exclude_id))
     conn.commit()

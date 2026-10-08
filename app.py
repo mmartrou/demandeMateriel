@@ -1136,6 +1136,10 @@ def api_update_request(request_id):
         # contenu de la demande) — cohérent avec la synchro vers les demandes liées
         # ci-dessous, qui ne touche déjà pas à ces statuts.
         preserve_prepared = bool(data.get('labo_observations_only')) and privileged
+        # La modale envoie toujours la salle : ce n'est un choix du labo/admin que si elle change.
+        new_room_type = data.get('room_type') if privileged else None
+        if new_room_type == (current_request.get('room_type') or 'Mixte'):
+            new_room_type = None
         success = update_material_request(
             request_id,
             data['teacher_id'],
@@ -1153,7 +1157,7 @@ def api_update_request(request_id):
             custom_duration=data.get('custom_duration'),
             is_lab_test=bool(data.get('is_lab_test', False)),
             image_url=data.get('image_url'),
-            room_type=data.get('room_type') if privileged else None,
+            room_type=new_room_type,
             labo_observations=data.get('labo_observations') if privileged else None,
             preserve_prepared=preserve_prepared
         )
@@ -1167,9 +1171,10 @@ def api_update_request(request_id):
             if privileged:
                 request_name = (data.get('request_name') or '').strip()
                 if request_name and '(cours régulier)' not in request_name.lower():
-                    for field_name in ('labo_observations', 'room_type'):
-                        if data.get(field_name) is not None:
-                            sync_field_to_related_requests(data['teacher_id'], request_name, field_name, data[field_name], exclude_id=request_id)
+                    if data.get('labo_observations') is not None:
+                        sync_field_to_related_requests(data['teacher_id'], request_name, 'labo_observations', data['labo_observations'], exclude_id=request_id)
+                    if new_room_type is not None:
+                        sync_field_to_related_requests(data['teacher_id'], request_name, 'room_type', new_room_type, exclude_id=request_id)
 
             return jsonify({'message': 'Demande mise à jour avec succès'})
         else:
@@ -1458,7 +1463,7 @@ def api_update_room_type(request_id):
         if room_type not in ['Physique', 'Chimie', 'Mixte']:
             return jsonify({'error': 'Type de salle invalide'}), 400
         
-        success = update_room_type(request_id, room_type)
+        success = update_room_type(request_id, room_type, manual=_is_privileged_user())
         if success:
             return jsonify({'message': 'Type de salle mis à jour avec succès'})
         else:

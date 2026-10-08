@@ -31,6 +31,7 @@ def to_dict_request(req):
             'teacher_name': req[19] if len(req) > 19 else '',
             'custom_duration': req[20] if len(req) > 20 else None,
             'labo_observations': req[21] if len(req) > 21 else '',
+            'room_type_manual': bool(req[22]) if len(req) > 22 and req[22] is not None else False,
         }
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -130,6 +131,33 @@ def extract_material_needs(selected_materials):
     return needs
 
 
+def matiere_de_la_demande(req):
+    """'physique', 'chimie' ou 'mixte' selon le type de salle de la demande.
+
+    Une salle 'Mixte' laissée par défaut est devinée par mots-clés ; une fois que les
+    techniciens/admin ont choisi le type (room_type_manual), leur choix est respecté tel quel.
+    """
+    room_type = req.get('room_type') or 'Mixte'
+    if room_type == 'Physique':
+        return "physique"
+    if room_type == 'Chimie':
+        return "chimie"
+    if req.get('room_type_manual'):
+        return "mixte"
+    materials_text = str(req.get('selected_materials', '')).lower()
+    description_text = str(req.get('material_description', '')).lower()
+    combined_text = f"{materials_text} {description_text}"
+    physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
+    chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction', 'molécule', 'ion', 'ph']
+    physics_score = sum(1 for kw in physics_keywords if kw in combined_text)
+    chemistry_score = sum(1 for kw in chemistry_keywords if kw in combined_text)
+    if physics_score > chemistry_score:
+        return "physique"
+    if chemistry_score > physics_score:
+        return "chimie"
+    return "mixte"
+
+
 def build_course_data_entry(request_id):
     """
     Construit, pour une seule demande, le dictionnaire au format 'courses_data'
@@ -149,23 +177,7 @@ def build_course_data_entry(request_id):
     level_short_map = {l['name']: l['short_name'] for l in all_levels}
     levels_duration_map = {l['name']: l['default_duration'] for l in all_levels}
     max_ordinateurs = _max_ordinateurs(_build_salles_dict(database.get_all_rooms()))
-    matiere = "mixte"
-    if req.get('room_type') == 'Physique':
-        matiere = "physique"
-    elif req.get('room_type') == 'Chimie':
-        matiere = "chimie"
-    elif req.get('room_type') == 'Mixte':
-        materials_text = str(req.get('selected_materials', '')).lower()
-        description_text = str(req.get('material_description', '')).lower()
-        combined_text = f"{materials_text} {description_text}"
-        physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
-        chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction', 'molécule', 'ion', 'ph']
-        physics_score = sum(1 for kw in physics_keywords if kw in combined_text)
-        chemistry_score = sum(1 for kw in chemistry_keywords if kw in combined_text)
-        if physics_score > chemistry_score and physics_score > 0:
-            matiere = "physique"
-        elif chemistry_score > physics_score and chemistry_score > 0:
-            matiere = "chimie"
+    matiere = matiere_de_la_demande(req)
 
     computers_needed = req.get('computers_needed', 0)
     if computers_needed and computers_needed > 0:
@@ -1444,23 +1456,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         for i, raw_req in enumerate(raw_requests):
             req = to_dict_request(raw_req)
             material_needs = extract_material_needs(req.get('selected_materials', ''))
-            matiere = "mixte"
-            if req.get('room_type') == 'Physique':
-                matiere = "physique"
-            elif req.get('room_type') == 'Chimie':
-                matiere = "chimie"
-            elif req.get('room_type') == 'Mixte':
-                materials_text = str(req.get('selected_materials', '')).lower()
-                description_text = str(req.get('material_description', '')).lower()
-                combined_text = f"{materials_text} {description_text}"
-                physics_keywords = ['oscilloscope', 'générateur', 'signal', 'optique', 'laser', 'prisme', 'lentille', 'physique', 'électricité', 'mécanique', 'ondes']
-                chemistry_keywords = ['burette', 'erlenmeyer', 'bécher', 'pipette', 'solution', 'naoh', 'hcl', 'acide', 'base', 'dosage', 'titrage', 'chimie', 'réaction', 'molécule', 'ion', 'ph']
-                physics_score = sum(1 for kw in physics_keywords if kw in combined_text)
-                chemistry_score = sum(1 for kw in chemistry_keywords if kw in combined_text)
-                if physics_score > chemistry_score and physics_score > 0:
-                    matiere = "physique"
-                elif chemistry_score > physics_score and chemistry_score > 0:
-                    matiere = "chimie"
+            matiere = matiere_de_la_demande(req)
             computers_needed = req.get('computers_needed', 0)
             if computers_needed and computers_needed > 0:
                 material_needs["ordinateurs"] = max(material_needs["ordinateurs"], computers_needed)
