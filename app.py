@@ -2030,6 +2030,50 @@ def api_get_deadline_config():
     except Exception as e:
         return api_error('Erreur lors de la récupération du délai de dépôt', e)
 
+@app.route('/api/calendar-info', methods=['GET'])
+def api_calendar_info():
+    """Infos d'affichage pour /calendar : jours non ouvrés (fériés...) et prochaine date limite de dépôt.
+
+    Calculé côté serveur pour tenir compte des jours configurés dans /admin/working-days
+    (le miroir JS de main.js ne connaît que les week-ends).
+    """
+    try:
+        from deadline_utils import get_earliest_valid_date, get_required_working_days, _deadline_moment
+        from database import get_working_day_overrides
+
+        non_working_days = []
+        for item in get_working_days_config():
+            if item.get('is_working_day'):
+                continue
+            d = item.get('date')
+            if hasattr(d, 'strftime'):
+                d = d.strftime('%Y-%m-%d')
+            elif isinstance(d, str) and len(d) > 10:
+                from dateutil import parser
+                try:
+                    d = parser.parse(d).strftime('%Y-%m-%d')
+                except Exception:
+                    continue
+            if d:
+                non_working_days.append(d)
+
+        overrides = get_working_day_overrides()
+        required_days = get_required_working_days()
+        earliest = get_earliest_valid_date(overrides=overrides, required_days=required_days)
+        earliest_date = datetime.strptime(earliest, '%Y-%m-%d').date()
+        deadline = _deadline_moment(earliest_date, required_days, overrides=overrides)
+
+        return jsonify({
+            'non_working_days': non_working_days,
+            'next_deadline': {
+                'request_date': earliest,
+                'deadline_date': deadline.strftime('%Y-%m-%d'),
+                'deadline_time': deadline.strftime('%Hh%M'),
+            },
+        })
+    except Exception as e:
+        return api_error('Erreur lors de la récupération des infos du calendrier', e)
+
 @app.route('/api/deadline-config', methods=['PUT'])
 def api_set_deadline_config():
     """Modifie le nombre de jours ouvrés requis avant une demande (admin/labo)."""

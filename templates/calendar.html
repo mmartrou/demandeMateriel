@@ -208,9 +208,75 @@
 }
 
 .pronote-empty-week {
-    padding: 2rem;
+    padding: 1rem;
     text-align: center;
     color: #6c757d;
+}
+
+/* ---- Jours non ouvrés (fériés, vacances...) : hachurés ---- */
+.pronote-day-col.holiday {
+    background-color: #f1f3f5;
+    background-image:
+        repeating-linear-gradient(-45deg, rgba(108, 117, 125, 0.18) 0, rgba(108, 117, 125, 0.18) 2px, transparent 2px, transparent 10px),
+        linear-gradient(#e2e5e8 1px, transparent 1px);
+    background-size: auto, 100% var(--pt-hour-px);
+}
+
+.pronote-noh-cell.holiday {
+    background-color: #f1f3f5;
+    background-image: repeating-linear-gradient(-45deg, rgba(108, 117, 125, 0.18) 0, rgba(108, 117, 125, 0.18) 2px, transparent 2px, transparent 10px);
+}
+
+.pronote-head-cell.holiday {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(108, 117, 125, 0.18) 0,
+        rgba(108, 117, 125, 0.18) 2px,
+        transparent 2px,
+        transparent 10px
+    );
+    color: #6c757d;
+}
+
+
+/* ---- Barre de navigation de semaine ---- */
+.week-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+}
+
+.week-toolbar .week-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.week-toolbar h5 {
+    margin: 0;
+    min-width: 18rem;
+    text-align: center;
+}
+
+/* ---- Bandeau date limite ---- */
+.deadline-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.05rem;
+}
+
+.deadline-banner .deadline-icon {
+    font-size: 1.6rem;
+    line-height: 1;
 }
 </style>
 {% endblock %}
@@ -236,6 +302,12 @@
                 </div>
             </div>
             <div class="card-body">
+                <!-- Prochaine date limite de dépôt (calculée côté serveur, jours fériés compris) -->
+                <div id="deadlineBanner" class="alert alert-warning deadline-banner d-none mb-4" role="status">
+                    <span class="deadline-icon">⏰</span>
+                    <span id="deadlineBannerText"></span>
+                </div>
+
                 <!-- Filtres -->
                 <div class="row mb-4">
                     <div class="col-md-4">
@@ -323,20 +395,26 @@
                 <div class="row">
                     <div class="col-12">
                         <div class="week-calendar">
-                            <div class="calendar-header text-center mb-3">
-                                <button class="btn btn-outline-primary btn-sm" onclick="previousWeek()">‹ Semaine précédente</button>
-                                <h5 id="currentWeek" class="d-inline mx-4 mb-0"></h5>
-                                <button class="btn btn-outline-primary btn-sm" onclick="nextWeek()">Semaine suivante ›</button>
+                            <div class="week-toolbar">
+                                <div class="week-nav">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="previousWeek()">‹ Semaine précédente</button>
+                                    <h5 id="currentWeek"></h5>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="nextWeek()">Semaine suivante ›</button>
+                                </div>
+                                <button id="btnGenerateWeek" class="btn btn-success fw-semibold"
+                                        title="Crée automatiquement, pour la semaine affichée, les cours réguliers de votre emploi du temps (à vérifier ensuite)">
+                                    ⚡ Générer mes cours de la semaine
+                                </button>
                             </div>
-                            <button id="btnGenerateWeek" class="btn btn-outline-success btn-sm ms-2">
-                                Générer la semaine
-                            </button>
+                            <div id="noPlanningResults" class="pronote-empty-week d-none">
+                                Aucune demande cette semaine.
+                                Cliquez sur <strong>⚡ Générer mes cours de la semaine</strong> pour pré-remplir votre emploi du temps.
+                            </div>
                             <div class="pronote-wrap">
                                 <div class="pronote-timetable" id="pronoteTimetable">
                                     <!-- La grille horaire type Pronote est générée ici -->
                                 </div>
                             </div>
-                            <div id="noPlanningResults" class="pronote-empty-week d-none">Aucune demande cette semaine.</div>
                         </div>
                     </div>
                 </div>
@@ -358,6 +436,8 @@ if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
     currentWeekStart.setDate(currentWeekStart.getDate() + 7);
 }
 let events = [];
+// Jours non ouvrés configurés dans /admin/working-days (ensemble de dates 'YYYY-MM-DD')
+let nonWorkingDays = new Set();
 
 // myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par _request_modal_js.html (inclus plus haut)
 
@@ -421,7 +501,54 @@ function getCookie(name) {
     return null;
 }
 
+const DAY_NAMES_FULL = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+function parseYMD(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+function formatDayDate(date) {
+    return `${DAY_NAMES_FULL[date.getDay()]} ${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Bandeau "date limite" : la prochaine date de cours encore demandable et l'heure du couperet
+function renderDeadlineBanner(info) {
+    const banner = document.getElementById('deadlineBanner');
+    if (!info || !info.request_date || !info.deadline_date) {
+        banner.classList.add('d-none');
+        return;
+    }
+    const requestDate = parseYMD(info.request_date);
+    const deadlineDate = parseYMD(info.deadline_date);
+    const today = parseYMD(ymd(new Date()));
+    const dayDiff = Math.round((deadlineDate - today) / 86400000);
+    const time = (info.deadline_time || '08h00').replace(/^0/, '').replace(/h00$/, 'h');
+
+    let when;
+    if (dayDiff === 0) when = `aujourd'hui avant ${time}`;
+    else if (dayDiff === 1) when = `demain ${formatDayDate(deadlineDate)} à ${time}`;
+    else when = `${formatDayDate(deadlineDate)} à ${time}`;
+
+    document.getElementById('deadlineBannerText').innerHTML =
+        `Vous avez jusqu'à <strong>${when}</strong> pour poster vos demandes pour le <strong>${formatDayDate(requestDate)}</strong>.`;
+    banner.classList.remove('d-none');
+}
+
+function loadCalendarInfo() {
+    fetch('/api/calendar-info', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => {
+            nonWorkingDays = new Set(data.non_working_days || []);
+            renderDeadlineBanner(data.next_deadline);
+            renderWeekView();
+        })
+        .catch(err => console.error('Erreur chargement infos calendrier:', err));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    loadCalendarInfo();
+
     // Load teachers for filter (un seul enseignant affiché à la fois)
     fetch('/api/teachers')
         .then(response => response.json())
@@ -666,8 +793,8 @@ function renderWeekView() {
     });
 
     const totalEvents = events.length;
+    // La grille reste toujours visible (pour voir les jours fériés hachurés même sans demande)
     document.getElementById('noPlanningResults').classList.toggle('d-none', totalEvents !== 0);
-    document.getElementById('pronoteTimetable').classList.toggle('d-none', totalEvents === 0);
 
     const hasUntimed = eventsByDay.some(d => d.untimed.length > 0);
 
@@ -675,8 +802,9 @@ function renderWeekView() {
     let headHtml = `<div class="pronote-head-cell"></div>`;
     eventsByDay.forEach(({ day, dayDate }, index) => {
         const isToday = dayDate === todayStr;
+        const isHoliday = nonWorkingDays.has(dayDate);
         headHtml += `
-            <div class="pronote-head-cell${isToday ? ' today' : ''}">
+            <div class="pronote-head-cell${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}">
                 ${dayNames[index]}
                 <span class="pronote-head-daynum">${day.getDate()}/${day.getMonth() + 1}</span>
             </div>`;
@@ -715,19 +843,21 @@ function renderWeekView() {
             const top = (nowMin - PT_DAY_START_MIN) * PT_PX_PER_MIN;
             colHtml += `<div class="pronote-now-line" style="top:${top}px;"></div>`;
         }
-        dayColsHtml += `<div class="pronote-day-col${isToday ? ' today' : ''}" style="height:${gridHeight}px;">${colHtml}</div>`;
+        const isHoliday = nonWorkingDays.has(dayDate);
+        dayColsHtml += `<div class="pronote-day-col${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}" style="height:${gridHeight}px;">${colHtml}</div>`;
     });
 
     // ---- Ligne "sans horaire" (absences, pas besoin de matériel non planifiés, etc.) ----
     let noHorRowHtml = '';
     if (hasUntimed) {
         noHorRowHtml = `<div class="pronote-noh-label">sans<br>horaire</div>`;
-        eventsByDay.forEach(({ untimed }) => {
+        eventsByDay.forEach(({ dayDate, untimed }) => {
             let chips = '';
             untimed.forEach(ev => {
                 chips += buildChipHtml(ev, showTeacherName);
             });
-            noHorRowHtml += `<div class="pronote-noh-cell">${chips}</div>`;
+            const isHoliday = nonWorkingDays.has(dayDate);
+            noHorRowHtml += `<div class="pronote-noh-cell${isHoliday ? ' holiday' : ''}">${chips}</div>`;
         });
     }
 
