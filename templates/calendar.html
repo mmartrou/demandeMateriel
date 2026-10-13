@@ -792,7 +792,8 @@ function renderWeekView() {
         return { day, dayDate, timed: layoutDayEvents(dayEvents.filter(e => e.hasTime)), untimed: dayEvents.filter(e => !e.hasTime) };
     });
 
-    const totalEvents = events.length;
+    // Seulement les demandes de la semaine affichée (`events` contient toutes les semaines)
+    const totalEvents = eventsByDay.reduce((n, d) => n + d.timed.length + d.untimed.length, 0);
     // La grille reste toujours visible (pour voir les jours fériés hachurés même sans demande)
     document.getElementById('noPlanningResults').classList.toggle('d-none', totalEvents !== 0);
 
