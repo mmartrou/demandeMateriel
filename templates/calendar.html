@@ -410,6 +410,9 @@
                                 Aucune demande cette semaine.
                                 Cliquez sur <strong>⚡ Générer mes cours de la semaine</strong> pour pré-remplir votre emploi du temps.
                             </div>
+                            <div id="holidayWeekMessage" class="pronote-empty-week d-none">
+                                Semaine de vacances, 😄 repose-toi bien !
+                            </div>
                             <div class="pronote-wrap">
                                 <div class="pronote-timetable" id="pronoteTimetable">
                                     <!-- La grille horaire type Pronote est générée ici -->
@@ -795,7 +798,10 @@ function renderWeekView() {
     // Seulement les demandes de la semaine affichée (`events` contient toutes les semaines)
     const totalEvents = eventsByDay.reduce((n, d) => n + d.timed.length + d.untimed.length, 0);
     // La grille reste toujours visible (pour voir les jours fériés hachurés même sans demande)
-    document.getElementById('noPlanningResults').classList.toggle('d-none', totalEvents !== 0);
+    // Semaine entièrement non ouvrée (vacances) : message dédié à la place de "Aucune demande"
+    const isHolidayWeek = eventsByDay.every(d => nonWorkingDays.has(d.dayDate));
+    document.getElementById('holidayWeekMessage').classList.toggle('d-none', !isHolidayWeek);
+    document.getElementById('noPlanningResults').classList.toggle('d-none', isHolidayWeek || totalEvents !== 0);
 
     const hasUntimed = eventsByDay.some(d => d.untimed.length > 0);
 
