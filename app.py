@@ -12,7 +12,7 @@ from datetime import timedelta
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask  # noqa: E402
+from flask import Flask, url_for  # noqa: E402
 
 import security  # noqa: E402
 from database import close_request_connection, init_database  # noqa: E402
@@ -40,6 +40,17 @@ app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_MB', '10')) * 1024 
 logging.basicConfig(level=logging.INFO)
 # Configuration des logs pour éviter le spam d'erreurs d'encodage
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
+@app.template_global()
+def asset(filename):
+    """URL d'un fichier de static/ suivie de sa date de modification (?v=...) : le navigateur
+    recharge un fichier dès qu'il change, sans numéro de version à incrémenter à la main."""
+    try:
+        version = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+    except OSError:
+        version = 0
+    return url_for('static', filename=filename, v=version)
+
 
 # security en premier : ses hooks (encodage, authentification, rôles) s'appliquent à toutes les routes
 for module in (security, auth, pages, mes_tps, demandes, modifications, images, admin, salles, jours,

@@ -1,12 +1,2 @@
-<script>
-// Valeurs calculées par Flask, lues par static/js/request_modal.js (qui est un fichier
-// statique : il ne peut pas contenir de Jinja). Si request_modal.js change,
-// incrémenter le ?v= ci-dessous pour forcer le rechargement dans les navigateurs.
-window.APP_CONFIG = {
-    userMode: {{ effective_user_mode | tojson }},
-    myTeacherId: {{ ((current_user.get('teacher_id') if current_user else None) or None) | tojson }},
-    dureesParNiveau: { {% for l in levels %}{{ l.name | tojson }}: {{ l.default_duration or 85 }}{{ ',' if not loop.last }}{% endfor %} },
-    groupesParNiveau: { {% for l in levels %}{{ l.name | tojson }}: {{ l.default_groups }}{{ ',' if not loop.last }}{% endfor %} }
-};
-</script>
-<script src="{{ url_for('static', filename='js/request_modal.js') }}?v=2026110101"></script>
+{# Logique de la modale d'édition (fichier statique). Ses valeurs viennent de window.APP_CONFIG, défini dans base.html. #}
+<script src="{{ asset('js/request_modal.js') }}"></script>

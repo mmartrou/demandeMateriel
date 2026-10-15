@@ -1,6 +1,6 @@
 // Logique de la modale d'édition de demande (partagée par requests, calendar, mes_tps,
 // planning_editor). Les valeurs fournies par Flask viennent de window.APP_CONFIG,
-// déclaré dans templates/_request_modal_js.html.
+// déclaré dans templates/base.html.
 // --- Shared state (shared with host page via window) ---
 if (!window.requestsWithPendingModifications) window.requestsWithPendingModifications = new Set();
 if (!window.allPendingModifications) window.allPendingModifications = new Map();
