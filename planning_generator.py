@@ -37,6 +37,7 @@ def to_dict_request(req):
 # -*- coding: utf-8 -*-
 
 import database
+import site_settings
 from datetime import datetime, timedelta
 from ortools.sat.python import cp_model
 
@@ -498,20 +499,18 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         wb = Workbook()
 
         # Créneaux horaires personnalisés (comme dans main.py)
-        horaires_str = [
-            "9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45",
-            "13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45",
-            "17h15", "17h45", "18h15"
-        ]
+        layout_horaires = site_settings.get_time_layout()
+        horaires_str = layout_horaires['grid_rows']
+        separateurs = set(layout_horaires['separators'])
         horaires = [h_to_min(h) for h in horaires_str]
 
         JOURS_FR = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
         def _row_border(idx_h):
             """Bordure horizontale alternée (pleine/pointillés), avec séparateurs
-            renforcés aux changements de créneau clé (12h15, 15h15)."""
-            is_major = horaires_str[idx_h] in ("12h15", "15h15")
-            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in ("12h15", "15h15")
+            renforcés aux lignes de pause réglées dans /admin/establishment."""
+            is_major = horaires_str[idx_h] in separateurs
+            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in separateurs
             top_style = 'thick' if is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
             bottom_style = 'thick' if next_is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
             return Border(left=Side(style='thick'), right=Side(style='thick'),
@@ -1054,9 +1053,9 @@ def generer_excel_from_saved_planning(planning_data, date_str):
 
         def _row_border(idx_h):
             """Bordure horizontale alternée (pleine/pointillés), avec séparateurs
-            renforcés aux changements de créneau clé (12h15, 15h15)."""
-            is_major = horaires_str[idx_h] in ("12h15", "15h15")
-            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in ("12h15", "15h15")
+            renforcés aux lignes de pause réglées dans /admin/establishment."""
+            is_major = horaires_str[idx_h] in separateurs
+            next_is_major = idx_h + 1 < len(horaires_str) and horaires_str[idx_h + 1] in separateurs
             top_style = 'thick' if is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
             bottom_style = 'thick' if next_is_major else ('medium' if idx_h % 2 == 0 else 'dashed')
             return Border(left=Side(style='thick'), right=Side(style='thick'),
@@ -1117,11 +1116,9 @@ def generer_excel_from_saved_planning(planning_data, date_str):
 
         wb = Workbook()
 
-        horaires_str = [
-            "9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45",
-            "13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45",
-            "17h15", "17h45", "18h15"
-        ]
+        layout_horaires = site_settings.get_time_layout()
+        horaires_str = layout_horaires['grid_rows']
+        separateurs = set(layout_horaires['separators'])
         horaires = [h_to_min(h) for h in horaires_str]
 
         ordered_rooms, groupes_salles = get_room_layout()
@@ -1701,10 +1698,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                     days = [date if isinstance(date, str) else date.strftime('%Y-%m-%d')]
                 
                 # Horaires autorisés pour le début des cours (pas toutes les 15 minutes)
-                time_slots = [
-                    '9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45',
-                    '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'
-                ]
+                time_slots = site_settings.get_time_layout()['slots']
                 
                 print(f"⏰ Créneaux autorisés pour début de cours - Total: {len(time_slots)} horaires")
                 print(f"📝 Tous les créneaux: {time_slots}")
@@ -1753,7 +1747,7 @@ def get_planning_data_for_editor_v2(target_date):
             return {
                 'courses': [],
                 'days': [target_date],
-                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
+                'time_slots': site_settings.get_time_layout()['slots'],
                 'assignments': {},
                 'rooms': [],
                 'error': result
@@ -1769,7 +1763,7 @@ def get_planning_data_for_editor_v2(target_date):
         return {
             'courses': [],
             'days': [target_date],
-            'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
+            'time_slots': site_settings.get_time_layout()['slots'],
             'assignments': {},
             'rooms': [],
             'error': str(e)

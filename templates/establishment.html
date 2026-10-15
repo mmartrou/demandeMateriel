@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Établissement - administration{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>🏫 Établissement</h2>
+            <p class="text-muted mb-0">Réglages propres à votre établissement. Chaque champ a une valeur par défaut : laissez-la si elle vous convient.</p>
+        </div>
+        <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">← Retour admin</a>
+    </div>
+
+    <form id="establishmentForm" autocomplete="off">
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Nom affiché</h5></div>
+            <div class="card-body">
+                <label for="site_name" class="form-label">Nom de l'application (barre de navigation et titre des pages)</label>
+                <input type="text" class="form-control" id="site_name" maxlength="80" value="{{ settings.site_name }}">
+                <div class="form-text">Par défaut : {{ defaults.site_name }}</div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Délai de dépôt des demandes</h5></div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Une demande doit être déposée avant l'<strong>heure limite</strong> du premier des jours ouvrés
+                    précédant le cours. Le nombre de jours ouvrés requis et les jours fériés se règlent dans
+                    <a href="{{ url_for('view_working_days') }}">Configuration jours ouvrés</a>.
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="timezone" class="form-label">Fuseau horaire de l'établissement</label>
+                        <input type="text" class="form-control" id="timezone" list="timezoneList" value="{{ settings.timezone }}">
+                        <datalist id="timezoneList">
+                            {% for tz in timezones %}<option value="{{ tz }}">{% endfor %}
+                        </datalist>
+                        <div class="form-text">Ex : Europe/Paris, Europe/Madrid, America/Montreal. Par défaut : {{ defaults.timezone }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="deadline_hour" class="form-label">Heure limite</label>
+                        <select class="form-select" id="deadline_hour">
+                            {% for h in range(24) %}
+                            <option value="{{ h }}" {% if h|string == settings.deadline_hour|string %}selected{% endif %}>{{ h }}h00</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Par défaut : {{ defaults.deadline_hour }}h00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Créneaux horaires</h5></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="time_slots" class="form-label">Heures de début de cours proposées</label>
+                    <textarea class="form-control" id="time_slots" rows="3">{{ settings.time_slots.replace(',', ', ') }}</textarea>
+                    <div class="form-text">
+                        Séparées par des virgules, au format <code>9h00, 9h30, 10h00</code>. Ce sont les horaires proposés dans les
+                        formulaires et les lignes du planning. Un trou d'une heure ou plus entre deux créneaux reçoit une ligne
+                        intermédiaire dans le planning.
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="afternoon_start" class="form-label">Début de l'après-midi</label>
+                        <input type="text" class="form-control" id="afternoon_start" value="{{ settings.afternoon_start }}">
+                        <div class="form-text">Les créneaux avant cette heure sont classés « Matin ». Par défaut : {{ defaults.afternoon_start }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="separators" class="form-label">Lignes de pause (trait renforcé dans le planning)</label>
+                        <input type="text" class="form-control" id="separators" value="{{ settings.separators.replace(',', ', ') }}">
+                        <div class="form-text">Par défaut : {{ defaults.separators.replace(',', ', ') }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Comptes</h5></div>
+            <div class="card-body">
+                {% if not is_admin %}
+                <div class="alert alert-warning py-2">Seul l'administrateur peut modifier ces deux champs.</div>
+                {% endif %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="labo_email" class="form-label">E-mail du compte « Labo »</label>
+                        <input type="email" class="form-control" id="labo_email" value="{{ settings.labo_email }}" {% if not is_admin %}disabled{% endif %}>
+                        <div class="form-text">Ce compte Google reçoit le rôle Labo à la connexion. Laisser vide si vous n'en avez pas.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="allowed_domain" class="form-label">Domaine Google autorisé</label>
+                        <input type="text" class="form-control" id="allowed_domain" placeholder="monlycee.fr" value="{{ settings.allowed_domain }}" {% if not is_admin %}disabled{% endif %}>
+                        <div class="form-text">Si renseigné, seuls les comptes de ce domaine peuvent se connecter. Attention : une erreur ici vous empêcherait de vous connecter.</div>
+                    </div>
+                </div>
+                <p class="text-muted mt-3 mb-0 small">
+                    L'adresse de l'administrateur (<code>ADMIN_EMAIL</code>) et l'identifiant Google (<code>GOOGLE_CLIENT_ID</code>)
+                    ne se règlent pas ici : ce sont des paramètres du serveur, volontairement hors de portée de l'interface.
+                </p>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3 mb-5">
+            <button type="submit" class="btn btn-primary btn-lg">Enregistrer</button>
+            <span id="saveResult"></span>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const FIELDS = ['site_name', 'timezone', 'deadline_hour', 'time_slots', 'afternoon_start', 'separators', 'labo_email', 'allowed_domain'];
+
+document.getElementById('establishmentForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const result = document.getElementById('saveResult');
+    const payload = {};
+    FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.disabled) payload[id] = el.value;
+    });
+    result.textContent = 'Enregistrement…';
+    result.className = 'text-muted';
+    try {
+        const response = await fetch('/api/site-settings', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            // Réaffiche les valeurs normalisées par le serveur (ex : « 09h00 » devient « 9h00 »)
+            FIELDS.forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !el.disabled && data.settings[id] !== undefined) {
+                    el.value = ['time_slots', 'separators'].includes(id) ? data.settings[id].split(',').join(', ') : data.settings[id];
+                }
+            });
+            result.textContent = '✓ Enregistré. Rechargez les autres pages ouvertes pour voir les changements.';
+            result.className = 'text-success';
+        } else {
+            result.textContent = '✗ ' + (data.error || 'Erreur');
+            result.className = 'text-danger';
+        }
+    } catch (error) {
+        result.textContent = '✗ Erreur réseau';
+        result.className = 'text-danger';
+    }
+});
+</script>
+{% endblock %}

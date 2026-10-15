@@ -48,26 +48,14 @@
                             <select class="form-select" id="editHoraire">
                                 <option value="">Sélectionner un horaire</option>
                                 <optgroup label="🌅 Matin">
-                                    <option value="9h00">9h00</option>
-                                    <option value="9h30">9h30</option>
-                                    <option value="10h00">10h00</option>
-                                    <option value="10h45">10h45</option>
-                                    <option value="11h15">11h15</option>
-                                    <option value="11h45">11h45</option>
-                                    <option value="12h15">12h15</option>
-                                    <option value="12h45">12h45</option>
+                                    {% for slot in site.slots_morning %}
+                                    <option value="{{ slot }}">{{ slot }}</option>
+                                    {% endfor %}
                                 </optgroup>
                                 <optgroup label="🌇 Après-midi">
-                                    <option value="13h15">13h15</option>
-                                    <option value="13h45">13h45</option>
-                                    <option value="14h15">14h15</option>
-                                    <option value="14h45">14h45</option>
-                                    <option value="15h15">15h15</option>
-                                    <option value="15h45">15h45</option>
-                                    <option value="16h15">16h15</option>
-                                    <option value="16h45">16h45</option>
-                                    <option value="17h15">17h15</option>
-                                    <option value="18h15">18h15</option>
+                                    {% for slot in site.slots_afternoon %}
+                                    <option value="{{ slot }}">{{ slot }}</option>
+                                    {% endfor %}
                                 </optgroup>
                             </select>
                         </div>

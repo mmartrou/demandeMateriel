@@ -36,6 +36,7 @@ from google_drive_service import extract_google_drive_id, validate_google_drive_
 from planning_generator import generer_planning_excel, generer_excel_from_saved_planning, get_planning_data_for_editor_v2, build_course_data_entry, get_new_requests_for_date
 from database import get_db_connection, close_request_connection
 import json
+import site_settings
 
 app = Flask(__name__)
 
@@ -160,6 +161,7 @@ def _is_admin_only_route(path, method):
         '/api/requests-with-pending-modifications',
         '/api/working-days',
         '/api/room-availability',
+        '/api/site-settings',
         '/api/standard-occupation',
         '/api/rooms',
         '/api/students',
@@ -273,11 +275,16 @@ def inject_auth_context():
         levels = get_all_levels()
     except Exception:
         levels = []
+    settings = site_settings.get_site_settings()
+    layout = site_settings.get_time_layout(settings)
     return {
         'current_user': user,
         'effective_user_mode': _get_effective_user_mode(user),
         'google_client_id': os.getenv('GOOGLE_CLIENT_ID', '').strip(),
-        'levels': levels
+        'levels': levels,
+        'site': {'name': settings['site_name'], 'slots_morning': layout['morning'],
+                 'slots_afternoon': layout['afternoon']},
+        'site_config': site_settings.get_client_config(settings),
     }
 
 
@@ -310,16 +317,17 @@ def auth_google():
         if not id_info.get('email_verified') or not email or not google_sub:
             return jsonify({'error': 'Compte Google invalide'}), 401
 
-        allowed_domain = os.getenv('GOOGLE_WORKSPACE_DOMAIN', '').strip().lower()
+        settings = site_settings.get_site_settings()
+        allowed_domain = settings['allowed_domain']
         if allowed_domain and not email.endswith(f'@{allowed_domain}'):
             return jsonify({'error': 'Compte hors domaine autorisé'}), 403
 
         admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
-        labo_email = os.getenv('LABO_EMAIL', 'labo.physiquechimie@lfmadrid.org').strip().lower()
+        labo_email = settings['labo_email']
 
         if admin_email and email == admin_email:
             role = 'admin'
-        elif email == labo_email:
+        elif labo_email and email == labo_email:
             role = 'labo'
         else:
             role = 'teacher'
@@ -1485,6 +1493,33 @@ def admin():
     return render_template('admin.html', availability_title=_availability_page_title())
 
 
+@app.route('/admin/establishment')
+def view_establishment():
+    """Page des réglages de l'établissement"""
+    from zoneinfo import available_timezones
+    return render_template('establishment.html', settings=site_settings.get_site_settings(),
+                           defaults=site_settings.DEFAULTS, is_admin=_is_admin_user(),
+                           timezones=sorted(available_timezones()),
+                           availability_title=_availability_page_title())
+
+
+@app.route('/api/site-settings', methods=['GET', 'PUT'])
+def api_site_settings():
+    """Lit ou modifie les réglages de l'établissement (admin/labo ; e-mails réservés à l'admin)."""
+    if request.method == 'GET':
+        return jsonify(site_settings.get_site_settings())
+    data = request.get_json(silent=True) or {}
+    clean, errors = site_settings.validate_settings({k: v for k, v in data.items() if k in site_settings.DEFAULTS})
+    if errors:
+        return jsonify({'error': ' ; '.join(errors.values()), 'fields': errors}), 400
+    if not _is_admin_user():
+        current = site_settings.get_site_settings()
+        if any(clean.get(k, current[k]) != current[k] for k in site_settings.SENSITIVE_KEYS):
+            return jsonify({'error': "Seul l'administrateur peut modifier l'e-mail du compte labo et le domaine autorisé."}), 403
+    site_settings.save_settings(clean)
+    return jsonify({'success': True, 'settings': site_settings.get_site_settings()})
+
+
 @app.route('/admin/users')
 def admin_users():
     """Admin user management page"""
@@ -2388,9 +2423,7 @@ def api_get_planning_data():
             planning_data = get_planning_data_for_editor_v2(target_date)
             
             # Utiliser seulement les horaires de début de cours autorisés
-            authorized_time_slots = ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45',
-                                     '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15']
-            planning_data['time_slots'] = authorized_time_slots
+            planning_data['time_slots'] = site_settings.get_time_layout()['slots']
             
             print(f"🔍 API: OR-Tools terminé - {len(planning_data.get('courses', []))} cours, {len(planning_data.get('rooms', []))} salles")
             return jsonify(planning_data)
@@ -2401,7 +2434,7 @@ def api_get_planning_data():
             return jsonify({
                 'courses': [],
                 'rooms': [{'name': r['name']} for r in get_all_rooms()],
-                'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
+                'time_slots': site_settings.get_time_layout()['slots'],
                 'room_assignments': {},
                 'days': [target_date],
                 'error': str(e)

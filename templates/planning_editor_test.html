@@ -1088,7 +1088,7 @@
         
         // Créneaux dont la ligne de début doit être davantage mise en évidence
         // (repère pause déjeuner / après-midi)
-        const strongBoundarySlots = ['12h15', '15h15'];
+        const strongBoundarySlots = window.SITE_CONFIG.separators;
         // Référence des cellules horaires, pour positionner les repères une fois la grille insérée dans le DOM
         // (mesure réelle plutôt qu'un calcul manuel, pour rester fiable quel que soit le rendu du CSS Grid)
         const slotBoundaryCells = [];
@@ -1499,63 +1499,17 @@
         }, 250);
     });
 
-    // Générer les créneaux horaires autorisés pour le début des cours
+    // Lignes de la grille du planning : créneaux de début de cours + lignes intermédiaires,
+    // calculés à partir des réglages de /admin/establishment (voir site_settings.get_time_layout).
     function generateAllTimeSlots() {
-        // Horaires de début de cours autorisés avec leurs durées jusqu'au prochain créneau
-        const authorizedSlots = [
-            '9h00',   // 30min jusqu'à 9h30
-            '9h30',   // 30min jusqu'à 10h00
-            '10h00',  // 45min jusqu'à 10h45
-            '10h45',  // 30min jusqu'à 11h15
-            '11h15',  // 30min jusqu'à 11h45
-            '11h45',  // 30min jusqu'à 12h15
-            '12h15',  // 30min jusqu'à 12h45
-            '12h45',  // 30min jusqu'à 13h15
-            '13h15',  // 30min jusqu'à 13h45
-            '13h45',  // 30min jusqu'à 14h15
-            '14h15',  // 30min jusqu'à 14h45
-            '14h45',  // 30min jusqu'à 15h15
-            '15h15',  // 30min jusqu'à 15h45
-            '15h45',  // 30min jusqu'à 16h15
-            '16h15',  // 30min jusqu'à 16h45
-            '16h45',  // 30min jusqu'à 17h15
-            '17h15',  // 30min jusqu'à 17h45
-            '17h45',  // 30min jusqu'à 18h15
-            '18h15',  // 30min jusqu'à 18h45
-            '18h45'   // 30min jusqu'à 19h15
-        ];
-        
-        console.log(`📅 Créneaux autorisés: ${authorizedSlots.length} horaires de début`);
-        console.log(`📅 Horaires: ${authorizedSlots.join(', ')}`);
-        
-        return authorizedSlots;
+        const rows = window.SITE_CONFIG.editorRows;
+        console.log(`📅 Lignes du planning: ${rows.length} (${rows.join(', ')})`);
+        return rows;
     }
-    
-    // Calculer la durée en minutes entre deux créneaux horaires
+
+    // Durée en minutes d'une ligne de la grille (jusqu'à la ligne suivante)
     function getSlotDuration(slot) {
-        const slotDurations = {
-            '9h00': 30,
-            '9h30': 30,
-            '10h00': 45,  // Durée spéciale
-            '10h45': 30,
-            '11h15': 30,
-            '11h45': 30,
-            '12h15': 30,
-            '12h45': 30,
-            '13h15': 30,
-            '13h45': 30,
-            '14h15': 30,
-            '14h45': 30,
-            '15h15': 30,
-            '15h45': 30,
-            '16h15': 30,
-            '16h45': 30,
-            '17h15': 30,
-            '17h45': 30,
-            '18h15': 30,
-            '18h45': 30
-        };
-        return slotDurations[slot] || 30;
+        return window.SITE_CONFIG.slotDurations[slot] || 30;
     }
 
     // Convertir un horaire "9h30" en minutes depuis minuit

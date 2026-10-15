@@ -62,8 +62,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% set horaires_matin = ["9h00", "9h30", "10h00", "10h45", "11h15", "11h45", "12h15", "12h45"] %}
-                                    {% set horaires_aprem = ["13h15", "13h45", "14h15", "14h45", "15h15", "15h45", "16h15", "16h45", "17h15", "18h15"] %}
+                                    {% set horaires_matin = site.slots_morning %}
+                                    {% set horaires_aprem = site.slots_afternoon %}
                                     {% for i in range([horaires_matin|length, horaires_aprem|length]|max) %}
                                     <tr>
                                         <td class="text-center">

@@ -4,6 +4,7 @@ import psycopg2.extras
 import os
 import logging
 import unicodedata
+import time
 from datetime import datetime
 
 # Configuration des logs
@@ -660,9 +661,35 @@ def init_database():
         ]
         teacher_placeholder = '%s' if db_type == 'postgresql' else '?'
         cursor.executemany(f'INSERT INTO teachers (name) VALUES ({teacher_placeholder})', sample_teachers)
-    
+
+    _amorcer_reglages_etablissement(cursor, db_type)
+
     conn.commit()
     conn.close()
+
+# Adresse du compte labo avant qu'elle ne devienne un réglage (/admin/establishment). Elle n'est
+# reprise que pour une installation qui contient déjà des données, afin qu'elle continue de
+# fonctionner après la mise à jour ; une installation neuve démarre sans compte labo.
+ANCIEN_COMPTE_LABO_PAR_DEFAUT = 'labo.physiquechimie@lfmadrid.org'
+
+
+def _amorcer_reglages_etablissement(cursor, db_type):
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'SELECT 1 FROM app_settings WHERE key = {placeholder}', ('labo_email',))
+    if cursor.fetchone() is not None:
+        return
+    adresse = os.getenv('LABO_EMAIL', '').strip().lower()
+    if not adresse:
+        cursor.execute('SELECT COUNT(*) FROM material_requests')
+        demandes = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM users')
+        comptes = cursor.fetchone()[0]
+        if demandes or comptes:
+            adresse = ANCIEN_COMPTE_LABO_PAR_DEFAUT
+    if adresse:
+        cursor.execute(f'INSERT INTO app_settings (key, value) VALUES ({placeholder}, {placeholder})',
+                       ('labo_email', adresse))
+
 
 # Fonctions de base de données SQLite
 
@@ -1881,6 +1908,35 @@ def get_setting(key, default=None):
         return default
     return row['value'] if isinstance(row, dict) else row[0]
 
+# Les réglages sont lus à chaque page affichée : on les garde 30 s en mémoire pour éviter une
+# requête par page. set_setting() vide le cache du processus qui écrit ; les autres processus
+# (workers gunicorn) voient le changement au plus tard 30 s après.
+_SETTINGS_TTL_SECONDS = 30
+_settings_cache = {'at': 0.0, 'values': None}
+
+
+def clear_settings_cache():
+    _settings_cache['at'] = 0.0
+    _settings_cache['values'] = None
+
+
+def get_all_settings():
+    """Tous les réglages de app_settings sous forme de dict {clé: valeur} (avec cache)."""
+    maintenant = time.monotonic()
+    if _settings_cache['values'] is not None and maintenant - _settings_cache['at'] < _SETTINGS_TTL_SECONDS:
+        return dict(_settings_cache['values'])
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT key, value FROM app_settings')
+    rows = cursor.fetchall()
+    conn.close()
+    values = {(row['key'] if isinstance(row, dict) else row[0]): (row['value'] if isinstance(row, dict) else row[1])
+              for row in rows}
+    _settings_cache['values'] = values
+    _settings_cache['at'] = maintenant
+    return dict(values)
+
+
 def set_setting(key, value):
     """Crée ou met à jour une valeur de app_settings."""
     conn, db_type = get_db_connection()
@@ -1899,6 +1955,7 @@ def set_setting(key, value):
         ''', (key, str(value)))
     conn.commit()
     conn.close()
+    clear_settings_cache()
 
 def get_deadline_working_days():
     """Nombre de jours ouvrés requis avant une demande (délai de dépôt). Configurable par un admin/labo."""

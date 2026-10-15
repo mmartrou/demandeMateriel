@@ -224,7 +224,7 @@ function generateDiffDisplay(originalText, newText) {
 // modification d'une demande déjà trop proche (voir getEditBlockReason ci-dessous), mais ça
 // ne veut pas dire qu'une AUTRE demande liée déjà passée mérite d'être proposée pour un
 // changement groupé (voir son usage dans editRequest() et saveRequestChanges()).
-// nowInMadrid()/deadlineMoment()/isBeforeDepositDeadline() (couperet 8h00 heure de Madrid,
+// nowInSchoolTimezone()/deadlineMoment()/isBeforeDepositDeadline() (couperet à l'heure limite de l'établissement,
 // voir deadline_utils._deadline_moment() côté serveur) sont définies dans static/js/main.js.
 function respectsDepositDeadline(requestDateRaw) {
     if (!requestDateRaw) return true;

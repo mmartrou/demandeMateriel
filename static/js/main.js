@@ -95,9 +95,10 @@ function validateDate(elementId, message) {
 }
 
 // ---------------------------------------------------------------------------
-// Délai de dépôt : miroir JS de deadline_utils.py. Le couperet est fixé à 8h00, heure de
-// Madrid, le premier des N jours ouvrés requis avant la date demandée (N = window.deadline-
-// WorkingDays, 2 par défaut) — voir deadline_utils._deadline_moment() côté serveur pour le
+// Délai de dépôt : miroir JS de deadline_utils.py. Le couperet est fixé à l'heure limite de
+// l'établissement (window.SITE_CONFIG.deadlineHour, 8h00 par défaut), dans son fuseau horaire
+// (window.SITE_CONFIG.timezone), le premier des N jours ouvrés requis avant la date demandée
+// (N = window.deadlineWorkingDays, 2 par défaut) — voir deadline_utils._deadline_moment() côté serveur pour le
 // détail de la règle. Ces fonctions ne servent qu'à guider l'utilisateur avant l'envoi : le
 // serveur reste toujours la source de vérité finale, qui revalide indépendamment.
 // Les jours fériés/exceptions (configurés en base) ne sont pas connus du client : seuls les
@@ -111,12 +112,12 @@ function _utcCalendarDate(year, month, day) {
     return new Date(Date.UTC(year, month - 1, day));
 }
 
-// "Maintenant" en heure de Madrid, quel que soit le fuseau du navigateur.
+// "Maintenant" dans le fuseau de l'établissement, quel que soit le fuseau du navigateur.
 // Renvoie {date: Date UTC-neutre à minuit, minutesSinceMidnight}.
-function nowInMadrid() {
+function nowInSchoolTimezone() {
     const parts = Object.fromEntries(
         new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Europe/Madrid',
+            timeZone: (window.SITE_CONFIG && window.SITE_CONFIG.timezone) || 'Europe/Madrid',
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', hour12: false
         }).formatToParts(new Date()).map(p => [p.type, p.value])
@@ -127,7 +128,7 @@ function nowInMadrid() {
     };
 }
 
-// Miroir JS de deadline_utils._deadline_moment() : couperet à 8h00 (heure de Madrid) le
+// Miroir JS de deadline_utils._deadline_moment() : couperet à l'heure limite (fuseau de l'établissement) le
 // premier des `requiredDays` jours ouvrés avant `targetUtcDate` (Date UTC-neutre, minuit).
 function deadlineMoment(targetUtcDate, requiredDays) {
     if (requiredDays <= 0) return { date: new Date(targetUtcDate), minutesSinceMidnight: 0 };
@@ -141,7 +142,8 @@ function deadlineMoment(targetUtcDate, requiredDays) {
             deadlineDay = new Date(d);
         }
     }
-    return { date: deadlineDay, minutesSinceMidnight: 8 * 60 };
+    const hour = (window.SITE_CONFIG && Number.isFinite(window.SITE_CONFIG.deadlineHour)) ? window.SITE_CONFIG.deadlineHour : 8;
+    return { date: deadlineDay, minutesSinceMidnight: hour * 60 };
 }
 
 function _isBeforeMoment(a, b) {
@@ -152,7 +154,7 @@ function _isBeforeMoment(a, b) {
 // Le délai de dépôt est-il encore respecté, à l'instant présent, pour `targetUtcDate`
 // (Date UTC-neutre à minuit) ? Miroir JS de deadline_utils.is_request_deadline_respected().
 function isBeforeDepositDeadline(targetUtcDate, requiredDays) {
-    return _isBeforeMoment(nowInMadrid(), deadlineMoment(targetUtcDate, requiredDays));
+    return _isBeforeMoment(nowInSchoolTimezone(), deadlineMoment(targetUtcDate, requiredDays));
 }
 
 // Retourne la première date (objet Date construit en heure LOCALE du navigateur, pour rester
@@ -160,7 +162,7 @@ function isBeforeDepositDeadline(targetUtcDate, requiredDays) {
 // serait encore acceptée. Miroir JS de deadline_utils.get_earliest_valid_date().
 function getMinimumValidDate() {
     const requiredDays = Number.isFinite(window.deadlineWorkingDays) ? window.deadlineWorkingDays : 2;
-    const now = nowInMadrid();
+    const now = nowInSchoolTimezone();
     let candidate = new Date(now.date);
     candidate.setUTCDate(candidate.getUTCDate() + 1); // jamais aujourd'hui
 

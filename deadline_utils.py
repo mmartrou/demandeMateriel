@@ -4,24 +4,31 @@ Utilitaires pour la gestion des délais de demandes de matériel
 
 Règle : le labo doit disposer d'un nombre configurable de jours ouvrés COMPLETS avant le
 cours pour préparer le matériel (2 par défaut, réglable dans /admin/working-days). Le couperet
-est fixé à 8h00, heure de Madrid, le premier de ces jours ouvrés : passé cette heure, le labo a
+est fixé à une heure réglable (8h00 par défaut), heure de l'établissement, le premier de ces jours ouvrés : passé cette heure, le labo a
 déjà commencé sa journée de travail et ce jour ne compte plus comme disponible pour préparer.
 
 Exemple (2 jours ouvrés requis, cours un vendredi) : le labo a besoin du mercredi et du jeudi
-pour préparer ; le couperet tombe donc à 8h00 le mercredi (heure de Madrid, quel que soit le
+pour préparer ; le couperet tombe donc à 8h00 le mercredi (heure de l'établissement, quel que soit le
 fuseau horaire du serveur qui exécute ce code).
 """
 
 from datetime import datetime, timedelta, date as date_cls
-from zoneinfo import ZoneInfo
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Le couperet est toujours exprimé en heure de Madrid, indépendamment du fuseau horaire du
-# serveur (les plateformes d'hébergement type Railway tournent en UTC par défaut).
-MADRID_TZ = ZoneInfo("Europe/Madrid")
-DEADLINE_HOUR = 8
+# Le couperet est toujours exprimé dans le fuseau horaire de l'établissement, indépendamment du
+# fuseau du serveur (les hébergeurs type Railway tournent en UTC par défaut). Fuseau et heure
+# viennent des réglages de /admin/establishment (Europe/Madrid et 8h par défaut).
+def _school_tz():
+    import site_settings
+    return site_settings.get_timezone()
+
+
+def _deadline_hour():
+    import site_settings
+    return site_settings.get_deadline_hour()
+
 
 # Configuration des jours ouvrés (0=lundi, 6=dimanche)
 WORKING_DAYS = [0, 1, 2, 3, 4]  # Lundi à Vendredi
@@ -102,11 +109,11 @@ def _is_working_date(d, overrides):
 
 def _deadline_moment(target_date, required_days, overrides=None):
     """
-    Calcule l'instant limite (datetime timezone-aware, Europe/Madrid) au-delà duquel une
+    Calcule l'instant limite (datetime timezone-aware, fuseau de l'établissement) au-delà duquel une
     demande concernant target_date (date) n'est plus acceptée.
 
     On remonte, en partant de la veille de target_date, les jours ouvrés un par un jusqu'à en
-    avoir trouvé `required_days` ; le couperet est fixé à 8h00 (heure de Madrid) le plus ancien
+    avoir trouvé `required_days` ; le couperet est fixé à 8h00 (heure de l'établissement) le plus ancien
     de ces jours : passé ce couperet, ce jour est considéré comme "commencé" pour le labo et ne
     compte plus comme disponible pour préparer.
 
@@ -122,7 +129,7 @@ def _deadline_moment(target_date, required_days, overrides=None):
 
     if required_days <= 0:
         # Aucun délai requis : le couperet est le tout début de la journée cible elle-même.
-        return datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=MADRID_TZ)
+        return datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0, tzinfo=_school_tz())
 
     d = target_date
     found = 0
@@ -133,20 +140,20 @@ def _deadline_moment(target_date, required_days, overrides=None):
             found += 1
             deadline_day = d
 
-    return datetime(deadline_day.year, deadline_day.month, deadline_day.day, DEADLINE_HOUR, 0, 0, tzinfo=MADRID_TZ)
+    return datetime(deadline_day.year, deadline_day.month, deadline_day.day, _deadline_hour(), 0, 0, tzinfo=_school_tz())
 
 
-def _now_madrid(current_datetime=None):
-    """Normalise 'maintenant' en heure de Madrid, quel que soit le fuseau du serveur.
+def _now_local(current_datetime=None):
+    """Normalise 'maintenant' dans le fuseau de l'établissement, quel que soit le fuseau du serveur.
 
     Un datetime naïf fourni par un appelant (tests, valeurs historiques) est traité comme déjà
-    exprimé en heure de Madrid plutôt que réinterprété dans un autre fuseau.
+    exprimé en heure de l'établissement plutôt que réinterprété dans un autre fuseau.
     """
     if current_datetime is None:
-        return datetime.now(MADRID_TZ)
+        return datetime.now(_school_tz())
     if current_datetime.tzinfo is None:
-        return current_datetime.replace(tzinfo=MADRID_TZ)
-    return current_datetime.astimezone(MADRID_TZ)
+        return current_datetime.replace(tzinfo=_school_tz())
+    return current_datetime.astimezone(_school_tz())
 
 def get_required_working_days():
     """
@@ -164,17 +171,17 @@ def is_request_deadline_respected(request_date_str, current_datetime=None, overr
     """
     Vérifie si une demande respecte le délai de dépôt (2 jours ouvrés par défaut).
 
-    Règle : le couperet tombe à 8h00, heure de Madrid, le premier des jours ouvrés requis
+    Règle : le couperet tombe à 8h00, heure de l'établissement, le premier des jours ouvrés requis
     avant la date demandée (voir _deadline_moment). Exemple avec 2 jours ouvrés requis :
-    - Cours un vendredi → couperet mercredi 8h00 (heure de Madrid) : le labo dispose alors du
+    - Cours un vendredi → couperet mercredi 8h00 (heure de l'établissement) : le labo dispose alors du
       reste du mercredi et de tout le jeudi pour préparer.
-    - Cours un lundi → couperet jeudi 8h00 (heure de Madrid) : le week-end ne compte pas comme
+    - Cours un lundi → couperet jeudi 8h00 (heure de l'établissement) : le week-end ne compte pas comme
       jour ouvré, donc le labo dispose du jeudi et du vendredi.
 
     Args:
         request_date_str: date de la demande (str 'YYYY-MM-DD', 'DD-MM-YYYY', date ou datetime)
         current_datetime (datetime, optional): date/heure actuelle (pour les tests). Un datetime
-            naïf est traité comme déjà exprimé en heure de Madrid ; sinon il est converti.
+            naïf est traité comme déjà exprimé en heure de l'établissement ; sinon il est converti.
 
     Returns:
         dict: {
@@ -185,7 +192,7 @@ def is_request_deadline_respected(request_date_str, current_datetime=None, overr
         }
     """
     import sys
-    now_madrid = _now_madrid(current_datetime)
+    now_local = _now_local(current_datetime)
 
     # Si déjà un objet date ou datetime, utiliser directement
     from datetime import date, datetime as dt
@@ -222,16 +229,16 @@ def is_request_deadline_respected(request_date_str, current_datetime=None, overr
         required_days = get_required_working_days()
 
     deadline = _deadline_moment(request_date.date(), required_days, overrides=overrides)
-    is_valid = now_madrid < deadline
+    is_valid = now_local < deadline
 
     # Log de diagnostic détaillé
-    print(f"[DEBUG deadline_utils] Calcul délai: maintenant(Madrid)={now_madrid.isoformat()} | demande={request_date_str} | couperet(Madrid)={deadline.isoformat()} | valid={is_valid}", file=sys.stderr)
+    print(f"[DEBUG deadline_utils] Calcul délai: maintenant(local)={now_local.isoformat()} | demande={request_date_str} | couperet(local)={deadline.isoformat()} | valid={is_valid}", file=sys.stderr)
 
     deadline_str = deadline.strftime('%A %d/%m à %Hh%M')
     if is_valid:
-        message = f"✅ Demande acceptée - couperet {deadline_str} (heure de Madrid)"
+        message = f"✅ Demande acceptée - couperet {deadline_str} (heure de l'établissement)"
     else:
-        message = f"❌ Délai dépassé - le couperet était {deadline_str} (heure de Madrid)"
+        message = f"❌ Délai dépassé - le couperet était {deadline_str} (heure de l'établissement)"
 
     return {
         'valid': is_valid,
@@ -244,11 +251,11 @@ def get_earliest_valid_date(current_datetime=None, overrides=None, required_days
     """
     Retourne la première date (YYYY-MM-DD) pour laquelle une nouvelle demande serait encore
     acceptée : le premier jour ouvré (on ignore d'emblée les week-ends/jours fériés, qui ne
-    peuvent de toute façon pas accueillir de demande) dont le couperet de 8h00 heure de Madrid
+    peuvent de toute façon pas accueillir de demande) dont le couperet de 8h00 heure de l'établissement
     n'est pas encore passé.
     overrides et required_days peuvent être pré-chargés pour éviter des connexions DB.
     """
-    now_madrid = _now_madrid(current_datetime)
+    now_local = _now_local(current_datetime)
 
     if overrides is None:
         try:
@@ -260,18 +267,18 @@ def get_earliest_valid_date(current_datetime=None, overrides=None, required_days
     if required_days is None:
         required_days = get_required_working_days()
 
-    candidate = now_madrid.date() + timedelta(days=1)
+    candidate = now_local.date() + timedelta(days=1)
     while True:
         if _is_working_date(candidate, overrides):
             deadline = _deadline_moment(candidate, required_days, overrides=overrides)
-            if now_madrid < deadline:
+            if now_local < deadline:
                 return candidate.strftime('%Y-%m-%d')
         candidate += timedelta(days=1)
 
 if __name__ == "__main__":
     # Tests de la logique — tous les datetime ci-dessous sont naïfs et donc interprétés comme
-    # déjà en heure de Madrid (voir _now_madrid).
-    print("=== Test délai de dépôt (couperet 8h00 heure de Madrid) ===")
+    # déjà en heure de l'établissement (voir _now_local).
+    print("=== Test délai de dépôt (couperet 8h00 heure de l'établissement) ===")
 
     target_friday = "2026-09-18"  # vendredi
 
