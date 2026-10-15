@@ -206,11 +206,11 @@ def build_course_data_entry(request_id):
     }
 
 
-def est_disponible_aux_creneaux(cours_info, c21_slots):
+def est_disponible_aux_creneaux(cours_info, creneaux_salle):
     """Vérifie si une salle à disponibilité limitée est libre pour ce cours, selon les
-    créneaux déclarés dans /admin/c21-availability"""
-    if not c21_slots:
-        return True  # Si pas d'info de disponibilité, on considère comme disponible
+    créneaux déclarés pour elle dans /admin/room-availability (liste des créneaux de CETTE salle)"""
+    if not creneaux_salle:
+        return True  # Aucun créneau déclaré pour cette salle : elle reste utilisable
     
     # Convertir l'horaire du cours
     horaire_debut = cours_info.get('horaire', '8:00')
@@ -223,7 +223,7 @@ def est_disponible_aux_creneaux(cours_info, c21_slots):
     jour_cours = cours_info.get('jour', 'lundi').lower()
     
     # Vérifier si le cours peut tenir dans au moins un des créneaux disponibles pour ce jour
-    for slot in c21_slots:
+    for slot in creneaux_salle:
         if slot['jour'].lower() == jour_cours:
             debut_dispo = h_to_min(slot['heure_debut'])
             fin_dispo = h_to_min(slot['heure_fin'])
@@ -234,7 +234,7 @@ def est_disponible_aux_creneaux(cours_info, c21_slots):
     
     return False  # Aucun créneau ne convient
 
-def compatible(salle, besoin, c21_slots=None, max_ordinateurs=None):
+def compatible(salle, besoin, creneaux_salles=None, max_ordinateurs=None):
     """Check if a room is compatible with course needs.
 
     max_ordinateurs : nombre maximum d'ordinateurs présents dans une salle,
@@ -246,8 +246,9 @@ def compatible(salle, besoin, c21_slots=None, max_ordinateurs=None):
     room_type = str(salle.get("type", "mixte") or "mixte").strip().lower()
 
     # Salle à disponibilité limitée (case cochée dans /admin/rooms) : créneaux à respecter
-    if salle.get("disponibilite_limitee") and c21_slots is not None:
-        if not est_disponible_aux_creneaux(besoin, c21_slots):
+    if salle.get("disponibilite_limitee") and creneaux_salles is not None:
+        creneaux_de_la_salle = [c for c in creneaux_salles if c.get("salle") == salle.get("nom")]
+        if not est_disponible_aux_creneaux(besoin, creneaux_de_la_salle):
             return False
     
     # Check if this is a theoretical course (no specific equipment needs)
@@ -376,7 +377,7 @@ def _max_ordinateurs(salles):
     return max((s.get("ordinateurs", 0) or 0) for s in salles.values())
 
 
-def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slots=None, saved_planning=None):
+def find_available_rooms_for_request(request_id, date_str, salles=None, creneaux_salles=None, saved_planning=None):
     """
     Pour une demande (TP) donnée, cherche les salles libres et compatibles à son
     créneau horaire en se basant sur le planning déjà sauvegardé pour cette date,
@@ -394,8 +395,8 @@ def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slot
 
     if salles is None:
         salles = _build_salles_dict(database.get_all_rooms())
-    if c21_slots is None:
-        c21_slots = database.get_c21_availability()
+    if creneaux_salles is None:
+        creneaux_salles = database.get_room_availability()
     if saved_planning is None:
         saved_planning = database.get_saved_planning(date_str) or {}
 
@@ -444,7 +445,7 @@ def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slot
     suggested_rooms = [
         room_name for room_name in ordered_rooms
         if room_name in salles and room_name not in occupied_rooms
-        and compatible(salles[room_name], besoin, c21_slots, max_ordinateurs)
+        and compatible(salles[room_name], besoin, creneaux_salles, max_ordinateurs)
     ]
 
     return course, suggested_rooms
@@ -465,7 +466,7 @@ def get_new_requests_for_date(date_str):
 
     raw_requests = database.get_planning_data(date_str) or []
     salles = _build_salles_dict(database.get_all_rooms())
-    c21_slots = database.get_c21_availability()
+    creneaux_salles = database.get_room_availability()
 
     result = []
     for raw_req in raw_requests:
@@ -474,7 +475,7 @@ def get_new_requests_for_date(date_str):
         if req_id in existing_request_ids:
             continue
         course, suggested_rooms = find_available_rooms_for_request(
-            req_id, date_str, salles=salles, c21_slots=c21_slots, saved_planning=saved_planning
+            req_id, date_str, salles=salles, creneaux_salles=creneaux_salles, saved_planning=saved_planning
         )
         if course is None:
             continue
@@ -1370,8 +1371,8 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
             print(f"📝 Génération avec assignations personnalisées: {custom_room_assignments}")
             # On va continuer la génération normale mais modifier les assignations à la fin
         
-        # Récupérer les disponibilités C21
-        c21_slots = database.get_c21_availability()
+        # Récupérer les créneaux des salles à disponibilité limitée
+        creneaux_salles = database.get_room_availability()
 
         # Maps nom court pour enseignants et niveaux
         all_levels = database.get_all_levels()
@@ -1472,7 +1473,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
         for i, c in enumerate(cours):
             poids_salle[i] = {}
             for s in salles:
-                if compatible(salles[s], c, c21_slots, max_ordinateurs):
+                if compatible(salles[s], c, creneaux_salles, max_ordinateurs):
                     x[(i,s)] = model.NewBoolVar(f"x_{i}_{s}")
                     
                     # Check if this is a theoretical course (no specific equipment needs)

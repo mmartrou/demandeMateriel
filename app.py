@@ -19,7 +19,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       get_requests_for_calendar, get_material_request_by_id, update_material_request, 
                       toggle_prepared_status, delete_material_request, update_room_type,
                       add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
-                      validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability, delete_c21_availability,
+                      validate_pending_modifications, reject_pending_modifications, get_room_availability, add_room_availability, delete_room_availability,
                       get_all_rooms, update_room, add_room, delete_room, reorder_rooms,
                       import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
@@ -159,7 +159,7 @@ def _is_admin_only_route(path, method):
         '/api/pending-modifications',
         '/api/requests-with-pending-modifications',
         '/api/working-days',
-        '/api/c21-availability',
+        '/api/room-availability',
         '/api/standard-occupation',
         '/api/rooms',
         '/api/students',
@@ -1472,10 +1472,17 @@ def api_update_room_type(request_id):
     except Exception as e:
         return api_error('Erreur lors de la mise à jour du type de salle', e)
 
+def _availability_page_title():
+    """« Disponibilité autres salles (C21) » : les noms entre parenthèses sont ceux des salles
+    marquées « à disponibilité limitée » dans /admin/rooms ou ayant des créneaux déclarés."""
+    noms = [r['name'] for r in get_all_rooms() if r['limited_availability']]
+    return 'Disponibilité autres salles' + (f" ({', '.join(noms)})" if noms else '')
+
+
 @app.route('/admin')
 def admin():
     """Admin dashboard page"""
-    return render_template('admin.html')
+    return render_template('admin.html', availability_title=_availability_page_title())
 
 
 @app.route('/admin/users')
@@ -1638,7 +1645,7 @@ def api_admin_debug_email_map():
 @app.route('/admin/rooms')
 def view_rooms():
     """Room management page"""
-    return render_template('rooms.html')
+    return render_template('rooms.html', availability_title=_availability_page_title())
 
 @app.route('/admin/students')
 def view_students():
@@ -1650,11 +1657,11 @@ def view_working_days():
     """Working days configuration page"""
     return render_template('working_days.html')
 
-@app.route('/admin/c21-availability')
-def view_c21_availability():
-    """Page des créneaux de la salle à disponibilité limitée"""
-    limited_rooms = [r['name'] for r in get_all_rooms() if r['limited_availability']]
-    return render_template('c21_availability.html', limited_rooms=limited_rooms)
+@app.route('/admin/room-availability')
+def view_room_availability():
+    """Page des créneaux des salles à disponibilité limitée"""
+    return render_template('room_availability.html', availability_title=_availability_page_title(),
+                           all_rooms=get_all_rooms())
 
 @app.route('/admin/planning-editor')
 def planning_editor():
@@ -1966,36 +1973,33 @@ def api_upload_image():
     except Exception as e:
         return api_error('Erreur lors de l\'upload de l\'image', e)
 
-@app.route('/api/c21-availability', methods=['GET', 'POST'])
-def api_c21_availability():
-    """API pour gérer les créneaux de disponibilité C21"""
+@app.route('/api/room-availability', methods=['GET', 'POST'])
+def api_room_availability():
+    """API pour gérer les créneaux de disponibilité des salles à disponibilité limitée"""
     if request.method == 'GET':
-        slots = get_c21_availability()
-        return jsonify(slots)
-    elif request.method == 'POST':
-        data = request.get_json()
-        jour = data.get('jour')
-        heure_debut = data.get('heure_debut')
-        heure_fin = data.get('heure_fin')
-        if not jour or not heure_debut or not heure_fin:
-            return jsonify({'error': 'Champs manquants'}), 400
-        success = add_c21_availability(jour, heure_debut, heure_fin)
-        if success:
-            return jsonify({'success': True}), 201
-        else:
-            return jsonify({'error': 'Erreur lors de l\'ajout'}), 500
+        return jsonify(get_room_availability())
+    data = request.get_json(silent=True) or {}
+    room_id = data.get('room_id')
+    jour = data.get('jour')
+    heure_debut = data.get('heure_debut')
+    heure_fin = data.get('heure_fin')
+    if not room_id or not jour or not heure_debut or not heure_fin:
+        return jsonify({'error': 'Champs manquants'}), 400
+    if int(room_id) not in {r['id'] for r in get_all_rooms()}:
+        return jsonify({'error': 'Salle inconnue'}), 400
+    if add_room_availability(int(room_id), jour, heure_debut, heure_fin):
+        return jsonify({'success': True}), 201
+    return jsonify({'error': 'Ce créneau existe déjà pour cette salle'}), 400
 
-@app.route('/api/c21-availability/<int:availability_id>', methods=['DELETE'])
-def api_delete_c21_availability(availability_id):
-    """API pour supprimer un créneau de disponibilité C21"""
+@app.route('/api/room-availability/<int:availability_id>', methods=['DELETE'])
+def api_delete_room_availability(availability_id):
+    """API pour supprimer un créneau de disponibilité"""
     try:
-        success = delete_c21_availability(availability_id)
-        if success:
+        if delete_room_availability(availability_id):
             return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Créneau non trouvé'}), 404
+        return jsonify({'error': 'Créneau non trouvé'}), 404
     except Exception as e:
-        return api_error('Erreur lors de la suppression du créneau C21', e)
+        return api_error('Erreur lors de la suppression du créneau', e)
 
 @app.route('/api/standard-occupation', methods=['GET', 'POST'])
 def api_standard_occupation():

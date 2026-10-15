@@ -151,6 +151,14 @@ def _appliquer_organisation_par_defaut_des_salles(cursor, db_type):
         cursor.execute(f'UPDATE rooms SET display_order={placeholder} WHERE id={placeholder}', (ordre, room_id))
 
 
+def _table_exists(cursor, db_type, table):
+    if db_type == 'postgresql':
+        cursor.execute("SELECT to_regclass(%s)", (table,))
+        return cursor.fetchone()[0] is not None
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,))
+    return cursor.fetchone() is not None
+
+
 def _add_column_if_missing(cursor, db_type, table, column, definition):
     """Ajoute une colonne à une table existante (migration). Renvoie True si elle vient
     d'être créée, ce qui permet de remplir ses valeurs initiales une seule fois."""
@@ -465,6 +473,31 @@ def init_database():
             UNIQUE(jour, heure_debut, heure_fin)
         )
     ''')
+
+    # Créneaux de disponibilité des salles à disponibilité limitée (une ligne par salle et par
+    # créneau). Remplace c21_availability, qui ne pouvait décrire qu'une seule salle ; l'ancienne
+    # table n'est plus utilisée mais conservée, et ses créneaux sont copiés une seule fois.
+    existait = _table_exists(cursor, db_type, 'room_availability')
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS room_availability (
+            id {auto_increment},
+            room_id INTEGER NOT NULL,
+            jour {text_type} NOT NULL,
+            heure_debut {text_type} NOT NULL,
+            heure_fin {text_type} NOT NULL,
+            created_at {timestamp_default},
+            UNIQUE(room_id, jour, heure_debut, heure_fin)
+        )
+    ''')
+    if not existait:
+        cursor.execute("SELECT id FROM rooms WHERE limited_availability = 1 ORDER BY display_order, id")
+        salle_limitee = cursor.fetchone()
+        if salle_limitee:
+            placeholder = '%s' if db_type == 'postgresql' else '?'
+            cursor.execute(
+                f'INSERT INTO room_availability (room_id, jour, heure_debut, heure_fin) '
+                f'SELECT {placeholder}, jour, heure_debut, heure_fin FROM c21_availability',
+                (salle_limitee[0],))
 
     # Create standard occupation table (nombre de cours attendus par jour de semaine et créneau,
     # colonne "Occupation standard" de l'éditeur de planning)
@@ -1339,6 +1372,7 @@ def delete_room(room_id):
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM room_availability WHERE room_id = {placeholder}', (room_id,))
     cursor.execute(f'DELETE FROM rooms WHERE id = {placeholder}', (room_id,))
     conn.commit()
     supprimee = cursor.rowcount > 0
@@ -1882,162 +1916,69 @@ def set_deadline_working_days(days):
     set_setting(DEADLINE_WORKING_DAYS_KEY, days)
     return days
 
-# === GESTION DISPONIBILITÉ C21 ===
+# === DISPONIBILITÉ DES SALLES À DISPONIBILITÉ LIMITÉE ===
 
-def get_c21_availability():
-    """
-    Récupère tous les créneaux de disponibilité de la C21
-    
-    Returns:
-        list: Liste des créneaux avec jour, heure_debut, heure_fin, id
+_ORDRE_DES_JOURS = ("CASE a.jour WHEN 'lundi' THEN 1 WHEN 'mardi' THEN 2 WHEN 'mercredi' THEN 3 "
+                    "WHEN 'jeudi' THEN 4 WHEN 'vendredi' THEN 5 WHEN 'samedi' THEN 6 "
+                    "WHEN 'dimanche' THEN 7 END")
+
+
+def get_room_availability():
+    """Créneaux pendant lesquels les salles à disponibilité limitée sont utilisables.
+
+    Chaque créneau : id, room_id, salle (nom actuel de la salle), jour, heure_debut, heure_fin.
     """
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT id, jour, heure_debut, heure_fin, created_at 
-            FROM c21_availability 
-            ORDER BY 
-                CASE jour 
-                    WHEN 'lundi' THEN 1
-                    WHEN 'mardi' THEN 2
-                    WHEN 'mercredi' THEN 3
-                    WHEN 'jeudi' THEN 4
-                    WHEN 'vendredi' THEN 5
-                    WHEN 'samedi' THEN 6
-                    WHEN 'dimanche' THEN 7
-                END,
-                heure_debut
+        cursor.execute(f'''
+            SELECT a.id, a.room_id, r.name, a.jour, a.heure_debut, a.heure_fin
+            FROM room_availability a
+            JOIN rooms r ON r.id = a.room_id
+            ORDER BY r.display_order, r.id, {_ORDRE_DES_JOURS}, a.heure_debut
         ''')
-        
         rows = cursor.fetchall()
         conn.close()
-        
-        availability = []
-        for row in rows:
-            availability.append({
-                'id': row[0],
-                'jour': row[1],
-                'heure_debut': row[2],
-                'heure_fin': row[3],
-                'created_at': row[4]
-            })
-        
-        return availability
-        
+        return [{'id': row[0], 'room_id': row[1], 'salle': row[2], 'jour': row[3],
+                 'heure_debut': row[4], 'heure_fin': row[5]} for row in rows]
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des créneaux C21: {e}")
+        logger.error(f"Erreur lors de la récupération des créneaux de disponibilité: {e}")
         return []
 
-def add_c21_availability(jour, heure_debut, heure_fin):
-    """
-    Ajoute un créneau de disponibilité pour la C21
-    
-    Args:
-        jour (str): Jour de la semaine (lundi, mardi, etc.)
-        heure_debut (str): Heure de début (format HH:MM)
-        heure_fin (str): Heure de fin (format HH:MM)
-        
-    Returns:
-        bool: True si succès, False sinon
-    """
+
+def add_room_availability(room_id, jour, heure_debut, heure_fin):
+    """Ajoute un créneau pour une salle et la marque comme « à disponibilité limitée »."""
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
-        
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        
         cursor.execute(f'''
-            INSERT INTO c21_availability (jour, heure_debut, heure_fin) 
-            VALUES ({placeholder}, {placeholder}, {placeholder})
-        ''', (jour, heure_debut, heure_fin))
-        
+            INSERT INTO room_availability (room_id, jour, heure_debut, heure_fin)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+        ''', (room_id, jour, heure_debut, heure_fin))
+        cursor.execute(f'UPDATE rooms SET limited_availability = 1 WHERE id = {placeholder}', (room_id,))
         conn.commit()
         conn.close()
         return True
-        
     except Exception as e:
-        logger.error(f"Erreur lors de l'ajout du créneau C21 {jour} {heure_debut}-{heure_fin}: {e}")
+        logger.error(f"Erreur lors de l'ajout du créneau {jour} {heure_debut}-{heure_fin} (salle {room_id}): {e}")
         return False
 
-def delete_c21_availability(availability_id):
-    """
-    Supprime un créneau de disponibilité de la C21
-    
-    Args:
-        availability_id (int): ID du créneau à supprimer
-        
-    Returns:
-        bool: True si succès, False sinon
-    """
+
+def delete_room_availability(availability_id):
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
-        
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        
-        cursor.execute(f'DELETE FROM c21_availability WHERE id = {placeholder}', (availability_id,))
-        
+        cursor.execute(f'DELETE FROM room_availability WHERE id = {placeholder}', (availability_id,))
         conn.commit()
+        supprime = cursor.rowcount > 0
         conn.close()
-        return True
-        
+        return supprime
     except Exception as e:
-        logger.error(f"Erreur lors de la suppression du créneau C21 {availability_id}: {e}")
+        logger.error(f"Erreur lors de la suppression du créneau {availability_id}: {e}")
         return False
 
-def is_c21_available_db(jour, heure_debut_minutes, heure_fin_minutes):
-    """
-    Vérifie si la C21 est disponible pour un créneau donné en base de données
-    
-    Args:
-        jour (str): Jour de la semaine
-        heure_debut_minutes (int): Heure de début en minutes depuis minuit
-        heure_fin_minutes (int): Heure de fin en minutes depuis minuit
-        
-    Returns:
-        bool: True si disponible, False sinon
-    """
-    try:
-        conn, db_type = get_db_connection()
-        cursor = conn.cursor()
-        
-        placeholder = '%s' if db_type == 'postgresql' else '?'
-        
-        # Convertir les minutes en format HH:MM
-        def minutes_to_time(minutes):
-            hours = minutes // 60
-            mins = minutes % 60
-            return f"{hours:02d}:{mins:02d}"
-        
-        heure_debut_str = minutes_to_time(heure_debut_minutes)
-        heure_fin_str = minutes_to_time(heure_fin_minutes)
-        
-        # Chercher les créneaux qui contiennent complètement le cours
-        if db_type == 'postgresql':
-            cursor.execute(f'''
-                SELECT COUNT(*) FROM c21_availability 
-                WHERE jour = {placeholder} 
-                AND heure_debut <= %s::time 
-                AND heure_fin >= %s::time
-            ''', (jour, heure_debut_str, heure_fin_str))
-        else:
-            cursor.execute(f'''
-                SELECT COUNT(*) FROM c21_availability 
-                WHERE jour = {placeholder} 
-                AND time(heure_debut) <= time({placeholder}) 
-                AND time(heure_fin) >= time({placeholder})
-            ''', (jour, heure_debut_str, heure_fin_str))
-        
-        count = cursor.fetchone()[0]
-        conn.close()
-        
-        return count > 0
-        
-    except Exception as e:
-        logger.error(f"Erreur lors de la vérification de disponibilité C21: {e}")
-        return False  # Par sécurité, considérer comme non disponible en cas d'erreur
 
 def add_pending_modification(request_id, field_name, original_value, new_value, modified_by='System'):
     """Add a pending modification to the database"""

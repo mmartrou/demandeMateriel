@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Disponibilité de la salle limitée - administration{% endblock %}
+{% block title %}{{ availability_title }} - administration{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -75,7 +75,7 @@
     <div class="row">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1><i class="fas fa-door-open"></i> Disponibilité de la salle limitée{% if limited_rooms %} ({{ limited_rooms|join(', ') }}){% endif %}</h1>
+                <h1><i class="fas fa-door-open"></i> {{ availability_title }}</h1>
                 <a href="/admin" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Retour Admin
                 </a>
@@ -115,6 +115,21 @@
                 </div>
                 <div class="card-body">
                     <form id="add-slot-form">
+                        <div class="mb-3">
+                            <label for="salle" class="form-label">Salle</label>
+                            <select class="form-select" id="salle" required>
+                                <option value="">Sélectionner une salle</option>
+                                {% for room in all_rooms %}
+                                <option value="{{ room.id }}" {% if room.limited_availability %}data-limited="1"{% endif %}>{{ room.name }}{% if room.limited_availability %} (disponibilité limitée){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">
+                                Toutes les salles sont proposées. Une salle qui reçoit un créneau ici n'est ensuite
+                                utilisée que sur ses créneaux. Pour ajouter ou renommer une salle :
+                                <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.
+                            </small>
+                        </div>
+
                         <div class="mb-3">
                             <label for="jour" class="form-label">Jour</label>
                             <select class="form-select" id="jour" required>
@@ -257,7 +272,7 @@
 
 {% block extra_js %}
 <script>
-class C21AvailabilityManager {
+class RoomAvailabilityManager {
     constructor() {
         this.slots = [];
         this.init();
@@ -281,7 +296,7 @@ class C21AvailabilityManager {
 
     async loadSlots() {
         try {
-            const response = await fetch('/api/c21-availability');
+            const response = await fetch('/api/room-availability');
             if (response.ok) {
                 this.slots = await response.json();
                 this.renderSlots();
@@ -296,13 +311,14 @@ class C21AvailabilityManager {
     }
 
     async addSlot() {
+        const room_id = parseInt(document.getElementById('salle').value);
         const jour = document.getElementById('jour').value;
         const heure_debut_h = document.getElementById('heure_debut_h').value;
         const heure_debut_m = document.getElementById('heure_debut_m').value;
         const heure_fin_h = document.getElementById('heure_fin_h').value;
         const heure_fin_m = document.getElementById('heure_fin_m').value;
 
-        if (!jour || !heure_debut_h || !heure_debut_m || !heure_fin_h || !heure_fin_m) {
+        if (!room_id || !jour || !heure_debut_h || !heure_debut_m || !heure_fin_h || !heure_fin_m) {
             this.showError('Tous les champs sont requis');
             return;
         }
@@ -318,12 +334,13 @@ class C21AvailabilityManager {
         }
 
         try {
-            const response = await fetch('/api/c21-availability', {
+            const response = await fetch('/api/room-availability', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    room_id: room_id,
                     jour: jour,
                     heure_debut: heure_debut,
                     heure_fin: heure_fin
@@ -355,7 +372,7 @@ class C21AvailabilityManager {
         if (!this.slotToDelete) return;
 
         try {
-            const response = await fetch(`/api/c21-availability/${this.slotToDelete}`, {
+            const response = await fetch(`/api/room-availability/${this.slotToDelete}`, {
                 method: 'DELETE'
             });
 
@@ -387,15 +404,15 @@ class C21AvailabilityManager {
 
         let html = '';
         this.slots.forEach(slot => {
-            const slotInfo = `${this.capitalizeFirst(slot.jour)} ${slot.heure_debut}-${slot.heure_fin}`;
+            const slotInfo = `${slot.salle} - ${this.capitalizeFirst(slot.jour)} ${slot.heure_debut}-${slot.heure_fin}`;
             html += `
                 <div class="slot-item">
                     <span>
-                        <strong>${this.capitalizeFirst(slot.jour)}</strong><br>
+                        <strong>${this.escape(slot.salle)}</strong> - ${this.capitalizeFirst(slot.jour)}<br>
                         <small>${slot.heure_debut} - ${slot.heure_fin}</small>
                     </span>
                     <button type="button" class="btn btn-outline-danger btn-remove" 
-                            onclick="c21Manager.prepareDelete(${slot.id}, '${slotInfo}')">
+                            onclick="availabilityManager.prepareDelete(${slot.id}, '${slotInfo}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -428,7 +445,7 @@ class C21AvailabilityManager {
                 html += '<small class="text-muted">Aucun créneau</small>';
             } else {
                 daySlots.forEach(slot => {
-                    html += `<div class="badge bg-success me-1 mb-1">${slot.heure_debut}-${slot.heure_fin}</div>`;
+                    html += `<div class="badge bg-success me-1 mb-1">${this.escape(slot.salle)} ${slot.heure_debut}-${slot.heure_fin}</div>`;
                 });
             }
             
@@ -441,6 +458,12 @@ class C21AvailabilityManager {
         
         html += '</div>';
         container.innerHTML = html;
+    }
+
+    escape(text) {
+        const div = document.createElement('div');
+        div.textContent = text ?? '';
+        return div.innerHTML;
     }
 
     capitalizeFirst(str) {
@@ -493,6 +516,6 @@ class C21AvailabilityManager {
 }
 
 // Initialiser le gestionnaire
-const c21Manager = new C21AvailabilityManager();
+const availabilityManager = new RoomAvailabilityManager();
 </script>
 {% endblock %}
