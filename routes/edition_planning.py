@@ -1,4 +1,5 @@
 """Éditeur de planning : génération OR-Tools, sauvegarde, observations et occupation standard."""
+from datetime import datetime
 import json
 import logging
 
@@ -20,6 +21,7 @@ from planning_generator import (
     get_new_requests_for_date,
     get_planning_data_for_editor_v2,
 )
+from planning_print import build_print_model, salles_a_jour
 from security import _is_privileged_user, api_error
 import site_settings
 
@@ -263,22 +265,6 @@ def save_planning():
         return api_error('Erreur lors de l\'enregistrement du planning', e)
 
 
-def _salles_a_jour(salles_sauvegardees):
-    """Liste des salles d'un planning sauvegardé, remise dans l'ordre actuel de /admin/rooms.
-
-    Un planning enregistre la liste des salles telle qu'elle était à sa création : sans cette mise
-    à jour, changer l'ordre (ou ajouter une salle) n'aurait aucun effet sur les plannings déjà
-    sauvegardés. Une salle supprimée ou renommée depuis reste affichée à la fin tant que le planning
-    lui a affecté des cours, pour ne pas les faire disparaître."""
-    anciennes = {s.get('name'): s for s in (salles_sauvegardees or [])}
-    actuelles = [r['name'] for r in get_all_rooms()]
-    if not actuelles:
-        return salles_sauvegardees
-    salles = [anciennes.get(nom, {'id': nom, 'name': nom}) for nom in actuelles]
-    salles += [s for nom, s in anciennes.items() if nom not in actuelles]
-    return salles
-
-
 @bp.route('/api/get-planning', methods=['GET'])
 def get_planning():
     """API endpoint to retrieve planning data from the database"""
@@ -347,7 +333,7 @@ def get_planning():
                         c['students'] = student_count_map.get(c.get('teacher', ''), 20)
 
             if planning.get('rooms') is not None:
-                planning['rooms'] = _salles_a_jour(planning['rooms'])
+                planning['rooms'] = salles_a_jour(planning['rooms'])
 
             current_app.logger.info(f"Planning trouvé pour la date {date}")
             return jsonify({'planning': planning, 'observations': obs}), 200
@@ -391,3 +377,19 @@ def save_planning_observations():
         return jsonify({'message': 'Observations enregistrées'}), 200
     except Exception as e:
         return api_error('Erreur lors de la sauvegarde des observations', e)
+
+
+@bp.route('/admin/planning-print')
+def planning_print():
+    """Page imprimable (A4 paysage) du planning enregistré pour une date.
+
+    ?date=AAAA-MM-JJ  ?mode=technicien|affichage  ?print=1 (ouvre directement la fenêtre d'impression)"""
+    date = request.args.get('date', '')
+    try:
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return render_template('planning_print_vide.html', date=date, invalide=True), 400
+    modele = build_print_model(date, request.args.get('mode', 'technicien'))
+    if modele is None:
+        return render_template('planning_print_vide.html', date=date, invalide=False), 404
+    return render_template('planning_print.html', p=modele, auto_print=request.args.get('print') == '1')

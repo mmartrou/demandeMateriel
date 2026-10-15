@@ -1,0 +1,187 @@
+/* Page imprimable du planning (templates/planning_print.html).
+   Format A4 paysage, sans marge d'imprimante : les marges sont dans .feuille, ce qui empêche le
+   navigateur d'ajouter ses propres en-têtes et pieds de page (adresse, date, numéro de page). */
+
+:root {
+    --physique: #ffe3a3;  --physique-trait: #e0a100;
+    --chimie: #bdf1ea;    --chimie-trait: #1fa99e;
+    --autre: #e3e6ea;     --autre-trait: #8a929b;
+    --encre: #1b1f23;
+    --gris: #6b7280;
+    --ligne: #d0d5db;
+    --ligne-forte: #3d444c;
+}
+
+@page { size: A4 landscape; margin: 0; }
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    background: #e9ecef;
+    color: var(--encre);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* ---------- barre d'outils (écran seulement) ---------- */
+.barre {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 10px 18px;
+    background: #212529; color: #fff; font-size: 14px;
+}
+.barre a, .barre button {
+    color: #fff; text-decoration: none; cursor: pointer;
+    border: 1px solid #6c757d; border-radius: 6px; padding: 6px 12px;
+    background: transparent; font: inherit;
+}
+.barre a:hover, .barre button:hover { background: #343a40; }
+.barre .actif { background: #0d6efd; border-color: #0d6efd; }
+.barre .imprimer { background: #198754; border-color: #198754; font-weight: 600; }
+.barre .conseil { flex-basis: 100%; color: #adb5bd; font-size: 12.5px; }
+
+/* ---------- la page ---------- */
+.feuille {
+    width: 297mm; height: 209mm;
+    margin: 18px auto;
+    padding: 8mm;
+    background: #fff;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, .25);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+}
+
+@media print {
+    html, body { background: #fff; }
+    .barre { display: none; }
+    .feuille { margin: 0; box-shadow: none; }
+}
+
+/* ---------- en-tête ---------- */
+.entete {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: end;
+    padding-bottom: 2.2mm; margin-bottom: 2.4mm;
+    border-bottom: 0.8pt solid var(--ligne-forte);
+}
+.entete .site { font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: var(--gris); }
+.entete .site strong { display: block; font-size: 10.5pt; letter-spacing: .04em; color: var(--encre); text-transform: none; }
+.entete h1 { margin: 0; font-size: 21pt; line-height: 1; font-weight: 700; letter-spacing: .01em; text-align: center; }
+.entete .meta { text-align: right; font-size: 8.5pt; color: var(--gris); line-height: 1.35; }
+.entete .meta .version {
+    display: inline-block; padding: .4mm 2.2mm; margin-bottom: .8mm;
+    border: 0.7pt solid var(--ligne-forte); border-radius: 2mm;
+    color: var(--encre); font-weight: 600; font-size: 8.5pt;
+}
+
+/* ---------- grille ----------
+   CSS Grid : colonne 1 = heures, puis une colonne par salle ; lignes 1-2 = groupes et noms de salles,
+   puis une ligne par créneau, de hauteur proportionnelle à sa durée. La grille occupe toute la place
+   que laissent l'en-tête et le pied de page, quelle que soit leur taille. */
+.grille { flex: 1 1 0; min-height: 70mm; display: grid; position: relative; }
+
+.grille .groupe {
+    background: #3d444c; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8pt; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    border-left: 1.2pt solid #fff;
+}
+.grille .groupe.vide { background: transparent; }
+.grille .salle {
+    display: flex; align-items: center; justify-content: center;
+    background: #f1f3f5; font-size: 12.5pt; font-weight: 700;
+    border: 0.6pt solid var(--ligne-forte); border-left-width: 0.6pt;
+}
+
+.grille .heure {
+    padding-right: 1.6mm; text-align: right; align-self: stretch;
+    font-size: 7.4pt; font-weight: 600; color: var(--gris); font-variant-numeric: tabular-nums;
+    border-top: 0.3pt solid var(--ligne);
+}
+.grille .case { border-top: 0.3pt solid var(--ligne); border-left: 0.5pt solid #9aa1a9; }
+.grille .case.derniere { border-right: 0.5pt solid #9aa1a9; }
+.grille .heure.pause, .grille .case.pause { border-top: 1.1pt solid var(--ligne-forte); }
+.grille::after {                      /* trait de fermeture sous la dernière ligne */
+    content: ""; grid-column: 2 / -1; grid-row: -2 / -1; align-self: end;
+    border-bottom: 0.6pt solid var(--ligne-forte); pointer-events: none;
+}
+
+/* ---------- case d'un cours ---------- */
+.carte {
+    position: relative; overflow: hidden; min-width: 0;
+    margin: 0.45mm; padding: 0.9mm 1.3mm 0.9mm 1.9mm;
+    border-radius: 1.2mm;
+    --fond: var(--autre);
+    background: var(--fond); border-left: 1.4mm solid var(--autre-trait);
+    line-height: 1.12;
+    display: flex; flex-direction: column;
+}
+.carte.physique { --fond: var(--physique); border-left-color: var(--physique-trait); }
+.carte.chimie   { --fond: var(--chimie);   border-left-color: var(--chimie-trait); }
+
+.carte .haut { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 2mm; }
+.carte .prof { font-weight: 700; font-size: 10.5pt; overflow-wrap: anywhere; }
+.carte .niveau { font-size: 8.6pt; font-weight: 600; color: #2c3238; overflow-wrap: anywhere; }
+/* le texte occupe la place laissée par les badges ; s'il déborde, il s'estompe dans la couleur de la
+   carte au lieu d'être coupé net (dégradé vectoriel : le texte reste net à l'impression et en PDF) */
+/* padding-bas : un texte qui tient en entier s'arrête avant la zone d'estompage */
+.carte .corps { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; padding-bottom: 1.6mm; }
+.carte .corps::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.6mm;
+    background: linear-gradient(to bottom, transparent, var(--fond));
+}
+.carte .haut { flex: none; }
+/* les observations sont tronquées proprement (…) selon la place : on ne coupe jamais une ligne en deux */
+.carte .obs {
+    flex: none; margin-top: .5mm; font-size: 7.6pt; font-style: italic; color: #2c3238; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+}
+.carte .nom-tp { display: none; flex: none; margin-top: .5mm; font-size: 7pt; color: var(--gris); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carte .badges { flex: none; align-self: flex-end; padding-top: .3mm; display: flex; gap: 1.6mm; align-items: baseline; font-size: 9.5pt; font-weight: 700; }
+.carte .pc { font-size: 8.6pt; }
+.carte .pc.depassement { color: #c1121f; }
+.carte .pc.depassement::after { content: " !"; }
+.carte .prepare { font-size: 8pt; color: #146c43; }
+
+/* tailles selon la durée du cours : plus la case est haute, plus elle montre de détails */
+.carte.xs { padding-top: .2mm; padding-bottom: .2mm; }
+.carte.xs .prof { font-size: 8.8pt; }
+.carte.xs .niveau { font-size: 7.6pt; }
+.carte.xs .obs, .carte.xs .badges { display: none; }
+.carte.s .prof { font-size: 9.6pt; }
+.carte.s .obs { -webkit-line-clamp: 1; margin-top: 0; }
+.carte.m .obs { -webkit-line-clamp: 3; }
+.carte.l .obs { -webkit-line-clamp: 4; }
+.carte.l .nom-tp { display: block; }
+
+/* mode « affichage » (affichage en salle) : seulement l'enseignant et le niveau, en plus gros */
+.carte.affichage .haut { flex-direction: column; align-items: flex-start; row-gap: .4mm; }
+.carte.affichage .prof { font-size: 12.5pt; }
+.carte.affichage .niveau { font-size: 9.6pt; font-weight: 500; }
+.carte.affichage.xs .haut { flex-direction: row; align-items: baseline; }
+.carte.affichage.xs .prof { font-size: 9.6pt; }
+
+/* ---------- pied de page ---------- */
+.pied { display: flex; gap: 3mm; margin-top: 2.2mm; align-items: stretch; }
+.pied .bloc {
+    flex: 1; padding: 1.2mm 2.2mm;
+    border: 0.6pt solid var(--ligne-forte); border-radius: 1.4mm;
+    font-size: 8.4pt; line-height: 1.3; break-inside: avoid;
+}
+.pied .bloc h2 { margin: 0 0 .5mm; font-size: 7.6pt; letter-spacing: .1em; text-transform: uppercase; color: var(--gris); }
+.pied .bloc.alerte { border-color: #c1121f; }
+.pied .bloc.alerte h2 { color: #c1121f; }
+.pied .bloc ul { margin: 0; padding-left: 4mm; }
+.pied .bloc li { break-inside: avoid; }
+.pied .bloc p { margin: 0; white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 9; overflow: hidden; }
+.pied .bloc.observations { flex: 2; }
+
+.legende { margin-top: auto; padding-top: 1.6mm; display: flex; flex-wrap: wrap; gap: 5mm; font-size: 7.6pt; color: var(--gris); align-items: center; }
+.legende .puce { display: inline-block; width: 3.2mm; height: 3.2mm; margin-right: 1.2mm; vertical-align: -0.6mm; border-radius: .7mm; border-left: 1mm solid; }
+.legende .puce.physique { background: var(--physique); border-color: var(--physique-trait); }
+.legende .puce.chimie { background: var(--chimie); border-color: var(--chimie-trait); }
+.legende .puce.autre { background: var(--autre); border-color: var(--autre-trait); }
+.legende .rouge { color: #c1121f; font-weight: 700; }
+
+.vide-message { margin: auto; text-align: center; color: var(--gris); font-size: 14pt; }

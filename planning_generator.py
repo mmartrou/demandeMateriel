@@ -37,6 +37,7 @@ def to_dict_request(req):
 # -*- coding: utf-8 -*-
 
 import database
+import planning_print
 import site_settings
 from datetime import datetime, timedelta
 from ortools.sat.python import cp_model
@@ -1093,21 +1094,9 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         courses = planning_data.get('courses', [])
         room_assignments = planning_data.get('room_assignments', {})
 
-        # Rafraîchir depuis la base les infos qui peuvent avoir changé depuis
-        # l'enregistrement du planning (noms courts, observations labo, effectifs),
-        # pour que l'Excel reflète toujours l'état actuel comme l'éditeur de planning.
-        teacher_short_map = {t['name']: t['short_name'] for t in database.get_all_teachers()}
-        level_short_map = {l['name']: l['short_name'] for l in database.get_all_levels()}
-        student_count_map = {s['teacher_name']: s['student_count'] for s in database.get_all_student_numbers() if s.get('level') == '2nde'}
-        req_ids = [c['request_id'] for c in courses if c.get('request_id')]
-        labo_map = database.get_labo_observations_map(req_ids)
-        for c in courses:
-            c['teacher_short_name'] = teacher_short_map.get(c.get('teacher', ''), c.get('teacher_short_name', ''))
-            c['level_short_name'] = level_short_map.get(c.get('level', ''), c.get('level_short_name', ''))
-            if c.get('request_id'):
-                c['labo_observations'] = labo_map.get(c['request_id'], '')
-            if c.get('level') == '2nd Classe':
-                c['students'] = student_count_map.get(c.get('teacher', ''), c.get('students', 20))
+        # Rafraîchir depuis la base les infos qui peuvent avoir changé depuis l'enregistrement du
+        # planning (noms courts, observations labo, effectifs), comme dans l'éditeur de planning.
+        planning_print.rafraichir_cours(courses)
 
         # Demandes "Test au labo" (pas de salle attribuée, donc absentes de `courses`)
         # et observations internes du planning : à afficher sous la grille.

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Planning introuvable{% endblock %}
+
+{% block content %}
+<div class="container mt-5 text-center">
+    {% if invalide %}
+    <h2>Date invalide</h2>
+    <p class="text-muted">La date demandée (« {{ date }} ») n'est pas au format AAAA-MM-JJ.</p>
+    {% else %}
+    <h2>Aucun planning enregistré pour le {{ date }}</h2>
+    <p class="text-muted">Générez ou ouvrez le planning dans l'éditeur : il est enregistré automatiquement, puis imprimable ici.</p>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('edition_planning.planning_editor') }}">Retour à l'éditeur de planning</a>
+</div>
+{% endblock %}

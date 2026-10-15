@@ -1209,70 +1209,29 @@ async function reloadPlanning() {
     }
 }
 
-// Imprime la zone #print-area (date + grille + observations) sur une page A4 paysage,
-// mise à l'échelle pour occuper tout l'espace disponible.
-//
-// Les repères horaires (.time-lines-overlay) sont positionnés en pixels absolus, mesurés
-// une seule fois au chargement du planning (voir renderPlanningGrid). Si la grille se
-// réorganisait pour l'impression (ses colonnes sont en largeur "1fr", donc dépendantes de
-// la largeur du conteneur), ces repères se désaligneraient comme lorsqu'ils avaient été mal
-// positionnés par le passé. On fige donc la largeur de la grille en pixels AVANT
-// d'appliquer un simple `transform: scale()` (une opération purement visuelle qui ne
-// redéclenche aucune réorganisation) plutôt que de laisser le CSS d'impression redimensionner
-// la grille lui-même.
-function printPlanning() {
-    const printArea = document.getElementById('print-area');
-    const wrapper = document.getElementById('print-area-wrapper');
-    const grid = printArea.querySelector('.planning-grid');
-    if (!grid) {
+// Impression : ouvre la page imprimable (A4 paysage, mise en page dédiée) construite côté serveur à
+// partir du planning enregistré en base. L'état affiché dans l'éditeur est enregistré d'abord, pour que
+// l'impression corresponde exactement à ce qu'on voit.
+async function printPlanning() {
+    if (!planningData) {
         showAlert('Aucun planning chargé à imprimer.', 'warning');
         return;
     }
-    const editor = printArea.querySelector('.planning-editor');
-
-    // Largeur réelle de la grille, y compris la partie masquée par le défilement horizontal.
-    const gridWidth = grid.scrollWidth;
-
-    editor.style.overflow = 'visible';
-    editor.style.width = gridWidth + 'px';
-    grid.style.width = gridWidth + 'px';
-
-    const contentWidth = Math.max(printArea.scrollWidth, gridWidth);
-    const contentHeight = printArea.scrollHeight;
-
-    const MM_TO_PX = 96 / 25.4;
-    const marginMm = 8;
-    const pageWidthPx = (297 - marginMm * 2) * MM_TO_PX;
-    const pageHeightPx = (210 - marginMm * 2) * MM_TO_PX;
-    const scale = Math.min(pageWidthPx / contentWidth, pageHeightPx / contentHeight);
-
-    printArea.style.width = contentWidth + 'px';
-    printArea.style.transform = `scale(${scale})`;
-
-    // Réserve exactement l'espace occupé après mise à l'échelle, sinon la pagination
-    // d'impression se base sur la taille non réduite du contenu et ajoute une page blanche.
-    wrapper.style.width = (contentWidth * scale) + 'px';
-    wrapper.style.height = (contentHeight * scale) + 'px';
-
-    document.body.classList.add('printing-planning');
-
-    const cleanup = () => {
-        document.body.classList.remove('printing-planning');
-        printArea.style.width = '';
-        printArea.style.transform = '';
-        editor.style.overflow = '';
-        editor.style.width = '';
-        grid.style.width = '';
-        wrapper.style.width = '';
-        wrapper.style.height = '';
-        window.removeEventListener('afterprint', cleanup);
-    };
-    window.addEventListener('afterprint', cleanup);
-
-    // Laisse le navigateur peindre les nouveaux styles avant d'ouvrir le dialogue
-    // d'impression (deux frames : la 1ère prend en compte les changements, la 2e est
-    // certaine d'avoir été peinte).
-    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+    const date = document.getElementById('target-date').value;
+    if (!date) {
+        showAlert('Veuillez sélectionner une date.', 'warning');
+        return;
+    }
+    // L'onglet est ouvert tout de suite (dans le geste de l'utilisateur) pour ne pas être bloqué par le
+    // navigateur, puis dirigé vers la page imprimable une fois le planning enregistré.
+    const onglet = window.open('', '_blank');
+    await savePlanningData();
+    const url = `/admin/planning-print?date=${encodeURIComponent(date)}&print=1`;
+    if (onglet) {
+        onglet.location.href = url;
+    } else {
+        window.location.href = url;
+    }
 }
 
 async function reloadPlanningIfExists(targetDate) {

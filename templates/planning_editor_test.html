@@ -630,59 +630,6 @@
         --bs-btn-hover-bg: #275b58;
         --bs-btn-hover-border-color: #275b58;
     }
-
-    /* Impression : seule #print-area-wrapper (date + grille + observations) est visible.
-       #print-area est mis à l'échelle par JS (printPlanning()) pour remplir la page A4 ;
-       #print-area-wrapper réserve exactement l'espace obtenu après mise à l'échelle,
-       sinon la pagination d'impression réserverait la hauteur non réduite du contenu
-       et laisserait une seconde page blanche. */
-    @page {
-        size: A4 landscape;
-        margin: 8mm;
-    }
-
-    @media print {
-        body.printing-planning nav,
-        body.printing-planning footer,
-        body.printing-planning .toast-container {
-            display: none !important;
-        }
-
-        body.printing-planning .container.mt-4 {
-            margin: 0 !important;
-            padding: 0 !important;
-            max-width: none !important;
-        }
-
-        body.printing-planning .container-fluid > *:not(#print-area-wrapper) {
-            display: none !important;
-        }
-
-        body.printing-planning html,
-        body.printing-planning body {
-            overflow: hidden !important;
-        }
-
-        /* Le rectangle imprimé doit avoir exactement la taille mise à l'échelle : un
-           `transform: scale()` ne réduit que le rendu visuel, pas la place réservée
-           dans la mise en page. Sans ce overflow:hidden, #print-area (resté à sa
-           largeur/hauteur d'origine, non réduite) déborde de son wrapper : la page
-           déborde sur une 2e feuille et affiche les barres de défilement internes. */
-        body.printing-planning #print-area-wrapper {
-            margin: 0 !important;
-            overflow: hidden !important;
-        }
-
-        body.printing-planning #print-area {
-            transform-origin: top left;
-        }
-
-        /* Filet de sécurité : quel que soit l'état laissé par printPlanning(), la grille
-           ne doit jamais afficher sa propre barre de défilement dans l'impression. */
-        body.printing-planning .planning-editor {
-            overflow: visible !important;
-        }
-    }
 </style>
 {% endblock %}
 
@@ -761,9 +708,6 @@
     </div>
     
     <!-- Zone d'édition du planning par salle -->
-    <!-- print-area-wrapper/print-area : périmètre imprimé par printPlanning(), voir extra_js -->
-    <div id="print-area-wrapper">
-    <div id="print-area">
     <h4 id="planning-date-heading" class="text-center mb-3" style="font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-weight:600; color:var(--pe-ink);"></h4>
 
     <!-- Tests au labo demandés pour cette date (pas de salle attribuée, donc absents de la grille) -->
@@ -784,8 +728,6 @@
         <textarea id="planningObservations" class="form-control" rows="3"
                   placeholder="Notes internes pour ce planning…"
                   style="resize:vertical;"></textarea>
-    </div>
-    </div>
     </div>
 
     <!-- Message quand aucun planning n'est chargé -->

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Le titre devient le nom proposé par le navigateur pour le fichier PDF #}
+    <title>Planning {{ p.date_label }}</title>
+    <link rel="stylesheet" href="{{ asset('css/planning_print.css') }}">
+</head>
+<body>
+    <div class="barre">
+        <a href="{{ url_for('edition_planning.planning_editor') }}">← Retour à l'éditeur</a>
+        <a href="{{ url_for('edition_planning.planning_print', date=p.date, mode='technicien') }}"
+           class="{{ 'actif' if p.mode == 'technicien' }}">Version techniciens</a>
+        <a href="{{ url_for('edition_planning.planning_print', date=p.date, mode='affichage') }}"
+           class="{{ 'actif' if p.mode == 'affichage' }}">Version affichage</a>
+        <button type="button" class="imprimer" onclick="window.print()">Imprimer</button>
+        <span class="conseil">
+            Pour obtenir un PDF : « Imprimer », puis destination « Enregistrer au format PDF » (A4 paysage ; les
+            en-têtes du navigateur sont déjà désactivés). La page reflète le planning enregistré : revenez à
+            l'éditeur pour le modifier.
+        </span>
+    </div>
+
+    <main class="feuille">
+        <header class="entete">
+            <div class="site"><strong>{{ p.site_name }}</strong>Planning du laboratoire</div>
+            <h1>{{ p.date_label }}</h1>
+            <div class="meta">
+                <span class="version">{{ 'Version techniciens' if p.mode == 'technicien' else 'Affichage' }}</span><br>
+                {{ p.nb_cours }} cours · {{ p.salles|length }} salles<br>
+                Édité le {{ p.edite_le }}
+            </div>
+        </header>
+
+        {# Grille : colonne 1 = heures, puis une colonne par salle. Lignes 1-2 = groupes et salles, puis une
+           ligne par créneau dont la hauteur est proportionnelle à sa durée (unité fr). #}
+        {% set nb_salles = p.salles|length %}
+        {% set a_des_groupes = p.groupes|selectattr('label')|list|length > 0 %}
+        <div class="grille {{ 'avec-groupes' if a_des_groupes }}"
+             style="grid-template-columns: 13mm repeat({{ nb_salles }}, minmax(0, 1fr));
+                    grid-template-rows: {{ '5.2mm' if a_des_groupes else '0' }} 8.4mm {% for l in p.lignes %}{{ l.minutes }}fr {% endfor %};">
+            {% set ns = namespace(col=2) %}
+            {% for g in p.groupes %}
+            <div class="groupe {{ '' if g.label else 'vide' }}" style="grid-row: 1; grid-column: {{ ns.col }} / span {{ g.span }}">{{ g.label }}</div>
+            {% set ns.col = ns.col + g.span %}
+            {% endfor %}
+            {% for salle in p.salles %}
+            <div class="salle" style="grid-row: 2; grid-column: {{ loop.index + 1 }}">{{ salle.name }}</div>
+            {% endfor %}
+
+            {# fond : une case par ligne et par salle (traits horizontaux et verticaux) #}
+            {% for ligne in p.lignes %}
+            {% set r = loop.index + 2 %}
+            <div class="heure {{ 'pause' if ligne.separator }}" style="grid-row: {{ r }}; grid-column: 1">{{ ligne.label }}</div>
+            {% for salle in p.salles %}
+            <div class="case {{ 'pause' if ligne.separator }} {{ 'derniere' if loop.last }}" style="grid-row: {{ r }}; grid-column: {{ loop.index + 1 }}"></div>
+            {% endfor %}
+            {% endfor %}
+
+            {# cours : posés par-dessus le fond, sur autant de lignes que leur durée #}
+            {% for ligne in p.lignes %}
+            {% set r = loop.index + 2 %}
+            {% for cellule in ligne.cells %}
+            {% if cellule and cellule.cours %}
+            {% set c = cellule.cours %}
+            <div class="carte {{ c.matiere }} {{ cellule.taille }} {{ '' if c.details else 'affichage' }}"
+                 style="grid-row: {{ r }} / span {{ cellule.lignes }}; grid-column: {{ loop.index + 1 }}">
+                <div class="corps">
+                    <div class="haut">
+                        <span class="prof">{{ c.enseignant }}</span>
+                        <span class="niveau">{{ c.niveau }}</span>
+                    </div>
+                    {% if c.details %}
+                    {% if c.observations %}<div class="obs">{{ c.observations }}</div>{% endif %}
+                    {% if c.nom_tp %}<div class="nom-tp">{{ c.nom_tp }}</div>{% endif %}
+                    {% endif %}
+                </div>
+                {% if c.details %}
+                <div class="badges">
+                    {% if c.effectif %}<span class="effectif">{{ c.effectif }}</span>{% endif %}
+                    {% if c.ordinateurs %}<span class="pc {{ 'depassement' if c.ordinateurs_depassement }}">{{ c.ordinateurs }} PC</span>{% endif %}
+                    {% if c.prepare %}<span class="prepare" title="Préparé">✓</span>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+        </div>
+
+        {% if p.nb_cours == 0 %}
+        <p class="vide-message">Aucun cours placé dans une salle pour cette date.</p>
+        {% endif %}
+
+        {% if p.lab_tests or p.a_signaler or p.observations %}
+        <section class="pied">
+            {% if p.lab_tests %}
+            <div class="bloc">
+                <h2>Tests au labo (sans salle)</h2>
+                <ul>{% for t in p.lab_tests %}<li>{{ t }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            {% if p.a_signaler %}
+            <div class="bloc alerte">
+                <h2>Cours non placés dans une salle</h2>
+                <ul>{% for a in p.a_signaler %}<li>{{ a.texte }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            {% if p.observations %}
+            <div class="bloc observations">
+                <h2>Observations</h2>
+                <p>{{ p.observations }}</p>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <footer class="legende">
+            <span><i class="puce physique"></i>Physique</span>
+            <span><i class="puce chimie"></i>Chimie</span>
+            <span><i class="puce autre"></i>Autre / mixte</span>
+            {% if p.mode == 'technicien' %}
+            <span>✓ demande préparée</span>
+            <span><span class="rouge">PC !</span> plus d'ordinateurs demandés que dans la plus grande salle</span>
+            {% endif %}
+        </footer>
+    </main>
+
+    {% if auto_print %}
+    <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });</script>
+    {% endif %}
+</body>
+</html>
