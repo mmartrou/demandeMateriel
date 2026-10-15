@@ -8,10 +8,10 @@
     <div class="alert alert-info">
         <strong>Premiers pas :</strong> complétez la configuration de votre établissement.
         <ul class="mb-0 mt-2">
-            <li>{% if setup.rooms %}✅{% else %}⬜{% endif %} Salles : <a href="{{ url_for('view_rooms') }}">{{ setup.rooms }} enregistrée(s)</a></li>
-            <li>{% if setup.teachers %}✅{% else %}⬜{% endif %} Enseignants : <a href="{{ url_for('admin_users') }}">{{ setup.teachers }} enregistré(s)</a></li>
-            <li>{% if setup.levels %}✅{% else %}⬜{% endif %} Niveaux : <a href="{{ url_for('admin_niveaux') }}">{{ setup.levels }} enregistré(s)</a></li>
-            <li>⬜ Nom, fuseau horaire et créneaux : <a href="{{ url_for('view_establishment') }}">Établissement</a></li>
+            <li>{% if setup.rooms %}✅{% else %}⬜{% endif %} Salles : <a href="{{ url_for('salles.view_rooms') }}">{{ setup.rooms }} enregistrée(s)</a></li>
+            <li>{% if setup.teachers %}✅{% else %}⬜{% endif %} Enseignants : <a href="{{ url_for('admin.admin_users') }}">{{ setup.teachers }} enregistré(s)</a></li>
+            <li>{% if setup.levels %}✅{% else %}⬜{% endif %} Niveaux : <a href="{{ url_for('admin.admin_niveaux') }}">{{ setup.levels }} enregistré(s)</a></li>
+            <li>⬜ Nom, fuseau horaire et créneaux : <a href="{{ url_for('admin.view_establishment') }}">Établissement</a></li>
         </ul>
     </div>
     {% endif %}
@@ -26,7 +26,7 @@
     <div class="row g-3">
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('view_rooms') }}" class="btn btn-primary btn-lg">
+                <a href="{{ url_for('salles.view_rooms') }}" class="btn btn-primary btn-lg">
                     <i class="fas fa-cog"></i> Configurer les salles
                 </a>
             </div>
@@ -34,7 +34,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('view_students') }}" class="btn btn-success btn-lg">
+                <a href="{{ url_for('admin.view_students') }}" class="btn btn-success btn-lg">
                     <i class="fas fa-edit"></i> Gérer les effectifs (2nd)
                 </a>
             </div>
@@ -42,7 +42,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('planning') }}" class="btn btn-warning btn-lg">
+                <a href="{{ url_for('pages.planning') }}" class="btn btn-warning btn-lg">
                     <i class="fas fa-cogs"></i> Salles spécifiques
                 </a>
             </div>
@@ -50,7 +50,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('planning_editor') }}" class="btn btn-secondary btn-lg">
+                <a href="{{ url_for('edition_planning.planning_editor') }}" class="btn btn-secondary btn-lg">
                     <i class="fas fa-edit"></i> Éditeur interactif de planning
                 </a>
             </div>
@@ -58,7 +58,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('view_working_days') }}" class="btn btn-info btn-lg">
+                <a href="{{ url_for('jours.view_working_days') }}" class="btn btn-info btn-lg">
                     <i class="fas fa-calendar-alt"></i> Configuration jours ouvrés
                 </a>
             </div>
@@ -66,7 +66,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('view_room_availability') }}" class="btn btn-danger btn-lg">
+                <a href="{{ url_for('salles.view_room_availability') }}" class="btn btn-danger btn-lg">
                     <i class="fas fa-door-open"></i> {{ availability_title }}
                 </a>
             </div>
@@ -74,7 +74,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('admin_users') }}" class="btn btn-dark btn-lg">
+                <a href="{{ url_for('admin.admin_users') }}" class="btn btn-dark btn-lg">
                     👤 Comptes enseignants
                 </a>
             </div>
@@ -82,7 +82,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('admin_niveaux') }}" class="btn btn-outline-primary btn-lg">
+                <a href="{{ url_for('admin.admin_niveaux') }}" class="btn btn-outline-primary btn-lg">
                     🎓 Gérer les niveaux
                 </a>
             </div>
@@ -90,7 +90,7 @@
 
         <div class="col-12 col-md-6 col-lg-4 mb-3">
             <div class="d-grid">
-                <a href="{{ url_for('view_establishment') }}" class="btn btn-outline-dark btn-lg">
+                <a href="{{ url_for('admin.view_establishment') }}" class="btn btn-outline-dark btn-lg">
                     🏫 Établissement
                 </a>
             </div>
@@ -99,7 +99,7 @@
 
     <div class="row mt-4">
         <div class="col-12 text-center">
-            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <a href="{{ url_for('pages.index') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-arrow-left"></i> Retour à l'accueil
             </a>
         </div>

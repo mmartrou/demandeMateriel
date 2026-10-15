@@ -51,7 +51,7 @@
         errorBox.classList.add('d-none');
 
         try {
-            const authResponse = await fetch('{{ url_for("auth_google") }}', {
+            const authResponse = await fetch('{{ url_for("auth.auth_google") }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ credential: response.credential })
@@ -62,7 +62,7 @@
                 throw new Error(payload.error || 'Connexion refusée');
             }
 
-            window.location.href = '{{ url_for("index") }}';
+            window.location.href = '{{ url_for("pages.index") }}';
         } catch (error) {
             errorBox.textContent = error.message || 'Erreur de connexion';
             errorBox.classList.remove('d-none');

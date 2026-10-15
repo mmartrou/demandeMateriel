@@ -21,7 +21,7 @@
                     <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="fas fa-upload"></i> Importer CSV
                     </button>
-                    <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">
+                    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left"></i> Retour Admin
                     </a>
                 </div>
@@ -32,7 +32,7 @@
                 planning et de l'Excel (utilisez les flèches pour le changer). Les salles qui ont le même
                 « groupe » sont réunies sous un même titre (ex : <em>Physique</em>, <em>Chimie</em>).
                 Une salle à « disponibilité limitée » n'est utilisée que sur les créneaux déclarés dans
-                <a href="{{ url_for('view_room_availability') }}">{{ availability_title }}</a>.
+                <a href="{{ url_for('salles.view_room_availability') }}">{{ availability_title }}</a>.
             </div>
 
             <div id="emptyRoomsNotice" class="alert alert-warning d-none">

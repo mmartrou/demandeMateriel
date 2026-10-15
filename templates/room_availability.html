@@ -90,10 +90,10 @@
                 Une salle <strong>toujours disponible</strong> (la plupart) n'a pas de créneaux. Activez l'interrupteur
                 uniquement pour une salle <strong>pas toujours disponible pour la physique-chimie</strong> (ex : partagée
                 avec une autre matière) : elle ne sera alors utilisée que sur les créneaux déclarés ci-dessous.
-                Pour ajouter ou renommer une salle : <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.
+                Pour ajouter ou renommer une salle : <a href="{{ url_for('salles.view_rooms') }}">Gestion des salles</a>.
             </p>
             {% if not all_rooms %}
-            <div class="alert alert-info mb-0">Aucune salle n'existe encore. Ajoutez-en dans <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.</div>
+            <div class="alert alert-info mb-0">Aucune salle n'existe encore. Ajoutez-en dans <a href="{{ url_for('salles.view_rooms') }}">Gestion des salles</a>.</div>
             {% endif %}
             <div class="row g-2">
                 {% for room in all_rooms %}
