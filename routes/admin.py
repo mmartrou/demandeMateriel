@@ -41,8 +41,7 @@ def view_establishment():
     from zoneinfo import available_timezones
     return render_template('establishment.html', settings=site_settings.get_site_settings(),
                            defaults=site_settings.DEFAULTS, is_admin=_is_admin_user(),
-                           timezones=sorted(available_timezones()),
-                           availability_title=_availability_page_title())
+                           timezones=sorted(available_timezones()))
 
 
 @bp.route('/api/site-settings', methods=['GET', 'PUT'])

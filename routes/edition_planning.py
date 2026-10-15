@@ -263,6 +263,22 @@ def save_planning():
         return api_error('Erreur lors de l\'enregistrement du planning', e)
 
 
+def _salles_a_jour(salles_sauvegardees):
+    """Liste des salles d'un planning sauvegardé, remise dans l'ordre actuel de /admin/rooms.
+
+    Un planning enregistre la liste des salles telle qu'elle était à sa création : sans cette mise
+    à jour, changer l'ordre (ou ajouter une salle) n'aurait aucun effet sur les plannings déjà
+    sauvegardés. Une salle supprimée ou renommée depuis reste affichée à la fin tant que le planning
+    lui a affecté des cours, pour ne pas les faire disparaître."""
+    anciennes = {s.get('name'): s for s in (salles_sauvegardees or [])}
+    actuelles = [r['name'] for r in get_all_rooms()]
+    if not actuelles:
+        return salles_sauvegardees
+    salles = [anciennes.get(nom, {'id': nom, 'name': nom}) for nom in actuelles]
+    salles += [s for nom, s in anciennes.items() if nom not in actuelles]
+    return salles
+
+
 @bp.route('/api/get-planning', methods=['GET'])
 def get_planning():
     """API endpoint to retrieve planning data from the database"""
@@ -329,6 +345,9 @@ def get_planning():
                     c['labo_observations'] = labo_map.get(c.get('request_id'), '')
                     if c.get('level') == '2nd Classe':
                         c['students'] = student_count_map.get(c.get('teacher', ''), 20)
+
+            if planning.get('rooms') is not None:
+                planning['rooms'] = _salles_a_jour(planning['rooms'])
 
             current_app.logger.info(f"Planning trouvé pour la date {date}")
             return jsonify({'planning': planning, 'observations': obs}), 200
