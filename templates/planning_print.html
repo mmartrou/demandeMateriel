@@ -15,11 +15,6 @@
         <a href="{{ url_for('edition_planning.planning_print', date=p.date, mode='affichage') }}"
            class="{{ 'actif' if p.mode == 'affichage' }}">Version affichage</a>
         <button type="button" class="imprimer" onclick="window.print()">Imprimer</button>
-        <span class="conseil">
-            Pour obtenir un PDF : « Imprimer », puis destination « Enregistrer au format PDF » (A4 paysage ; les
-            en-têtes du navigateur sont déjà désactivés). La page reflète le planning enregistré : revenez à
-            l'éditeur pour le modifier.
-        </span>
     </div>
 
     <main class="feuille">
