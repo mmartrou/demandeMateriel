@@ -1491,7 +1491,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                     # Pondération intelligente basée sur matière + équipements réels
                     if c["matiere"] == "chimie":
                         if room_has_chemistry_equipment:
-                            # Salle avec équipements de chimie (C22, C24, C31-33) - PRIORITÉ MAXIMALE
+                            # Salle avec équipements de chimie - PRIORITÉ MAXIMALE
                             poids_salle[i][s] = 10 if has_equipment_needs else 9
                         elif salles[s]["type"] == "chimie":
                             # Salle déclarée chimie mais sans équipements - BONNE
@@ -1508,7 +1508,7 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                             
                     elif c["matiere"] == "physique":
                         if room_has_physics_equipment:
-                            # Salle avec équipements de physique (C25, C27) - PRIORITÉ MAXIMALE
+                            # Salle avec équipements de physique - PRIORITÉ MAXIMALE
                             poids_salle[i][s] = 10 if has_equipment_needs else 9
                         elif salles[s]["type"] == "physique":
                             # Salle déclarée physique mais sans équipements - BONNE

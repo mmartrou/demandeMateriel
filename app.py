@@ -21,7 +21,7 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
                       validate_pending_modifications, reject_pending_modifications, get_room_availability, add_room_availability, delete_room_availability,
                       get_all_rooms, update_room, add_room, delete_room, reorder_rooms,
-                      import_rooms_from_csv_content,
+                      import_rooms_from_csv_content, set_room_limited_availability,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
                       pre_associate_teacher, get_all_users, add_teacher, delete_teacher, delete_user,
@@ -1490,7 +1490,8 @@ def _availability_page_title():
 @app.route('/admin')
 def admin():
     """Admin dashboard page"""
-    return render_template('admin.html', availability_title=_availability_page_title())
+    setup = {'rooms': len(get_all_rooms()), 'teachers': len(get_all_teachers()), 'levels': len(get_all_levels())}
+    return render_template('admin.html', availability_title=_availability_page_title(), setup=setup)
 
 
 @app.route('/admin/establishment')
@@ -2020,8 +2021,12 @@ def api_room_availability():
     heure_fin = data.get('heure_fin')
     if not room_id or not jour or not heure_debut or not heure_fin:
         return jsonify({'error': 'Champs manquants'}), 400
-    if int(room_id) not in {r['id'] for r in get_all_rooms()}:
+    salles = {r['id']: r for r in get_all_rooms()}
+    if int(room_id) not in salles:
         return jsonify({'error': 'Salle inconnue'}), 400
+    if not salles[int(room_id)]['limited_availability']:
+        return jsonify({'error': f"La salle {salles[int(room_id)]['name']} est toujours disponible : "
+                                 "elle n'a pas de créneaux. Activez d'abord « disponibilité limitée »."}), 400
     if add_room_availability(int(room_id), jour, heure_debut, heure_fin):
         return jsonify({'success': True}), 201
     return jsonify({'error': 'Ce créneau existe déjà pour cette salle'}), 400
@@ -2271,6 +2276,20 @@ def api_delete_room(room_id):
         return jsonify({'error': 'Salle non trouvée'}), 404
     except Exception as e:
         return api_error('Erreur lors de la suppression de la salle', e)
+
+@app.route('/api/rooms/<int:room_id>/limited-availability', methods=['PUT'])
+def api_set_room_limited_availability(room_id):
+    """Active ou désactive la « disponibilité limitée » d'une salle.
+    La désactiver supprime ses créneaux : une salle toujours disponible n'en a pas."""
+    try:
+        limited = (request.get_json(silent=True) or {}).get('limited')
+        if not isinstance(limited, bool):
+            return jsonify({'error': "Le champ « limited » (vrai/faux) est requis"}), 400
+        if set_room_limited_availability(room_id, limited):
+            return jsonify({'success': True})
+        return jsonify({'error': 'Salle non trouvée'}), 404
+    except Exception as e:
+        return api_error('Erreur lors de la modification de la salle', e)
 
 @app.route('/api/rooms/reorder', methods=['POST'])
 def api_reorder_rooms():

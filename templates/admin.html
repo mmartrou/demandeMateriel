@@ -4,6 +4,18 @@
 
 {% block content %}
 <div class="container mt-4">
+    {% if setup and (not setup.rooms or not setup.teachers or not setup.levels) %}
+    <div class="alert alert-info">
+        <strong>Premiers pas :</strong> complétez la configuration de votre établissement.
+        <ul class="mb-0 mt-2">
+            <li>{% if setup.rooms %}✅{% else %}⬜{% endif %} Salles : <a href="{{ url_for('view_rooms') }}">{{ setup.rooms }} enregistrée(s)</a></li>
+            <li>{% if setup.teachers %}✅{% else %}⬜{% endif %} Enseignants : <a href="{{ url_for('admin_users') }}">{{ setup.teachers }} enregistré(s)</a></li>
+            <li>{% if setup.levels %}✅{% else %}⬜{% endif %} Niveaux : <a href="{{ url_for('admin_niveaux') }}">{{ setup.levels }} enregistré(s)</a></li>
+            <li>⬜ Nom, fuseau horaire et créneaux : <a href="{{ url_for('view_establishment') }}">Établissement</a></li>
+        </ul>
+    </div>
+    {% endif %}
+
     <div class="row">
         <div class="col-12">
             <h2 class="mb-4">🔧 Gestion administrateur</h2>

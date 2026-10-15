@@ -35,6 +35,11 @@
                 <a href="{{ url_for('view_room_availability') }}">{{ availability_title }}</a>.
             </div>
 
+            <div id="emptyRoomsNotice" class="alert alert-warning d-none">
+                <strong>Aucune salle pour le moment.</strong> Ajoutez vos salles avec « Ajouter une salle »
+                ou importez un fichier CSV.
+            </div>
+
             <!-- Rooms Table -->
             <div class="card">
                 <div class="card-body">
@@ -233,6 +238,7 @@ async function loadRooms() {
     try {
         const response = await fetch('/api/rooms');
         rooms = await response.json();
+        document.getElementById('emptyRoomsNotice').classList.toggle('d-none', rooms.length > 0);
         displayRooms();
     } catch (error) {
         console.error('Erreur lors du chargement des salles:', error);

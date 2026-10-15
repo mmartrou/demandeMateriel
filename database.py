@@ -124,10 +124,12 @@ def close_request_connection(exception=None):
         except Exception as e:
             logger.warning(f"Fermeture de la connexion en fin de requête: {e}")
 
-# Organisation initiale des salles : (nom, groupe affiché en en-tête du planning, disponibilité limitée).
-# L'ordre de la liste donne l'ordre d'affichage. Ne sert qu'à initialiser une base qui n'a pas
-# encore ces réglages ; ensuite tout se modifie dans /admin/rooms.
-ORGANISATION_PAR_DEFAUT_DES_SALLES = [
+# Migration d'une base créée avant l'apparition de l'ordre, des groupes et de la disponibilité
+# limitée des salles : ces réglages étaient alors écrits en dur dans le code, pour les salles
+# d'un établissement précis. (nom, groupe affiché en en-tête du planning, disponibilité limitée) ;
+# l'ordre de la liste donne l'ordre d'affichage. Sans effet sur une base neuve ou sur d'autres noms
+# de salles ; ensuite tout se modifie dans /admin/rooms.
+ANCIENNE_ORGANISATION_DES_SALLES = [
     ('C23', 'Physique', 0), ('C25', 'Physique', 0), ('C27', 'Physique', 0),
     ('C22', 'Physique', 0), ('C24', 'Physique', 0),
     ('C32', 'Chimie', 0), ('C33', 'Chimie', 0), ('C31', 'Chimie', 0),
@@ -135,15 +137,15 @@ ORGANISATION_PAR_DEFAUT_DES_SALLES = [
 ]
 
 
-def _appliquer_organisation_par_defaut_des_salles(cursor, db_type):
+def _appliquer_ancienne_organisation_des_salles(cursor, db_type):
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    for ordre, (nom, groupe, limitee) in enumerate(ORGANISATION_PAR_DEFAUT_DES_SALLES, start=1):
+    for ordre, (nom, groupe, limitee) in enumerate(ANCIENNE_ORGANISATION_DES_SALLES, start=1):
         cursor.execute(
             f'UPDATE rooms SET display_order={placeholder}, room_group={placeholder}, '
             f'limited_availability={placeholder} WHERE name={placeholder}',
             (ordre, groupe, limitee, nom))
     # Salles inconnues de l'organisation par défaut : placées à la suite, par ordre alphabétique
-    connus = [nom for nom, _, _ in ORGANISATION_PAR_DEFAUT_DES_SALLES]
+    connus = [nom for nom, _, _ in ANCIENNE_ORGANISATION_DES_SALLES]
     cursor.execute(f"SELECT id FROM rooms WHERE name NOT IN ({', '.join([placeholder] * len(connus))}) ORDER BY name",
                    tuple(connus))
     ordre = len(connus)
@@ -412,7 +414,7 @@ def init_database():
         _add_column_if_missing(cursor, db_type, 'rooms', 'limited_availability', 'INTEGER DEFAULT 0'),
     ]
     if any(nouvelles_colonnes):
-        _appliquer_organisation_par_defaut_des_salles(cursor, db_type)
+        _appliquer_ancienne_organisation_des_salles(cursor, db_type)
 
     # Migration : renommer la colonne oscilloscopes en obscurite_totale (matériel peu mobile)
     if db_type == 'postgresql':
@@ -583,84 +585,6 @@ def init_database():
             FOREIGN KEY (teacher_id) REFERENCES teachers(id)
         )
     ''')
-
-    # Insert sample data if tables are empty
-    cursor.execute('SELECT COUNT(*) FROM rooms')
-    row = cursor.fetchone()
-    if row is not None and row[0] == 0:
-        sample_rooms = [
-            # PHYSIQUE (ordre demandé: C23, C25, C27, C22, C24)
-            ('C23', 'physique', 10, 53, 0, 0, 0, 0, 0, 0, 0, 1),
-            ('C25', 'physique', 20, 40, 0, 0, 1, 0, 0, 0, 0, 0),
-            ('C27', 'physique', 20, 40, 0, 0, 0, 0, 0, 0, 1, 0),
-            ('C22', 'mixte', 10, 29, 5, 1, 0, 0, 0, 0, 0, 0),
-            ('C24', 'mixte', 20, 30, 10, 0, 0, 0, 0, 0, 0, 0),
-            # CHIMIE (ordre demandé: C32, C33, C31)
-            ('C32', 'chimie', 10, 32, 10, 1, 0, 0, 1, 1, 0, 0),
-            ('C33', 'chimie', 10, 25, 10, 1, 0, 0, 1, 1, 1, 0),
-            ('C31', 'chimie', 10, 30, 10, 1, 0, 0, 1, 1, 0, 0),
-            # C21 séparée (à la fin)
-            ('C21', 'mixte', 0, 40, 0, 0, 0, 0, 0, 0, 0, 1),
-        ]
-        
-        placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 12)
-        cursor.executemany(f'''
-            INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte,
-                             bancs_optiques, obscurite_totale, becs_electriques,
-                             support_filtration, imprimante, examen)
-            VALUES ({placeholders})
-        ''', sample_rooms)
-        _appliquer_organisation_par_defaut_des_salles(cursor, db_type)
-    
-    # Insert sample student numbers if table is empty
-    cursor.execute('SELECT COUNT(*) FROM student_numbers')
-    row = cursor.fetchone()
-    if row is not None and row[0] == 0:
-        sample_students = [
-            ('Bonfand', 29, '2nde'),
-            ('Carpentier', 27, '2nde'),
-            ('Courreges', 28, '2nde'),
-            ('Landspurg', 30, '2nde'),
-            ('Lefranc', 30, '2nde'),
-            ('Martrou', 25, '2nde'),
-            ('Masnou', 30, '2nde'),
-            ('Moreau', 30, '2nde'),
-            ('Paupy', 27, '2nde'),
-            ('Richard', 29, '2nde'),
-            ('Vila', 30, '2nde'),
-        ]
-        student_placeholders = ', '.join(['%s' if db_type == 'postgresql' else '?'] * 3)
-        cursor.executemany(f'''
-            INSERT INTO student_numbers (teacher_name, student_count, level) 
-            VALUES ({student_placeholders})
-        ''', sample_students)
-    
-    # Insert sample teachers if table is empty
-    cursor.execute('SELECT COUNT(*) FROM teachers')
-    row = cursor.fetchone()
-    if row is not None and row[0] == 0:
-        sample_teachers = [
-            ('Bats',),
-            ('Bonfand',),
-            ('Calazel',),
-            ('Carpentier',),
-            ('Courrèges',),
-            ('Diaz Del Pino',),
-            ('Hidalgo',),
-            ('Landspurg',),
-            ('Lefranc',),
-            ('Martrou',),
-            ('Masnou',),
-            ('Mazy',),
-            ('Moreau',),
-            ('Paupy',),
-            ('Potier',),
-            ('Richard',),
-            ('Vernudachi',),
-            ('Vila Gisbert',),
-        ]
-        teacher_placeholder = '%s' if db_type == 'postgresql' else '?'
-        cursor.executemany(f'INSERT INTO teachers (name) VALUES ({teacher_placeholder})', sample_teachers)
 
     _amorcer_reglages_etablissement(cursor, db_type)
 
@@ -1363,6 +1287,8 @@ def update_room(room_id, room_data):
         affectations = ', '.join(f'{c} = {placeholder}' for c in colonnes)
         cursor.execute(f'UPDATE rooms SET {affectations} WHERE id = {placeholder}',
                        tuple(valeurs) + (room_id,))
+        if 'limited_availability' in room_data and not room_data.get('limited_availability'):
+            cursor.execute(f'DELETE FROM room_availability WHERE room_id = {placeholder}', (room_id,))
         conn.commit()
         conn.close()
         return True
@@ -1394,6 +1320,22 @@ def add_room(room_data):
     conn.commit()
     conn.close()
     return new_id
+
+def set_room_limited_availability(room_id, limited):
+    """Marque une salle comme « à disponibilité limitée » (ou non). Dans ce second cas, ses créneaux
+    sont supprimés : une salle toujours disponible n'a pas de créneaux."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'UPDATE rooms SET limited_availability = {placeholder} WHERE id = {placeholder}',
+                   (1 if limited else 0, room_id))
+    existe = cursor.rowcount > 0
+    if existe and not limited:
+        cursor.execute(f'DELETE FROM room_availability WHERE room_id = {placeholder}', (room_id,))
+    conn.commit()
+    conn.close()
+    return existe
+
 
 def delete_room(room_id):
     conn, db_type = get_db_connection()
@@ -1992,6 +1934,7 @@ def get_room_availability():
             SELECT a.id, a.room_id, r.name, a.jour, a.heure_debut, a.heure_fin
             FROM room_availability a
             JOIN rooms r ON r.id = a.room_id
+            WHERE r.limited_availability = 1
             ORDER BY r.display_order, r.id, {_ORDRE_DES_JOURS}, a.heure_debut
         ''')
         rows = cursor.fetchall()
@@ -2004,7 +1947,7 @@ def get_room_availability():
 
 
 def add_room_availability(room_id, jour, heure_debut, heure_fin):
-    """Ajoute un créneau pour une salle et la marque comme « à disponibilité limitée »."""
+    """Ajoute un créneau pour une salle (l'appelant vérifie qu'elle est « à disponibilité limitée »)."""
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
@@ -2013,7 +1956,6 @@ def add_room_availability(room_id, jour, heure_debut, heure_fin):
             INSERT INTO room_availability (room_id, jour, heure_debut, heure_fin)
             VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
         ''', (room_id, jour, heure_debut, heure_fin))
-        cursor.execute(f'UPDATE rooms SET limited_availability = 1 WHERE id = {placeholder}', (room_id,))
         conn.commit()
         conn.close()
         return True

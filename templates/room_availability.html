@@ -83,6 +83,33 @@
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0"><i class="fas fa-door-open"></i> Salles concernées</h5></div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Une salle <strong>toujours disponible</strong> (la plupart) n'a pas de créneaux. Activez l'interrupteur
+                uniquement pour une salle <strong>pas toujours disponible pour la physique-chimie</strong> (ex : partagée
+                avec une autre matière) : elle ne sera alors utilisée que sur les créneaux déclarés ci-dessous.
+                Pour ajouter ou renommer une salle : <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.
+            </p>
+            {% if not all_rooms %}
+            <div class="alert alert-info mb-0">Aucune salle n'existe encore. Ajoutez-en dans <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.</div>
+            {% endif %}
+            <div class="row g-2">
+                {% for room in all_rooms %}
+                <div class="col-6 col-md-3 col-lg-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="limited-{{ room.id }}"
+                               {% if room.limited_availability %}checked{% endif %}
+                               onchange="availabilityManager.toggleLimited({{ room.id }}, '{{ room.name|e }}', this)">
+                        <label class="form-check-label" for="limited-{{ room.id }}">{{ room.name }}</label>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Créneaux actuels -->
         <div class="col-md-4">
@@ -119,15 +146,15 @@
                             <label for="salle" class="form-label">Salle</label>
                             <select class="form-select" id="salle" required>
                                 <option value="">Sélectionner une salle</option>
-                                {% for room in all_rooms %}
-                                <option value="{{ room.id }}" {% if room.limited_availability %}data-limited="1"{% endif %}>{{ room.name }}{% if room.limited_availability %} (disponibilité limitée){% endif %}</option>
+                                {% for room in all_rooms if room.limited_availability %}
+                                <option value="{{ room.id }}">{{ room.name }}</option>
                                 {% endfor %}
                             </select>
-                            <small class="text-muted">
-                                Toutes les salles sont proposées. Une salle qui reçoit un créneau ici n'est ensuite
-                                utilisée que sur ses créneaux. Pour ajouter ou renommer une salle :
-                                <a href="{{ url_for('view_rooms') }}">Gestion des salles</a>.
-                            </small>
+                            {% if not all_rooms|selectattr('limited_availability')|list %}
+                            <div class="alert alert-warning py-2 mt-2 mb-0">
+                                Aucune salle n'est « à disponibilité limitée ». Activez l'interrupteur d'une salle ci-dessus.
+                            </div>
+                            {% endif %}
                         </div>
 
                         <div class="mb-3">
@@ -359,6 +386,28 @@ class RoomAvailabilityManager {
         } catch (error) {
             console.error('Erreur:', error);
             this.showError('Erreur de connexion');
+        }
+    }
+
+    async toggleLimited(roomId, roomName, checkbox) {
+        const limited = checkbox.checked;
+        const slotCount = this.slots.filter(slot => slot.room_id === roomId).length;
+        if (!limited && slotCount > 0 &&
+            !confirm(`La salle ${roomName} redeviendra toujours disponible : ses ${slotCount} créneau(x) seront supprimés. Continuer ?`)) {
+            checkbox.checked = true;
+            return;
+        }
+        try {
+            const response = await fetch(`/api/rooms/${roomId}/limited-availability`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({limited: limited})
+            });
+            if (!response.ok) throw new Error((await response.json()).error || 'Erreur');
+            window.location.reload();
+        } catch (error) {
+            checkbox.checked = !limited;
+            this.showError(error.message);
         }
     }
 
