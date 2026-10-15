@@ -148,21 +148,9 @@
                             </label>
                             <select class="form-select" id="class_name" name="class_name" required>
                                 <option value="">Sélectionner un niveau</option>
-                                <option value="6ème">6ème</option>
-                                <option value="5ème">5ème</option>
-                                <option value="4ème">4ème</option>
-                                <option value="3ème">3ème</option>
-                                <option value="SNT">SNT</option>
-                                <option value="SI">SI</option>
-                                <option value="2nd Classe">2nd Classe</option>
-                                <option value="2nd TP">2nd TP</option>
-                                <option value="AP PP">AP PP</option>
-                                <option value="AP 2nd">AP 2nd</option>
-                                <option value="1ère ES">1ère ES</option>
-                                <option value="Terminale ES">Terminale ES</option>
-                                <option value="1ère Spécialité">1ère Spécialité</option>
-                                <option value="Terminale Spécialité">Terminale Spécialité</option>
-                                <option value="Autre">Autre</option>
+                                {% for l in levels %}
+                                <option value="{{ l.name }}">{{ l.name }}</option>
+                                {% endfor %}
                             </select>
                             <div id="custom_duration_inputs" class="d-flex align-items-center gap-1 mt-1">
                                 <span>⏱️ Durée :</span>
@@ -453,12 +441,14 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endfor %}
     };
     function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
-    // Nombre de groupes par défaut selon le niveau
+    // Nombre de groupes par défaut selon le niveau (réglé dans /admin/niveaux)
+    const GROUPES_PAR_NIVEAU = {
+        {% for l in levels %}{{ l.name|tojson }}: {{ l.default_groups }},
+        {% endfor %}
+    };
     function groupesParNiveau(niveau) {
-        if (niveau === '2nd TP') return 8;
-        if (["6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES", "Terminale ES", "1ère Spécialité", "Terminale Spécialité"].includes(niveau)) return 10;
-        if (["2nd Classe", "AP 2nd", "Autre"].includes(niveau)) return 0;
-        return 1;
+        const g = GROUPES_PAR_NIVEAU[niveau];
+        return g === undefined ? 1 : g;
     }
     function setCustomDurationInputs(prefix, minutes) {
         document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);

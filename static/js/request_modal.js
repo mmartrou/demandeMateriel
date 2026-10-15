@@ -55,12 +55,10 @@ function sanitizeImageUrl(url) {
 // --- Durée personnalisée (générée depuis la base de données) ---
 const DUREES_PAR_NIVEAU = window.APP_CONFIG.dureesParNiveau;
 function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
-// Nombre de groupes par défaut selon le niveau (identique à index.html)
+// Nombre de groupes par défaut selon le niveau (réglé dans /admin/niveaux)
 function groupesParNiveau(niveau) {
-    if (niveau === '2nd TP') return 8;
-    if (["6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES", "Terminale ES", "1ère Spécialité", "Terminale Spécialité"].includes(niveau)) return 10;
-    if (["2nd Classe", "AP 2nd", "Autre"].includes(niveau)) return 0;
-    return 1;
+    const g = window.APP_CONFIG.groupesParNiveau[niveau];
+    return g === undefined ? 1 : g;
 }
 // Parse le nombre de groupes en préservant 0 comme valeur valide (contrairement à `parseInt(x) || 1`)
 function parseGroupCount(value) {

@@ -20,7 +20,8 @@ from database import (init_database, get_all_teachers, add_material_request, get
                       toggle_prepared_status, delete_material_request, update_room_type,
                       add_pending_modification, get_pending_modifications, get_requests_with_pending_modifications,
                       validate_pending_modifications, reject_pending_modifications, get_c21_availability, add_c21_availability, delete_c21_availability,
-                      get_all_rooms, update_room, import_rooms_from_csv_content,
+                      get_all_rooms, update_room, add_room, delete_room, reorder_rooms,
+                      import_rooms_from_csv_content,
                       get_all_student_numbers, update_student_number, add_student_number, delete_student_number,
                       upsert_user, get_user_by_email, find_teacher_id_by_name,
                       pre_associate_teacher, get_all_users, add_teacher, delete_teacher, delete_user,
@@ -1596,13 +1597,17 @@ def api_admin_update_level(level_id):
     if not user or user.get('role') not in ('admin', 'labo'):
         return jsonify({'error': 'Non autorisé'}), 403
     payload = request.get_json(silent=True) or {}
-    short_name = str(payload.get('short_name', '')).strip()
+    # Seuls les champs présents dans la requête sont modifiés (sinon éditer la durée
+    # effaçait le nom court).
+    short_name = str(payload['short_name']).strip() if 'short_name' in payload else None
     default_duration = payload.get('default_duration')
     display_order = payload.get('display_order')
+    default_groups = payload.get('default_groups')
     try:
         update_level(level_id, short_name=short_name,
                      default_duration=int(default_duration) if default_duration is not None else None,
-                     display_order=int(display_order) if display_order is not None else None)
+                     display_order=int(display_order) if display_order is not None else None,
+                     default_groups=int(default_groups) if default_groups is not None else None)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1647,8 +1652,9 @@ def view_working_days():
 
 @app.route('/admin/c21-availability')
 def view_c21_availability():
-    """C21 availability management page"""
-    return render_template('c21_availability.html')
+    """Page des créneaux de la salle à disponibilité limitée"""
+    limited_rooms = [r['name'] for r in get_all_rooms() if r['limited_availability']]
+    return render_template('c21_availability.html', limited_rooms=limited_rooms)
 
 @app.route('/admin/planning-editor')
 def planning_editor():
@@ -2202,6 +2208,43 @@ def api_update_room(room_id):
     except Exception as e:
         return api_error('Erreur lors de la mise à jour de la salle', e)
 
+@app.route('/api/rooms', methods=['POST'])
+def api_add_room():
+    """Ajoute une salle (en fin de liste)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        if not str(data.get('name', '')).strip():
+            return jsonify({'error': 'Le nom de la salle est requis'}), 400
+        try:
+            new_id = add_room(data)
+        except Exception:
+            return jsonify({'error': 'Cette salle existe déjà ou les données sont invalides'}), 400
+        return jsonify({'id': new_id}), 201
+    except Exception as e:
+        return api_error('Erreur lors de la création de la salle', e)
+
+@app.route('/api/rooms/<int:room_id>', methods=['DELETE'])
+def api_delete_room(room_id):
+    """Supprime une salle."""
+    try:
+        if delete_room(room_id):
+            return jsonify({'message': 'Salle supprimée'})
+        return jsonify({'error': 'Salle non trouvée'}), 404
+    except Exception as e:
+        return api_error('Erreur lors de la suppression de la salle', e)
+
+@app.route('/api/rooms/reorder', methods=['POST'])
+def api_reorder_rooms():
+    """Enregistre le nouvel ordre d'affichage : {"ids": [3, 1, 2, ...]}."""
+    try:
+        ids = (request.get_json(silent=True) or {}).get('ids')
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return jsonify({'error': 'Liste d\'identifiants invalide'}), 400
+        reorder_rooms(ids)
+        return jsonify({'message': 'Ordre enregistré'})
+    except Exception as e:
+        return api_error('Erreur lors du changement d\'ordre des salles', e)
+
 @app.route('/api/rooms/import-csv', methods=['POST'])
 def api_import_rooms_csv():
     """API endpoint to import rooms from CSV"""
@@ -2244,37 +2287,18 @@ def api_export_rooms_csv():
         writer.writerow([
             'nom', 'type', 'ordinateurs', 'chaises', 'eviers', 'hotte',
             'bancs_optiques', 'obscurite_totale', 'becs_electriques',
-            'support_filtration', 'imprimante', 'examen'
+            'support_filtration', 'imprimante', 'examen', 'groupe', 'disponibilite_limitee'
         ])
         
-        # Données
-        for room in rooms:
-            # Compatibilité PostgreSQL/SQLite : transformer en dict si besoin
-            if isinstance(room, dict):
-                r = room
-            elif hasattr(room, '_fields'):
-                r = room._asdict()
-            else:
-                r = {
-                    'name': room[0],
-                    'type': room[1],
-                    'ordinateurs': room[2],
-                    'chaises': room[3],
-                    'eviers': room[4],
-                    'hotte': room[5],
-                    'bancs_optiques': room[6],
-                    'obscurite_totale': room[7],
-                    'becs_electriques': room[8],
-                    'support_filtration': room[9],
-                    'imprimante': room[10],
-                    'examen': room[11]
-                }
+        # Données (get_all_rooms renvoie déjà des dictionnaires)
+        for r in rooms:
             writer.writerow([
                 r['name'], r['type'], r['ordinateurs'], r['chaises'],
                 r['eviers'], r['hotte'], r['bancs_optiques'], r['obscurite_totale'],
-                r['becs_electriques'], r['support_filtration'], r['imprimante'], r['examen']
+                r['becs_electriques'], r['support_filtration'], r['imprimante'], r['examen'],
+                r['room_group'], 1 if r['limited_availability'] else 0
             ])
-        
+
         # Préparer la réponse
         output.seek(0)
         response = make_response(output.getvalue())
@@ -2359,15 +2383,6 @@ def api_get_planning_data():
             # Utiliser la version V2 qui fait l'optimisation OR-Tools
             planning_data = get_planning_data_for_editor_v2(target_date)
             
-            # Corriger l'ordre des salles pour correspondre au fichier Excel
-            if 'rooms' in planning_data and planning_data['rooms']:
-                # Ordre correct du fichier Excel
-                correct_order = ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']
-                
-                # Réorganiser les salles selon l'ordre correct
-                rooms_dict = {room['name']: room for room in planning_data['rooms']}
-                planning_data['rooms'] = [rooms_dict[name] for name in correct_order if name in rooms_dict]
-            
             # Utiliser seulement les horaires de début de cours autorisés
             authorized_time_slots = ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45',
                                      '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15']
@@ -2381,7 +2396,7 @@ def api_get_planning_data():
             # En cas d'erreur, retourner une structure vide
             return jsonify({
                 'courses': [],
-                'rooms': [{'name': name} for name in ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']],
+                'rooms': [{'name': r['name']} for r in get_all_rooms()],
                 'time_slots': ['9h00', '9h30', '10h00', '10h45', '11h15', '11h45', '12h15', '12h45', '13h15', '13h45', '14h15', '14h45', '15h15', '15h45', '16h15', '16h45', '17h15'],
                 'room_assignments': {},
                 'days': [target_date],

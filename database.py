@@ -123,6 +123,52 @@ def close_request_connection(exception=None):
         except Exception as e:
             logger.warning(f"Fermeture de la connexion en fin de requête: {e}")
 
+# Organisation initiale des salles : (nom, groupe affiché en en-tête du planning, disponibilité limitée).
+# L'ordre de la liste donne l'ordre d'affichage. Ne sert qu'à initialiser une base qui n'a pas
+# encore ces réglages ; ensuite tout se modifie dans /admin/rooms.
+ORGANISATION_PAR_DEFAUT_DES_SALLES = [
+    ('C23', 'Physique', 0), ('C25', 'Physique', 0), ('C27', 'Physique', 0),
+    ('C22', 'Physique', 0), ('C24', 'Physique', 0),
+    ('C32', 'Chimie', 0), ('C33', 'Chimie', 0), ('C31', 'Chimie', 0),
+    ('C21', None, 1),
+]
+
+
+def _appliquer_organisation_par_defaut_des_salles(cursor, db_type):
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    for ordre, (nom, groupe, limitee) in enumerate(ORGANISATION_PAR_DEFAUT_DES_SALLES, start=1):
+        cursor.execute(
+            f'UPDATE rooms SET display_order={placeholder}, room_group={placeholder}, '
+            f'limited_availability={placeholder} WHERE name={placeholder}',
+            (ordre, groupe, limitee, nom))
+    # Salles inconnues de l'organisation par défaut : placées à la suite, par ordre alphabétique
+    connus = [nom for nom, _, _ in ORGANISATION_PAR_DEFAUT_DES_SALLES]
+    cursor.execute(f"SELECT id FROM rooms WHERE name NOT IN ({', '.join([placeholder] * len(connus))}) ORDER BY name",
+                   tuple(connus))
+    ordre = len(connus)
+    for room_id in [r[0] for r in cursor.fetchall()]:
+        ordre += 1
+        cursor.execute(f'UPDATE rooms SET display_order={placeholder} WHERE id={placeholder}', (ordre, room_id))
+
+
+def _add_column_if_missing(cursor, db_type, table, column, definition):
+    """Ajoute une colonne à une table existante (migration). Renvoie True si elle vient
+    d'être créée, ce qui permet de remplir ses valeurs initiales une seule fois."""
+    if db_type == 'postgresql':
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s",
+            (table, column))
+        if cursor.fetchone() is not None:
+            return False
+        cursor.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+        return True
+    try:
+        cursor.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+        return True
+    except Exception:
+        return False
+
+
 def init_database():
     """Initialize the database with required tables"""
     conn, db_type = get_db_connection()
@@ -184,32 +230,43 @@ def init_database():
             cursor.execute('ALTER TABLE levels ADD COLUMN default_duration INTEGER DEFAULT 85')
         except Exception:
             pass
+    # Migration : nombre de groupes proposé par défaut pour chaque niveau. Les valeurs de
+    # départ reprennent les règles qui étaient auparavant codées en dur dans le JavaScript.
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    if _add_column_if_missing(cursor, db_type, 'levels', 'default_groups', 'INTEGER DEFAULT 1'):
+        for name, groups in (
+            [('2nd TP', 8)]
+            + [(n, 10) for n in ("6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES",
+                                 "Terminale ES", "1ère Spécialité", "Terminale Spécialité")]
+            + [(n, 0) for n in ("2nd Classe", "AP 2nd", "Autre")]
+        ):
+            cursor.execute(f'UPDATE levels SET default_groups={placeholder} WHERE name={placeholder}',
+                           (groups, name))
     # Pré-remplir avec les niveaux par défaut si la table est vide
     cursor.execute('SELECT COUNT(*) FROM levels')
     row = cursor.fetchone()
     count = row[0] if row is not None else 0
     if count == 0:
-        # (name, short_name, default_duration, display_order)
+        # (name, short_name, default_duration, display_order, default_groups)
         default_levels = [
-            ('6ème',               None, 85,  1),
-            ('5ème',               None, 85,  2),
-            ('4ème',               None, 85,  3),
-            ('3ème',               None, 85,  4),
-            ('SNT',                None, 85,  5),
-            ('SI',                 None, 110, 6),
-            ('2nd Classe',         None, 85,  7),
-            ('2nd TP',             None, 85,  8),
-            ('AP PP',              None, 55,  9),
-            ('AP 2nd',             None, 110, 10),
-            ('1ère ES',            None, 55,  11),
-            ('Terminale ES',       None, 110, 12),
-            ('1ère Spécialité',    None, 110, 13),
-            ('Terminale Spécialité', None, 110, 14),
-            ('Autre',              None, 55,  15),
+            ('6ème',               None, 85,  1,  10),
+            ('5ème',               None, 85,  2,  10),
+            ('4ème',               None, 85,  3,  10),
+            ('3ème',               None, 85,  4,  10),
+            ('SNT',                None, 85,  5,  10),
+            ('SI',                 None, 110, 6,  10),
+            ('2nd Classe',         None, 85,  7,  0),
+            ('2nd TP',             None, 85,  8,  8),
+            ('AP PP',              None, 55,  9,  1),
+            ('AP 2nd',             None, 110, 10, 0),
+            ('1ère ES',            None, 55,  11, 10),
+            ('Terminale ES',       None, 110, 12, 10),
+            ('1ère Spécialité',    None, 110, 13, 10),
+            ('Terminale Spécialité', None, 110, 14, 10),
+            ('Autre',              None, 55,  15, 0),
         ]
-        placeholder = '%s' if db_type == 'postgresql' else '?'
         cursor.executemany(
-            f'INSERT INTO levels (name, short_name, default_duration, display_order) VALUES ({placeholder},{placeholder},{placeholder},{placeholder})',
+            f'INSERT INTO levels (name, short_name, default_duration, display_order, default_groups) VALUES ({placeholder},{placeholder},{placeholder},{placeholder},{placeholder})',
             default_levels
         )
 
@@ -337,6 +394,16 @@ def init_database():
             created_at {timestamp_default}
         )
     ''')
+
+    # Migration : ordre d'affichage, regroupement (en-tête du planning) et disponibilité limitée.
+    # Les valeurs de départ reprennent l'organisation qui était auparavant codée en dur.
+    nouvelles_colonnes = [
+        _add_column_if_missing(cursor, db_type, 'rooms', 'display_order', 'INTEGER DEFAULT 0'),
+        _add_column_if_missing(cursor, db_type, 'rooms', 'room_group', 'TEXT'),
+        _add_column_if_missing(cursor, db_type, 'rooms', 'limited_availability', 'INTEGER DEFAULT 0'),
+    ]
+    if any(nouvelles_colonnes):
+        _appliquer_organisation_par_defaut_des_salles(cursor, db_type)
 
     # Migration : renommer la colonne oscilloscopes en obscurite_totale (matériel peu mobile)
     if db_type == 'postgresql':
@@ -509,6 +576,7 @@ def init_database():
                              support_filtration, imprimante, examen)
             VALUES ({placeholders})
         ''', sample_rooms)
+        _appliquer_organisation_par_defaut_des_salles(cursor, db_type)
     
     # Insert sample student numbers if table is empty
     cursor.execute('SELECT COUNT(*) FROM student_numbers')
@@ -628,20 +696,17 @@ def update_teacher_short_name(teacher_id, short_name):
 def get_all_levels():
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, name, short_name, default_duration, display_order FROM levels ORDER BY display_order, name')
+    cursor.execute('SELECT id, name, short_name, default_duration, display_order, default_groups FROM levels ORDER BY display_order, name')
     rows = cursor.fetchall()
     conn.close()
     result = []
     for row in rows:
-        if isinstance(row, dict):
-            result.append({'id': row['id'], 'name': row['name'], 'short_name': row.get('short_name') or '',
-                           'default_duration': row.get('default_duration') or 85, 'display_order': row.get('display_order', 0)})
-        elif isinstance(row, sqlite3.Row):
-            result.append({'id': row['id'], 'name': row['name'], 'short_name': row['short_name'] or '',
-                           'default_duration': row['default_duration'] or 85, 'display_order': row['display_order'] or 0})
-        else:
-            result.append({'id': row[0], 'name': row[1], 'short_name': row[2] or '',
-                           'default_duration': row[3] or 85, 'display_order': row[4] or 0})
+        # dict (PostgreSQL), sqlite3.Row et tuple s'indexent tous par position.
+        values = list(row.values()) if isinstance(row, dict) else list(row)
+        groups = values[5]
+        result.append({'id': values[0], 'name': values[1], 'short_name': values[2] or '',
+                       'default_duration': values[3] or 85, 'display_order': values[4] or 0,
+                       'default_groups': 1 if groups is None else groups})
     return result
 
 
@@ -672,18 +737,29 @@ def delete_level(level_id):
     return cursor.rowcount > 0
 
 
-def update_level(level_id, short_name=None, default_duration=None, display_order=None):
+def update_level(level_id, short_name=None, default_duration=None, display_order=None, default_groups=None):
+    """Met à jour uniquement les champs fournis (None = inchangé). Pour effacer le nom
+    court, passer une chaîne vide."""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    sets = [f'short_name={placeholder}']
-    params = [short_name or None]
+    sets = []
+    params = []
+    if short_name is not None:
+        sets.append(f'short_name={placeholder}')
+        params.append(short_name or None)
     if default_duration is not None:
         sets.append(f'default_duration={placeholder}')
         params.append(int(default_duration))
     if display_order is not None:
         sets.append(f'display_order={placeholder}')
         params.append(int(display_order))
+    if default_groups is not None:
+        sets.append(f'default_groups={placeholder}')
+        params.append(max(0, int(default_groups)))
+    if not sets:
+        conn.close()
+        return False
     params.append(level_id)
     cursor.execute(f'UPDATE levels SET {", ".join(sets)} WHERE id={placeholder}', tuple(params))
     conn.commit()
@@ -1161,15 +1237,23 @@ def update_room_type(request_id, room_type, manual=True):
     conn.close()
     return updated
 
+_ROOM_COLUMNS = ('id, name, type, ordinateurs, chaises, eviers, hotte, bancs_optiques, '
+                 'obscurite_totale, becs_electriques, support_filtration, imprimante, examen, '
+                 'display_order, room_group, limited_availability')
+
+# Colonnes décrivant les équipements d'une salle (toutes numériques)
+_ROOM_FIELDS = ['name', 'type', 'ordinateurs', 'chaises', 'eviers', 'hotte', 'bancs_optiques',
+                'obscurite_totale', 'becs_electriques', 'support_filtration', 'imprimante', 'examen']
+
+
 def get_all_rooms():
-    """Get all rooms from the database"""
+    """Toutes les salles, dans l'ordre d'affichage réglé dans /admin/rooms."""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM rooms ORDER BY name')
+    cursor.execute(f'SELECT {_ROOM_COLUMNS} FROM rooms ORDER BY display_order, id')
     rooms = cursor.fetchall()
     conn.close()
-    
-    # Convert rows to dictionaries
+
     rooms_list = []
     for room in rooms:
         rooms_list.append({
@@ -1185,43 +1269,40 @@ def get_all_rooms():
             'becs_electriques': room[9],
             'support_filtration': room[10],
             'imprimante': room[11],
-            'examen': room[12]
+            'examen': room[12],
+            'display_order': room[13] or 0,
+            'room_group': room[14] or '',
+            'limited_availability': bool(room[15]),
         })
-    
+
     return rooms_list
 
 def update_room(room_id, room_data):
     """Update a room in the database"""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    
+
     placeholder = '%s' if db_type == 'postgresql' else '?'
-    placeholders = ', '.join([placeholder] * 13)
-    
+
+    # Colonnes toujours écrites (0 si absentes), puis colonnes facultatives écrites
+    # seulement si la requête les fournit.
+    colonnes = list(_ROOM_FIELDS)
+    valeurs = [room_data.get('name'), room_data.get('type')] + \
+              [room_data.get(c, 0) for c in _ROOM_FIELDS[2:]]
+    if 'room_group' in room_data:
+        colonnes.append('room_group')
+        valeurs.append((room_data.get('room_group') or '').strip() or None)
+    if 'limited_availability' in room_data:
+        colonnes.append('limited_availability')
+        valeurs.append(1 if room_data.get('limited_availability') else 0)
+    if 'display_order' in room_data:
+        colonnes.append('display_order')
+        valeurs.append(int(room_data.get('display_order') or 0))
+
     try:
-        cursor.execute(f'''
-            UPDATE rooms SET 
-                name = {placeholder}, type = {placeholder}, ordinateurs = {placeholder}, 
-                chaises = {placeholder}, eviers = {placeholder}, hotte = {placeholder}, 
-                bancs_optiques = {placeholder}, obscurite_totale = {placeholder},
-                becs_electriques = {placeholder}, support_filtration = {placeholder},
-                imprimante = {placeholder}, examen = {placeholder}
-            WHERE id = {placeholder}
-        ''', (
-            room_data.get('name'),
-            room_data.get('type'),
-            room_data.get('ordinateurs', 0),
-            room_data.get('chaises', 0),
-            room_data.get('eviers', 0),
-            room_data.get('hotte', 0),
-            room_data.get('bancs_optiques', 0),
-            room_data.get('obscurite_totale', 0),
-            room_data.get('becs_electriques', 0),
-            room_data.get('support_filtration', 0),
-            room_data.get('imprimante', 0),
-            room_data.get('examen', 0),
-            room_id
-        ))
+        affectations = ', '.join(f'{c} = {placeholder}' for c in colonnes)
+        cursor.execute(f'UPDATE rooms SET {affectations} WHERE id = {placeholder}',
+                       tuple(valeurs) + (room_id,))
         conn.commit()
         conn.close()
         return True
@@ -1229,6 +1310,51 @@ def update_room(room_id, room_data):
         conn.close()
         logger.error(f"Erreur lors de la mise à jour de la salle: {e}")
         return False
+
+def add_room(room_data):
+    """Ajoute une salle en fin de liste. Renvoie son identifiant."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute('SELECT COALESCE(MAX(display_order), 0) + 1 FROM rooms')
+    ordre = cursor.fetchone()[0]
+    colonnes = list(_ROOM_FIELDS) + ['display_order', 'room_group', 'limited_availability']
+    valeurs = [(room_data.get('name') or '').strip(), room_data.get('type') or 'mixte'] + \
+              [room_data.get(c, 0) or 0 for c in _ROOM_FIELDS[2:]] + \
+              [ordre, (room_data.get('room_group') or '').strip() or None,
+               1 if room_data.get('limited_availability') else 0]
+    sql = (f'INSERT INTO rooms ({", ".join(colonnes)}) '
+           f'VALUES ({", ".join([placeholder] * len(colonnes))})')
+    if db_type == 'postgresql':
+        cursor.execute(sql + ' RETURNING id', tuple(valeurs))
+        new_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(sql, tuple(valeurs))
+        new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def delete_room(room_id):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    cursor.execute(f'DELETE FROM rooms WHERE id = {placeholder}', (room_id,))
+    conn.commit()
+    supprimee = cursor.rowcount > 0
+    conn.close()
+    return supprimee
+
+def reorder_rooms(room_ids):
+    """Réécrit l'ordre d'affichage : la salle en position n de la liste reçoit display_order n."""
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    placeholder = '%s' if db_type == 'postgresql' else '?'
+    for ordre, room_id in enumerate(room_ids, start=1):
+        cursor.execute(f'UPDATE rooms SET display_order = {placeholder} WHERE id = {placeholder}',
+                       (ordre, int(room_id)))
+    conn.commit()
+    conn.close()
 
 def import_rooms_from_csv_content(csv_content):
     """Import rooms from CSV content, replacing existing rooms"""
@@ -1250,6 +1376,8 @@ def import_rooms_from_csv_content(csv_content):
             # Skip comments and empty lines
             if not row or row[0].startswith('#') or len(row) < 12:
                 continue
+            if row[0].strip().lower() in ('nom', 'name'):  # ligne d'en-tête (export CSV)
+                continue
             
             # Parse room data
             rooms_data.append((
@@ -1264,24 +1392,28 @@ def import_rooms_from_csv_content(csv_content):
                 int(row[8]),  # becs_electriques
                 int(row[9]),  # support_filtration
                 int(row[10]), # imprimante
-                int(row[11])  # examen
+                int(row[11]), # examen
+                len(rooms_data) + 1,  # display_order : ordre du fichier
+                (row[12].strip() or None) if len(row) > 12 else None,  # room_group (facultatif)
+                1 if len(row) > 13 and row[13].strip().lower() in ('1', 'oui', 'true') else 0,  # limited_availability (facultatif)
             ))
-        
+
         # Insert new rooms with proper placeholders
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        placeholders = ', '.join([placeholder] * 12)
-        
+        placeholders = ', '.join([placeholder] * 15)
+
         for room_data in rooms_data:
             cursor.execute(f'''
                 INSERT INTO rooms (name, type, ordinateurs, chaises, eviers, hotte,
                                  bancs_optiques, obscurite_totale, becs_electriques,
-                                 support_filtration, imprimante, examen)
+                                 support_filtration, imprimante, examen,
+                                 display_order, room_group, limited_availability)
                 VALUES ({placeholders})
             ''', room_data)
-        
+
         conn.commit()
         conn.close()
-        return True
+        return True, f"{len(rooms_data)} salle(s) importée(s)"
     except Exception as e:
         conn.close()
         logger.error(f"Erreur lors de l'import CSV: {e}")

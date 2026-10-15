@@ -42,15 +42,11 @@ from ortools.sat.python import cp_model
 
 
 def duree_par_niveau(niveau, levels_map=None):
-    """Get duration by level. levels_map: dict {name: duration} from DB (optional)."""
+    """Durée par défaut (minutes) d'un niveau. levels_map : {nom: durée} lu dans la table
+    `levels` (réglable dans /admin/niveaux). Un niveau inconnu dure 85 minutes."""
     if levels_map and niveau in levels_map:
         return levels_map[niveau]
-    if niveau in ("Terminale Spécialité", "SI", "Terminale ES", "1ère Spécialité", "AP 2nd"):
-        return 110
-    elif niveau in ("AP PP", "1ère ES", "Autre"):
-        return 55
-    else:
-        return 85
+    return 85
 
 
 def eleves_par_niveau(niveau, enseignant=None):
@@ -210,8 +206,9 @@ def build_course_data_entry(request_id):
     }
 
 
-def est_C21_disponible(cours_info, c21_slots):
-    """Vérifie si la salle C21 est disponible pour ce cours selon les créneaux configurés"""
+def est_disponible_aux_creneaux(cours_info, c21_slots):
+    """Vérifie si une salle à disponibilité limitée est libre pour ce cours, selon les
+    créneaux déclarés dans /admin/c21-availability"""
     if not c21_slots:
         return True  # Si pas d'info de disponibilité, on considère comme disponible
     
@@ -248,9 +245,9 @@ def compatible(salle, besoin, c21_slots=None, max_ordinateurs=None):
     """
     room_type = str(salle.get("type", "mixte") or "mixte").strip().lower()
 
-    # Vérification spécifique pour C21
-    if salle.get("nom") == "C21" and c21_slots is not None:
-        if not est_C21_disponible(besoin, c21_slots):
+    # Salle à disponibilité limitée (case cochée dans /admin/rooms) : créneaux à respecter
+    if salle.get("disponibilite_limitee") and c21_slots is not None:
+        if not est_disponible_aux_creneaux(besoin, c21_slots):
             return False
     
     # Check if this is a theoretical course (no specific equipment needs)
@@ -338,9 +335,38 @@ def _build_salles_dict(raw_rooms):
             "becs_electriques": room.get('becs_electriques', 0) or 0,
             "support_filtration": room.get('support_filtration', 0) or 0,
             "imprimante": room.get('imprimante', 0) or 0,
-            "examen": room.get('examen', 0) or 0
+            "examen": room.get('examen', 0) or 0,
+            "disponibilite_limitee": bool(room.get('limited_availability'))
         }
     return salles
+
+
+def get_room_layout():
+    """Salles dans l'ordre d'affichage (réglé dans /admin/rooms) et leurs regroupements pour
+    l'en-tête du planning. Renvoie (noms, groupes) où groupes = [(libellé, [noms de salles])]."""
+    noms = []
+    groupes = {}
+    for room in database.get_all_rooms():
+        noms.append(room['name'])
+        if room['room_group']:
+            groupes.setdefault(room['room_group'], []).append(room['name'])
+    return noms, list(groupes.items())
+
+
+def _ecrire_entetes_de_groupes(ws, groupes, salle_list, font, border):
+    """Ligne 1 de la feuille : un encadré fusionné par groupe de salles (ex : Physique, Chimie)."""
+    from openpyxl.styles import Alignment
+    for libelle, membres in groupes:
+        colonnes = [2 + salle_list.index(s) for s in membres if s in salle_list]
+        if not colonnes:
+            continue
+        if len(colonnes) > 1 and colonnes[-1] > colonnes[0]:
+            ws.merge_cells(start_row=1, start_column=colonnes[0], end_row=1, end_column=colonnes[-1])
+        for col in range(colonnes[0], colonnes[-1] + 1):
+            cell = ws.cell(row=1, column=col, value=libelle if col == colonnes[0] else None)
+            cell.font = font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = border
 
 
 def _max_ordinateurs(salles):
@@ -414,7 +440,7 @@ def find_available_rooms_for_request(request_id, date_str, salles=None, c21_slot
             occupied_rooms.add(room)
 
     max_ordinateurs = _max_ordinateurs(salles)
-    ordered_rooms = ['C23', 'C25', 'C27', 'C22', 'C24', 'C32', 'C33', 'C31', 'C21']
+    ordered_rooms = get_room_layout()[0]
     suggested_rooms = [
         room_name for room_name in ordered_rooms
         if room_name in salles and room_name not in occupied_rooms
@@ -508,13 +534,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
             last_col_letter = ws.cell(row=2, column=1 + n_rooms).column_letter
             ws.print_area = f"A1:{last_col_letter}{2 + n_rows}"
         
-        # Définition de l'ordre personnalisé des salles
-        physique_salles = ["C23", "C25", "C27", "C22", "C24"]
-        chimie_salles = ["C32", "C33", "C31"]
-        
-        # Liste des salles dans l'ordre demandé: PHYSIQUE puis CHIMIE puis C21
-        ordered_rooms = physique_salles + chimie_salles + ["C21"]
-        
+        # Ordre des salles et regroupements d'en-tête : réglés dans /admin/rooms
+        ordered_rooms, groupes_salles = get_room_layout()
+
         # Filtrer pour ne garder que les salles qui existent
         salle_list = [room for room in ordered_rooms if room in salles.keys()]
         
@@ -552,30 +574,9 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         ws1.row_dimensions[1].height = 40
         ws1.row_dimensions[2].height = 40
 
-        # Encadrés Physique et Chimie
-        col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
-        col_chimie = [2 + salle_list.index(s) for s in chimie_salles if s in salle_list]
-        
-        if col_physique and len(col_physique) > 0:
-            # Ne fusionner que s'il y a plusieurs colonnes
-            if len(col_physique) > 1 and col_physique[-1] > col_physique[0]:
-                ws1.merge_cells(start_row=1, start_column=col_physique[0], end_row=1, end_column=col_physique[-1])
-            for col in range(col_physique[0], col_physique[-1]+1):
-                cell_phys = ws1.cell(row=1, column=col, value="Physique" if col==col_physique[0] else None)
-                cell_phys.font = header_font
-                cell_phys.alignment = Alignment(horizontal="center", vertical="center")
-                cell_phys.border = border
-        
-        if col_chimie and len(col_chimie) > 0:
-            # Ne fusionner que s'il y a plusieurs colonnes
-            if len(col_chimie) > 1 and col_chimie[-1] > col_chimie[0]:
-                ws1.merge_cells(start_row=1, start_column=col_chimie[0], end_row=1, end_column=col_chimie[-1])
-            for col in range(col_chimie[0], col_chimie[-1]+1):
-                cell_chim = ws1.cell(row=1, column=col, value="Chimie" if col==col_chimie[0] else None)
-                cell_chim.font = header_font
-                cell_chim.alignment = Alignment(horizontal="center", vertical="center")
-                cell_chim.border = border
-        
+        # Encadrés de groupes de salles (Physique, Chimie, ...)
+        _ecrire_entetes_de_groupes(ws1, groupes_salles, salle_list, header_font, border)
+
         # Noms des salles (ligne 2)
         for idx_s, s in enumerate(salle_list):
             col_letter = ws1.cell(row=2, column=2+idx_s).column_letter
@@ -819,26 +820,8 @@ def generer_excel_optimise(cours, salles, x, solver, unassigned_courses, date_pa
         ws2.row_dimensions[2].height = 40
 
         # Répliquer les en-têtes
-        if col_physique and len(col_physique) > 0:
-            # Ne fusionner que s'il y a plusieurs colonnes
-            if len(col_physique) > 1 and col_physique[-1] > col_physique[0]:
-                ws2.merge_cells(start_row=1, start_column=col_physique[0], end_row=1, end_column=col_physique[-1])
-            for col in range(col_physique[0], col_physique[-1]+1):
-                cell_phys = ws2.cell(row=1, column=col, value="Physique" if col==col_physique[0] else None)
-                cell_phys.font = header_font
-                cell_phys.alignment = Alignment(horizontal="center", vertical="center")
-                cell_phys.border = border
-        
-        if col_chimie and len(col_chimie) > 0:
-            # Ne fusionner que s'il y a plusieurs colonnes
-            if len(col_chimie) > 1 and col_chimie[-1] > col_chimie[0]:
-                ws2.merge_cells(start_row=1, start_column=col_chimie[0], end_row=1, end_column=col_chimie[-1])
-            for col in range(col_chimie[0], col_chimie[-1]+1):
-                cell_chim = ws2.cell(row=1, column=col, value="Chimie" if col==col_chimie[0] else None)
-                cell_chim.font = header_font
-                cell_chim.alignment = Alignment(horizontal="center", vertical="center")
-                cell_chim.border = border
-        
+        _ecrire_entetes_de_groupes(ws2, groupes_salles, salle_list, header_font, border)
+
         # Noms des salles (ligne 2)
         for idx_s, s in enumerate(salle_list):
             col_letter = ws2.cell(row=2, column=2+idx_s).column_letter
@@ -1140,9 +1123,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
         ]
         horaires = [h_to_min(h) for h in horaires_str]
 
-        physique_salles = ["C23", "C25", "C27", "C22", "C24"]
-        chimie_salles   = ["C32", "C33", "C31"]
-        ordered_rooms   = physique_salles + chimie_salles + ["C21"]
+        ordered_rooms, groupes_salles = get_room_layout()
 
         # Salles présentes dans le planning sauvegardé (course.room ou room_assignments)
         rooms_in_planning = set()
@@ -1177,9 +1158,6 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             formatted_date = planning_date.strftime('%d/%m')
             jour_semaine   = JOURS_FR[planning_date.weekday()]
 
-        col_physique = [2 + salle_list.index(s) for s in physique_salles if s in salle_list]
-        col_chimie   = [2 + salle_list.index(s) for s in chimie_salles   if s in salle_list]
-
         def _build_sheet(wb, title, use_techniciens_content):
             ws = wb.active if title == "Planning_Techniciens" else wb.create_sheet(title=title)
             ws.title = title
@@ -1189,15 +1167,7 @@ def generer_excel_from_saved_planning(planning_data, date_str):
             ws.row_dimensions[1].height = 40
             ws.row_dimensions[2].height = 40
 
-            for col_list, label in [(col_physique, "Physique"), (col_chimie, "Chimie")]:
-                if col_list:
-                    if len(col_list) > 1 and col_list[-1] > col_list[0]:
-                        ws.merge_cells(start_row=1, start_column=col_list[0], end_row=1, end_column=col_list[-1])
-                    for col in range(col_list[0], col_list[-1] + 1):
-                        cell = ws.cell(row=1, column=col, value=label if col == col_list[0] else None)
-                        cell.font = header_font
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-                        cell.border = border
+            _ecrire_entetes_de_groupes(ws, groupes_salles, salle_list, header_font, border)
 
             for idx_s, s in enumerate(salle_list):
                 col_letter = ws.cell(row=2, column=2 + idx_s).column_letter
@@ -1436,7 +1406,8 @@ def generer_planning_excel(date, end_date=None, return_data_only=False, custom_r
                 "becs_electriques": room.get('becs_electriques', 0) or 0,
                 "support_filtration": room.get('support_filtration', 0) or 0,
                 "imprimante": room.get('imprimante', 0) or 0,
-                "examen": room.get('examen', 0) or 0
+                "examen": room.get('examen', 0) or 0,
+                "disponibilite_limitee": bool(room.get('limited_availability'))
             }
 
         max_ordinateurs = _max_ordinateurs(salles)

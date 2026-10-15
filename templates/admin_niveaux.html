@@ -23,6 +23,7 @@
                         <th>Nom</th>
                         <th>Nom court <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
                         <th>Durée (min) <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
+                        <th>Groupes par défaut <small class="fw-normal text-muted">(cliquer pour modifier)</small></th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -41,6 +42,12 @@
                                   style="cursor:pointer; border-bottom: 1px dashed #aaa;"
                                   onclick="editLevelDuration(this, {{ l.id }})"
                                   title="Cliquer pour modifier">{{ l.default_duration or 85 }}</span>
+                        </td>
+                        <td>
+                            <span class="level-groups-display"
+                                  style="cursor:pointer; border-bottom: 1px dashed #aaa;"
+                                  onclick="editLevelGroups(this, {{ l.id }})"
+                                  title="Cliquer pour modifier">{{ l.default_groups }}</span>
                         </td>
                         <td>
                             <button class="btn btn-sm btn-outline-danger"
@@ -199,6 +206,40 @@ function editLevelDuration(spanEl, levelId) {
         span.style.cssText = 'cursor:pointer; border-bottom: 1px dashed #aaa;';
         span.title = 'Cliquer pour modifier';
         span.onclick = function() { editLevelDuration(this, levelId); };
+        span.textContent = val;
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { input.value = current; input.blur(); }
+    });
+}
+
+function editLevelGroups(spanEl, levelId) {
+    const current = spanEl.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = current;
+    input.min = 0;
+    input.className = 'form-control form-control-sm d-inline-block';
+    input.style.width = '90px';
+    spanEl.replaceWith(input);
+    input.focus();
+
+    async function save() {
+        const val = (Number.isFinite(parseInt(input.value)) ? Math.max(0, parseInt(input.value)) : 1);
+        await fetch(`/api/admin/levels/${levelId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_groups: val })
+        });
+        const span = document.createElement('span');
+        span.className = 'level-groups-display';
+        span.style.cssText = 'cursor:pointer; border-bottom: 1px dashed #aaa;';
+        span.title = 'Cliquer pour modifier';
+        span.onclick = function() { editLevelGroups(this, levelId); };
         span.textContent = val;
         input.replaceWith(span);
     }
