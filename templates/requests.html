@@ -176,6 +176,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadRequestsWithPendingModifications() {
+    // Ces deux routes sont réservées admin/labo côté serveur (403 pour un enseignant).
+    if (!['admin', 'labo'].includes(window.APP_CONFIG.userMode)) return Promise.resolve();
+
     // Charger les IDs des demandes avec modifications et toutes les modifications en attente
     // Retourner une Promise pour permettre l'attente de la fin du chargement
     const idsPromise = fetch('/api/requests-with-pending-modifications')
