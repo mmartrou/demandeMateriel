@@ -1,0 +1,1125 @@
+// Logique de la modale d'édition de demande (partagée par requests, calendar, mes_tps,
+// planning_editor). Les valeurs fournies par Flask viennent de window.APP_CONFIG,
+// déclaré dans templates/_request_modal_js.html.
+// --- Shared state (shared with host page via window) ---
+if (!window.requestsWithPendingModifications) window.requestsWithPendingModifications = new Set();
+if (!window.allPendingModifications) window.allPendingModifications = new Map();
+window.allRequests = window.allRequests || [];
+window.modifiedRequests = window.modifiedRequests || new Map();
+
+let originalRequestData = {};
+let currentValidationRequestId = null;
+let currentRelatedList = []; // demandes liées (même enseignant + même nom), dans le délai de dépôt, hors la demande en cours d'édition
+
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+// Jinja2-injected role context
+const isTeacherMode = window.APP_CONFIG.userMode === 'teacher';
+const myTeacherId = window.APP_CONFIG.myTeacherId;
+
+// Nombre de jours ouvrés requis avant une demande (configurable dans /admin/working-days)
+// Valeur par défaut en attendant la réponse de l'API.
+window.deadlineWorkingDays = window.deadlineWorkingDays || 2;
+if (!window._deadlineWorkingDaysFetched) {
+    window._deadlineWorkingDaysFetched = true;
+    fetch('/api/deadline-config')
+        .then(r => r.json())
+        .then(data => {
+            if (data && Number.isFinite(data.deadline_working_days)) {
+                window.deadlineWorkingDays = data.deadline_working_days;
+            }
+        })
+        .catch(() => {}); // garde la valeur par défaut (2) en cas d'échec
+}
+
+// --- Utilities ---
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function sanitizeImageUrl(url) {
+    const value = String(url ?? '').trim();
+    if (!value) return '';
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/static/')) return value;
+    return '';
+}
+
+// --- Durée personnalisée (générée depuis la base de données) ---
+const DUREES_PAR_NIVEAU = window.APP_CONFIG.dureesParNiveau;
+function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
+// Nombre de groupes par défaut selon le niveau (identique à index.html)
+function groupesParNiveau(niveau) {
+    if (niveau === '2nd TP') return 8;
+    if (["6ème", "5ème", "4ème", "3ème", "SNT", "SI", "1ère ES", "Terminale ES", "1ère Spécialité", "Terminale Spécialité"].includes(niveau)) return 10;
+    if (["2nd Classe", "AP 2nd", "Autre"].includes(niveau)) return 0;
+    return 1;
+}
+// Parse le nombre de groupes en préservant 0 comme valeur valide (contrairement à `parseInt(x) || 1`)
+function parseGroupCount(value) {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+function setCustomDurationInputs(prefix, minutes) {
+    document.getElementById(prefix + '_h').value = Math.floor(minutes / 60);
+    document.getElementById(prefix + '_m').value = minutes % 60;
+}
+function getCustomDurationValue(prefix) {
+    const niveau = document.getElementById('editClassName').value;
+    const h = parseInt(document.getElementById(prefix + '_h').value) || 0;
+    const m = parseInt(document.getElementById(prefix + '_m').value) || 0;
+    const minutes = h * 60 + m;
+    // On ne renvoie une durée personnalisée que si elle diffère de la durée par défaut du niveau
+    return (minutes !== dureeParNiveau(niveau)) ? minutes : null;
+}
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('editClassName').addEventListener('change', function() {
+        setCustomDurationInputs('editCustomDuration', dureeParNiveau(this.value));
+        const qtyField = document.getElementById('editQuantity');
+        if (qtyField) qtyField.value = groupesParNiveau(this.value);
+        // Les TP de la base sont classés par niveau : la liste doit suivre le niveau choisi.
+        const teacherField = document.getElementById('editTeacher');
+        if (teacherField) loadDraftTpOptions(teacherField.value, this.value);
+    });
+    document.getElementById('editDate').addEventListener('change', updateBulkEditAvailability);
+    document.getElementById('editAllRelated').addEventListener('change', toggleAllRelatedCheckboxes);
+});
+
+// Construit la liste à cocher des demandes liées, une case par TP (voir currentRelatedList).
+function renderRelatedRequestsList() {
+    const listEl = document.getElementById('relatedRequestsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const sorted = [...currentRelatedList].sort((a, b) => (a.request_date || '').localeCompare(b.request_date || ''));
+    sorted.forEach(r => {
+        const ymd = formatDateToYMD(r.request_date);
+        const dateLabel = ymd ? ymd.split('-').reverse().join('/') : (r.request_date || '');
+        const horaireLabel = r.horaire ? ` — ${r.horaire}` : '';
+        const wrapper = document.createElement('div');
+        wrapper.className = 'form-check';
+        wrapper.innerHTML = `
+            <input class="form-check-input related-request-checkbox" type="checkbox" value="${r.id}" id="relatedReq${r.id}">
+            <label class="form-check-label" for="relatedReq${r.id}">${escapeHtml(dateLabel + horaireLabel)}</label>
+        `;
+        listEl.appendChild(wrapper);
+    });
+    listEl.querySelectorAll('.related-request-checkbox').forEach(cb => {
+        cb.addEventListener('change', syncMasterRelatedCheckbox);
+    });
+}
+
+// Coche/décoche toutes les demandes liées quand on (dé)coche la case principale.
+function toggleAllRelatedCheckboxes() {
+    const master = document.getElementById('editAllRelated');
+    if (!master) return;
+    document.querySelectorAll('.related-request-checkbox:not(:disabled)').forEach(cb => { cb.checked = master.checked; });
+}
+
+// Reflète l'état des cases individuelles sur la case principale (cochée/indéterminée/décochée).
+function syncMasterRelatedCheckbox() {
+    const master = document.getElementById('editAllRelated');
+    if (!master) return;
+    const children = Array.from(document.querySelectorAll('.related-request-checkbox'));
+    const checkedCount = children.filter(cb => cb.checked).length;
+    master.checked = children.length > 0 && checkedCount === children.length;
+    master.indeterminate = checkedCount > 0 && checkedCount < children.length;
+}
+
+// Un changement de date ne doit jamais s'appliquer aux autres demandes liées (ex: un TP reporté
+// à un autre jour ne concerne que ce TP) : on désactive la sélection des demandes liées dès
+// que la date diffère de la date d'origine.
+function updateBulkEditAvailability() {
+    const relatedInfo = document.getElementById('relatedRequestsInfo');
+    const bulkCb = document.getElementById('editAllRelated');
+    const dateField = document.getElementById('editDate');
+    const listEl = document.getElementById('relatedRequestsList');
+    if (!relatedInfo || !bulkCb || !dateField) return;
+
+    const dateChanged = dateField.value !== (originalRequestData.request_date || '');
+    const requestName = document.getElementById('editRequestId')?.getAttribute('data-request-name') || '';
+    const childCheckboxes = listEl ? listEl.querySelectorAll('.related-request-checkbox') : [];
+
+    if (currentRelatedList.length > 0 && dateChanged) {
+        childCheckboxes.forEach(cb => { cb.checked = false; cb.disabled = true; });
+        bulkCb.checked = false; bulkCb.disabled = true; bulkCb.indeterminate = false;
+        relatedInfo.textContent = `La date a été modifiée : ce changement ne s'appliquera qu'à ce TP, pas aux ${currentRelatedList.length} demande(s) liée(s) (même enseignant + même nom "${requestName}").`;
+        relatedInfo.className = 'text-warning fw-bold';
+    } else if (currentRelatedList.length > 0) {
+        childCheckboxes.forEach(cb => { cb.disabled = false; });
+        bulkCb.disabled = false;
+        relatedInfo.textContent = `${currentRelatedList.length} demande(s) liée(s) disponible(s) dans le délai de dépôt (même enseignant + même nom "${requestName}"). Cochez celles à modifier aussi.`;
+        relatedInfo.className = 'text-info fw-bold';
+    } else {
+        bulkCb.checked = false; bulkCb.disabled = true; bulkCb.indeterminate = false;
+        relatedInfo.textContent = 'Aucune autre demande liée dans le délai de dépôt. Seule cette demande sera modifiée.';
+        relatedInfo.className = 'text-muted';
+    }
+}
+
+function formatDateToYMD(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date)) return '';
+    return date.toISOString().slice(0, 10);
+}
+
+function generateDiffDisplay(originalText, newText) {
+    const safeOrig = escapeHtml(originalText ?? '');
+    const safeNew  = escapeHtml(newText ?? '');
+    if (safeOrig === safeNew) return safeNew;
+
+    const origWords = safeOrig.split(/(\s+)/);
+    const newWords  = safeNew.split(/(\s+)/);
+    let result = '', i = 0, j = 0;
+
+    while (i < origWords.length || j < newWords.length) {
+        if (i >= origWords.length) {
+            while (j < newWords.length) {
+                result += newWords[j].trim() ? `<span class="text-addition">${newWords[j]}</span>` : newWords[j];
+                j++;
+            }
+        } else if (j >= newWords.length) {
+            while (i < origWords.length) {
+                result += origWords[i].trim() ? `<span class="text-deletion">${origWords[i]}</span>` : origWords[i];
+                i++;
+            }
+        } else if (origWords[i] === newWords[j]) {
+            result += origWords[i]; i++; j++;
+        } else {
+            let foundInNew = -1, foundInOrig = -1;
+            for (let k = j + 1; k < Math.min(newWords.length, j + 5); k++) {
+                if (origWords[i] === newWords[k]) { foundInNew = k; break; }
+            }
+            for (let k = i + 1; k < Math.min(origWords.length, i + 5); k++) {
+                if (newWords[j] === origWords[k]) { foundInOrig = k; break; }
+            }
+            if (foundInNew !== -1 && (foundInOrig === -1 || foundInNew - j < foundInOrig - i)) {
+                for (let k = j; k < foundInNew; k++) {
+                    result += newWords[k].trim() ? `<span class="text-addition">${newWords[k]}</span>` : newWords[k];
+                }
+                result += origWords[i]; i++; j = foundInNew + 1;
+            } else if (foundInOrig !== -1) {
+                for (let k = i; k < foundInOrig; k++) {
+                    result += origWords[k].trim() ? `<span class="text-deletion">${origWords[k]}</span>` : origWords[k];
+                }
+                result += newWords[j]; i = foundInOrig + 1; j++;
+            } else {
+                result += origWords[i].trim() ? `<span class="text-deletion">${origWords[i]}</span>` : origWords[i];
+                result += newWords[j].trim()  ? `<span class="text-addition">${newWords[j]}</span>`  : newWords[j];
+                i++; j++;
+            }
+        }
+    }
+    return result;
+}
+
+// --- Edit permission ---
+// Le délai de dépôt (jours ouvrés avant la date de la demande) est une propriété de la date
+// elle-même, indépendante du rôle de qui édite : admin/labo ont le droit de forcer la
+// modification d'une demande déjà trop proche (voir getEditBlockReason ci-dessous), mais ça
+// ne veut pas dire qu'une AUTRE demande liée déjà passée mérite d'être proposée pour un
+// changement groupé (voir son usage dans editRequest() et saveRequestChanges()).
+// nowInMadrid()/deadlineMoment()/isBeforeDepositDeadline() (couperet 8h00 heure de Madrid,
+// voir deadline_utils._deadline_moment() côté serveur) sont définies dans static/js/main.js.
+function respectsDepositDeadline(requestDateRaw) {
+    if (!requestDateRaw) return true;
+    try {
+        let requestDate;
+        const dateStr = requestDateRaw.toString();
+        if (dateStr.includes('GMT') || dateStr.includes(',')) {
+            requestDate = new Date(dateStr);
+        } else if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            requestDate = new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}T00:00:00`);
+        } else {
+            requestDate = new Date(dateStr + 'T00:00:00');
+        }
+        if (isNaN(requestDate.getTime())) return true;
+
+        // requestDate n'a pas de fuseau propre (chaîne d'origine sans heure/offset réels) :
+        // ses composantes locales représentent déjà telles quelles le jour visé.
+        const targetUtcDate = _utcCalendarDate(requestDate.getFullYear(), requestDate.getMonth() + 1, requestDate.getDate());
+        return isBeforeDepositDeadline(targetUtcDate, window.deadlineWorkingDays);
+    } catch (e) {
+        return true;
+    }
+}
+
+// Retourne null si l'édition est possible, sinon une raison : 'not_owner' ou 'deadline'
+function getEditBlockReason(request) {
+    if (['admin', 'labo'].includes(window.APP_CONFIG.userMode)) return null;
+    if (isTeacherMode && myTeacherId) {
+        if (parseInt(request.teacher_id) !== parseInt(myTeacherId)) return 'not_owner';
+    }
+    if (!request.request_date) return null;
+    return respectsDepositDeadline(request.request_date) ? null : 'deadline';
+}
+
+function canEditRequest(request) {
+    return getEditBlockReason(request) === null;
+}
+
+function getEditBlockMessage(request) {
+    const reason = getEditBlockReason(request);
+    if (reason === 'not_owner') return 'modification impossible - vous n\'êtes pas à l\'origine de cette demande';
+    if (reason === 'deadline') return `modification impossible - moins de ${window.deadlineWorkingDays} jour(s) ouvré(s)`;
+    return '';
+}
+
+// --- Modal display helpers ---
+function clearModalBackdrops() {
+    document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+}
+
+window.emergencyUnblock = function() {
+    clearModalBackdrops();
+    document.querySelectorAll('.modal.show').forEach(modal => {
+        const instance = bootstrap.Modal.getInstance(modal);
+        if (instance) instance.hide();
+    });
+};
+
+function resetEditForm() {
+    try {
+        clearModalBackdrops();
+        document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
+            .forEach(el => { if (el) el.disabled = false; });
+        const saveBtn = document.querySelector('#editRequestModal .btn-primary');
+        if (saveBtn) saveBtn.style.display = '';
+        const info = document.querySelector('#editRequestModal .readonly-info-message');
+        if (info) info.remove();
+        const title = document.querySelector('#editRequestModal .modal-title');
+        if (title) title.textContent = '✏️ Modifier la demande';
+    } catch (e) {
+        clearModalBackdrops();
+    }
+}
+
+function showRequestInReadOnlyMode(request) {
+    populateEditForm(request);
+    const pickerSection = document.getElementById('draftTpPickerSection');
+    if (pickerSection) pickerSection.style.display = 'none';
+    document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
+        .forEach(el => { el.disabled = true; });
+    const saveBtn = document.querySelector('#editRequestModal .btn-primary');
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    const modalBody = document.querySelector('#editRequestModal .modal-body');
+    if (!modalBody.querySelector('.readonly-info-message')) {
+        const msg = document.createElement('div');
+        msg.className = 'readonly-info-message alert alert-info mb-3';
+        msg.innerHTML = `<i class="fas fa-info-circle"></i> Cette demande ne peut plus être modifiée car elle est programmée dans moins de ${window.deadlineWorkingDays} jour(s) ouvré(s).`;
+        modalBody.insertBefore(msg, modalBody.firstChild);
+    }
+    const title = document.querySelector('#editRequestModal .modal-title');
+    if (title) title.textContent = 'Visualisation de la demande';
+    document.getElementById('editRequestModal').setAttribute('data-readonly', 'true');
+
+    const el = document.getElementById('editRequestModal');
+    (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
+}
+
+// --- Form population ---
+function populateEditForm(request) {
+    const isAbsent     = request.selected_materials === 'Absent'                  && request.material_description === 'Enseignant absent';
+    const isNoMaterial = request.selected_materials === 'Pas besoin de matériel'  && request.material_description === 'Cours théorique sans matériel';
+    const isExamMode   = request.selected_materials === 'Examen'                  && request.material_description === "Surveillance d'examen";
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const chk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+
+    set('editRequestId', request.id);
+    set('editTeacher', request.teacher_id);
+    set('editRequestName', request.request_name || '');
+    set('editDate', formatDateToYMD(request.request_date));
+    set('editHoraire', request.horaire || '');
+    set('editClassName', request.class_name || '');
+    chk('editAbsent', isAbsent);
+    chk('editNoMaterial', isNoMaterial);
+    chk('editExamMode', isExamMode);
+    chk('editLabTest', !!request.is_lab_test);
+
+    const hasCustomDuration = request.custom_duration !== null && request.custom_duration !== undefined;
+    setCustomDurationInputs('editCustomDuration', hasCustomDuration ? request.custom_duration : dureeParNiveau(request.class_name || ''));
+
+    const rawQty = request.group_count ?? request.quantity ?? 1;
+    const qty = Number.isFinite(Number(rawQty)) && Number(rawQty) >= 0 ? Math.trunc(Number(rawQty)) : 1;
+    set('editQuantity', String(qty));
+    set('editComputersNeeded', request.computers_needed || 0);
+    set('editMaterialProf', request.material_prof || '');
+    set('editNotes', request.notes || '');
+    const roomTypeEl = document.getElementById('editRoomType');
+    if (roomTypeEl) roomTypeEl.value = request.room_type || 'Mixte';
+    set('editLaboObservations', request.labo_observations || '');
+
+    const prepBtn = document.getElementById('modalPreparedBtn');
+    if (prepBtn) {
+        prepBtn.textContent = request.prepared ? '↩ Non préparée' : '✅ Marquer préparée';
+        prepBtn.className   = request.prepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+    }
+
+    parseAndSetSpecificMaterials(request.selected_materials || '');
+
+    const imageSection = document.getElementById('editImageSection');
+    if (imageSection) {
+        const safe = request.image_url && request.image_url.trim() ? sanitizeImageUrl(request.image_url) : '';
+        const previewHtml = safe
+            ? `<div class="mb-2 text-center">
+                <img src="${safe}" alt="Image de la demande" class="img-thumbnail"
+                     style="max-width:120px;max-height:120px;cursor:pointer;"
+                     onclick="showImageModal('${safe}', 'Demande #${request.id} - ${escapeHtml(request.teacher_name || '')}')">
+                <div><small class="text-muted">Cliquez pour agrandir</small></div>
+              </div>`
+            : '';
+        imageSection.innerHTML = `
+            ${previewHtml}
+            <label class="form-label">📷 Image</label>
+            <input type="file" class="form-control" id="editImageUpload" accept="image/*">
+            <input type="hidden" id="editImageUrl" value="${safe}">
+            <div id="editImageStatus" class="mt-1"></div>`;
+        document.getElementById('editImageUpload').addEventListener('change', handleEditImageUpload);
+    }
+}
+
+function handleEditImageUpload() {
+    const file = this.files[0];
+    if (!file) return;
+    const status = document.getElementById('editImageStatus');
+    status.innerHTML = '<span class="text-info">⏳ Upload en cours...</span>';
+    const formData = new FormData();
+    formData.append('image', file);
+    fetch('/api/upload-image', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.image_url) {
+                document.getElementById('editImageUrl').value = data.image_url;
+                status.innerHTML = '<span class="text-success">✅ Image uploadée</span>';
+                const section = document.getElementById('editImageSection');
+                const oldPreview = section.querySelector('.text-center');
+                if (oldPreview) {
+                    oldPreview.innerHTML = `<img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;">`;
+                } else {
+                    section.insertAdjacentHTML('afterbegin', `<div class="mb-2 text-center"><img src="${data.image_url}" class="img-thumbnail" style="max-width:120px;max-height:120px;"></div>`);
+                }
+            } else {
+                status.innerHTML = `<span class="text-danger">❌ ${data.error || 'Erreur'}</span>`;
+            }
+        })
+        .catch(() => { status.innerHTML = '<span class="text-danger">❌ Erreur réseau</span>'; });
+}
+
+// --- Cours réguliers (brouillon) : remplacer par un TP de la base de l'enseignant ---
+function loadDraftTpOptions(teacherId, level) {
+    const select = document.getElementById('draftTpSelect');
+    if (!select) return;
+    select.innerHTML = '<option value="">Chargement...</option>';
+    fetch(`/api/tp-templates?teacher_id=${teacherId}&level=${encodeURIComponent(level || '')}`)
+        .then(r => r.json())
+        .then(templates => {
+            if (!Array.isArray(templates) || templates.length === 0) {
+                select.innerHTML = '<option value="">Aucun TP enregistré pour ce niveau</option>';
+                return;
+            }
+            select.innerHTML = '<option value="">-- Choisir un TP --</option>' +
+                templates.map(t => `<option value="${t.id}">${escapeHtml(t.request_name)}</option>`).join('');
+        })
+        .catch(() => {
+            select.innerHTML = '<option value="">Erreur de chargement</option>';
+        });
+}
+
+function applyTpTemplateToDraft(tpId) {
+    if (!tpId) {
+        showErrorToast('Choisissez un TP dans la liste.');
+        return;
+    }
+    fetch(`/api/tp-templates/${tpId}`)
+        .then(r => r.json())
+        .then(tp => {
+            // Champs qui appartiennent au créneau et non au TP : on les conserve tels quels,
+            // sinon appliquer un TP sur une demande existante effacerait le travail du labo.
+            const prepBtnActuel = document.getElementById('modalPreparedBtn');
+            const merged = {
+                id: document.getElementById('editRequestId').value,
+                teacher_id: document.getElementById('editTeacher').value,
+                request_date: document.getElementById('editDate').value,
+                horaire: document.getElementById('editHoraire').value,
+                class_name: document.getElementById('editClassName').value,
+                custom_duration: getCustomDurationValue('editCustomDuration'),
+                is_lab_test: !!document.getElementById('editLabTest')?.checked,
+                labo_observations: document.getElementById('editLaboObservations')?.value || '',
+                prepared: prepBtnActuel ? prepBtnActuel.classList.contains('btn-outline-secondary') : false,
+                request_name: tp.request_name || '',
+                material_description: tp.material_description || '',
+                selected_materials: tp.selected_materials || '',
+                material_prof: tp.material_prof || '',
+                computers_needed: tp.computers_needed || 0,
+                group_count: tp.group_count ?? 1,
+                notes: tp.notes || '',
+                image_url: tp.image_url || '',
+                room_type: tp.room_type || 'Mixte'
+            };
+            populateEditForm(merged);
+            toggleEditSpecialModes();
+            showSuccessToast(`TP "${tp.request_name}" appliqué — vérifiez puis enregistrez.`);
+        })
+        .catch(err => showErrorToast('Erreur lors du chargement du TP : ' + err.message));
+}
+
+function parseAndSetSpecificMaterials(selectedMaterials) {
+    document.querySelectorAll('input[name="editMaterials"]').forEach(cb => { cb.checked = false; });
+    const specificMap = {
+        'Éviers': 'editEviers', 'Hotte': 'editHotte', 'Bancs optiques': 'editBancsOptiques',
+        'Obscurité totale': 'editObscuriteTotale', 'Becs électriques': 'editBecsElectriques',
+        'Support de filtration': 'editSupportFiltration', 'Imprimante': 'editImprimante',
+        'Pas de matériel spécifique à la salle': 'editAucunMaterielSalle'
+    };
+    const remaining = [];
+    if (selectedMaterials && selectedMaterials.trim()) {
+        selectedMaterials.split('\n').map(l => l.replace(/^-\s*/, '').trim()).forEach(mat => {
+            let matched = false;
+            for (const [name, id] of Object.entries(specificMap)) {
+                if (mat.toLowerCase().includes(name.toLowerCase()) || mat === name) {
+                    const cb = document.getElementById(id);
+                    if (cb) cb.checked = true;
+                    matched = true; break;
+                }
+            }
+            if (!matched && mat) remaining.push(mat);
+        });
+    }
+    const desc = document.getElementById('editMaterialDescription');
+    if (desc) desc.value = remaining.join('\n');
+}
+
+// --- Open modal ---
+function editRequest(requestOrId) {
+    // Si l'appelant a déjà les données de la demande (ex: double-clic sur une ligne
+    // déjà chargée), on évite l'aller-retour réseau et on ouvre la modale immédiatement.
+    const openWith = (request) => {
+            if (!canEditRequest(request)) {
+                showRequestInReadOnlyMode(request);
+                return;
+            }
+            originalRequestData = {
+                request_name: request.request_name || '',
+                class_name: request.class_name || '',
+                material_description: request.material_description || '',
+                material_prof: request.material_prof || '',
+                notes: request.notes || '',
+                horaire: request.horaire || '',
+                request_date: formatDateToYMD(request.request_date),
+                group_count: Number(request.group_count ?? request.quantity ?? 1),
+                computers_needed: request.computers_needed || 0,
+                selected_materials: request.selected_materials || '',
+                custom_duration: request.custom_duration ?? null,
+                is_lab_test: !!request.is_lab_test,
+                image_url: request.image_url || '',
+                room_type: request.room_type || 'Mixte',
+                labo_observations: request.labo_observations || ''
+            };
+
+            const modalEl = document.getElementById('editRequestModal');
+            if (modalEl.getAttribute('data-readonly') === 'true') resetEditForm();
+            modalEl.removeAttribute('data-readonly');
+
+            populateEditForm(request);
+
+            // Le sélecteur reste disponible même si un TP est déjà affecté :
+            // il sert aussi à remplacer un TP par un autre de la base de l'enseignant.
+            const pickerSection = document.getElementById('draftTpPickerSection');
+            if (pickerSection) {
+                pickerSection.style.display = '';
+                loadDraftTpOptions(request.teacher_id, request.class_name);
+            }
+
+            const saveBtn = document.querySelector('#editRequestModal .btn-primary');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.style.display = ''; }
+            const deleteBtn = document.getElementById('deleteRequestBtn');
+            if (deleteBtn) deleteBtn.style.display = '';
+
+            const idField = document.getElementById('editRequestId');
+            if (idField) {
+                idField.setAttribute('data-teacher-id', request.teacher_id);
+                idField.setAttribute('data-request-name', request.request_name || '');
+            }
+
+            const isAbsent     = request.selected_materials === 'Absent'                 && request.material_description === 'Enseignant absent';
+            const isNoMaterial = request.selected_materials === 'Pas besoin de matériel' && request.material_description === 'Cours théorique sans matériel';
+            const isExamMode   = request.selected_materials === 'Examen'                 && request.material_description === "Surveillance d'examen";
+
+            currentRelatedList = [];
+            if (window.allRequests && request.request_name) {
+                // Une demande déjà passée (délai de dépôt non respecté) n'a aucun intérêt à être
+                // proposée pour une modification groupée ; la demande en cours d'édition
+                // elle-même est exclue puisqu'elle est de toute façon toujours sauvegardée.
+                currentRelatedList = window.allRequests.filter(r =>
+                    r.teacher_id === request.teacher_id && r.request_name === request.request_name && r.request_name
+                    && String(r.id) !== String(request.id) && respectsDepositDeadline(r.request_date)
+                );
+            }
+            const bulkCbReset = document.getElementById('editAllRelated');
+            if (bulkCbReset) { bulkCbReset.checked = false; bulkCbReset.indeterminate = false; }
+            renderRelatedRequestsList();
+            updateBulkEditAvailability();
+
+            const descField = document.getElementById('editMaterialDescription');
+            if (!descField) throw new Error('Champ description du matériel manquant');
+            if (isAbsent || isNoMaterial || isExamMode) {
+                descField.value = '';
+            } else {
+                let mat = request.material_description || '';
+                if (mat.startsWith('Matériel requis: ')) mat = mat.substring('Matériel requis: '.length);
+                descField.value = mat;
+            }
+
+            toggleEditSpecialModes();
+            (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+    };
+
+    if (requestOrId && typeof requestOrId === 'object') {
+        openWith(requestOrId);
+        return;
+    }
+
+    const cached = window.allRequests && window.allRequests.find(r => String(r.id) === String(requestOrId));
+    if (cached) {
+        openWith(cached);
+        return;
+    }
+
+    fetch(`/api/requests/${requestOrId}`)
+        .then(r => r.json())
+        .then(openWith)
+        .catch(err => {
+            console.error('Error loading request:', err);
+            showErrorToast('Erreur lors du chargement de la demande: ' + err.message);
+        });
+}
+
+// --- Save ---
+function normalizeDateStr(dateStr) {
+    if (!dateStr) return dateStr;
+    const s = String(dateStr);
+    if (s.includes('GMT') || (s.includes(',') && s.length > 10)) return new Date(s).toISOString().split('T')[0];
+    if (s.includes('/')) {
+        const p = s.split('/');
+        if (p.length === 3) return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+    }
+    return s.split('T')[0];
+}
+
+async function saveRequestDirect(reqId, data) {
+    const response = await fetch(`/api/requests/${reqId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Erreur serveur');
+    return true;
+}
+
+async function savePendingModifications(requestId, changes) {
+    const promises = [];
+    for (const [fieldName, change] of Object.entries(changes)) {
+        promises.push(fetch('/api/pending-modifications', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                request_id: requestId,
+                field_name: fieldName,
+                original_value: change.original !== undefined && change.original !== null ? String(change.original) : '',
+                new_value:      change.new      !== undefined && change.new      !== null ? String(change.new)      : '',
+                modified_by: 'User'
+            })
+        }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Erreur serveur'); }); return r.json(); }));
+    }
+    try { await Promise.all(promises); return true; }
+    catch (e) { console.error('Erreur sauvegarde modifications en attente:', e); return false; }
+}
+
+function calculateRequestChanges(requestId, newData) {
+    const changes = {};
+    for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire', 'request_date', 'image_url']) {
+        const orig = originalRequestData[field] || '';
+        const next = newData[field] || '';
+        if (orig !== next) changes[field] = { original: orig, new: next, diff: generateDiffDisplay(orig, next) };
+    }
+    const origMat = originalRequestData.selected_materials || '';
+    const nextMat = newData.selected_materials || '';
+    if (origMat !== nextMat) changes.selected_materials = { original: origMat, new: nextMat, diff: generateDiffDisplay(origMat, nextMat) };
+    if (originalRequestData.group_count !== newData.group_count) {
+        changes.group_count = { original: originalRequestData.group_count ?? 1, new: newData.group_count ?? 1,
+            diff: `${originalRequestData.group_count ?? 1} → ${newData.group_count ?? 1}` };
+    }
+    if (originalRequestData.computers_needed !== newData.computers_needed) {
+        changes.computers_needed = { original: originalRequestData.computers_needed, new: newData.computers_needed,
+            diff: `${originalRequestData.computers_needed} → ${newData.computers_needed}` };
+    }
+    if ((originalRequestData.custom_duration ?? null) !== (newData.custom_duration ?? null)) {
+        changes.custom_duration = { original: originalRequestData.custom_duration, new: newData.custom_duration,
+            diff: `${originalRequestData.custom_duration ?? '—'} → ${newData.custom_duration ?? '—'}` };
+    }
+    if (!!originalRequestData.is_lab_test !== !!newData.is_lab_test) {
+        changes.is_lab_test = { original: !!originalRequestData.is_lab_test, new: !!newData.is_lab_test,
+            diff: `${originalRequestData.is_lab_test ? 'Test au labo' : 'Cours normal'} → ${newData.is_lab_test ? 'Test au labo' : 'Cours normal'}` };
+    }
+    if ((originalRequestData.room_type || 'Mixte') !== (newData.room_type || 'Mixte')) {
+        changes.room_type = { original: originalRequestData.room_type || 'Mixte', new: newData.room_type || 'Mixte',
+            diff: `${originalRequestData.room_type || 'Mixte'} → ${newData.room_type || 'Mixte'}` };
+    }
+    if ((originalRequestData.labo_observations || '') !== (newData.labo_observations || '')) {
+        changes.labo_observations = { original: originalRequestData.labo_observations || '', new: newData.labo_observations || '',
+            diff: generateDiffDisplay(originalRequestData.labo_observations || '', newData.labo_observations || '') };
+    }
+    if (Object.keys(changes).length > 0) window.modifiedRequests.set(requestId, changes);
+    else window.modifiedRequests.delete(requestId);
+    return changes;
+}
+
+function saveRequestChanges() {
+    const requestId  = document.getElementById('editRequestId').value;
+    const isAbsent   = document.getElementById('editAbsent').checked;
+    const isNoMat    = document.getElementById('editNoMaterial').checked;
+    const isExam     = document.getElementById('editExamMode').checked;
+    const selectedRelatedIds = Array.from(document.querySelectorAll('.related-request-checkbox:checked')).map(cb => cb.value);
+
+    const currentData = {
+        request_name:      document.getElementById('editRequestName').value,
+        horaire:           document.getElementById('editHoraire').value,
+        request_date:      document.getElementById('editDate').value,
+        class_name:        document.getElementById('editClassName').value,
+        group_count:       parseGroupCount(document.getElementById('editQuantity').value),
+        computers_needed:  parseInt(document.getElementById('editComputersNeeded').value, 10) || 0,
+        material_prof:     document.getElementById('editMaterialProf').value,
+        notes:              document.getElementById('editNotes').value,
+        custom_duration:    getCustomDurationValue('editCustomDuration'),
+        is_lab_test:        document.getElementById('editLabTest').checked,
+        image_url:          document.getElementById('editImageUrl')?.value || '',
+        room_type:          document.getElementById('editRoomType')?.value || 'Mixte',
+        labo_observations:  document.getElementById('editLaboObservations')?.value || ''
+    };
+
+    const formData = {
+        teacher_id:       parseInt(document.getElementById('editTeacher').value, 10),
+        request_name:     currentData.request_name,
+        request_date:     document.getElementById('editDate').value,
+        horaire:          currentData.horaire,
+        class_name:       currentData.class_name,
+        group_count:      currentData.group_count,
+        computers_needed: currentData.computers_needed,
+        material_prof:    currentData.material_prof,
+        notes:            currentData.notes,
+        custom_duration:  currentData.custom_duration,
+        is_lab_test:      currentData.is_lab_test,
+        image_url:        currentData.image_url,
+        room_type:        currentData.room_type,
+        labo_observations: currentData.labo_observations
+    };
+
+    if (isAbsent) {
+        formData.selected_materials = 'Absent';
+        formData.material_description = 'Enseignant absent';
+    } else if (isNoMat) {
+        formData.selected_materials = 'Pas besoin de matériel';
+        formData.material_description = 'Cours théorique sans matériel';
+    } else if (isExam) {
+        formData.selected_materials = 'Examen';
+        formData.material_description = "Surveillance d'examen";
+    } else {
+        const checkedMaterials = document.querySelectorAll('input[name="editMaterials"]:checked');
+        if (checkedMaterials.length === 0) {
+            showErrorToast('Veuillez cocher au moins une option dans "Matériel peu mobile à avoir dans la salle" (ou "Pas de matériel spécifique à la salle").');
+            return;
+        }
+        const specific = Array.from(checkedMaterials).map(cb => cb.value);
+        const freeText = document.getElementById('editMaterialDescription').value;
+        let allMats = [...specific];
+        if (freeText && freeText.trim()) allMats.push(freeText.trim());
+        formData.selected_materials = allMats.length ? '- ' + allMats.join('\n- ') : '';
+        formData.material_description = freeText && freeText.trim()
+            ? `Matériel requis: ${freeText.trim()}`
+            : 'Cours sans matériel spécifique';
+    }
+
+    currentData.selected_materials  = formData.selected_materials;
+    currentData.material_description = formData.material_description;
+
+    const isCreating = !requestId;
+    const changes = calculateRequestChanges(requestId, currentData);
+    if (!isCreating && Object.keys(changes).length === 0) {
+        showSuccessToast('Aucune modification détectée');
+        const modalEl = document.getElementById('editRequestModal');
+        (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).hide();
+        return;
+    }
+
+    // Si seule la note interne du labo a changé, on le signale au serveur pour qu'il
+    // ne réinitialise pas le statut "préparée" (voir saveRequestDirect / api_update_request).
+    const changedFieldNames = Object.keys(changes);
+    formData.labo_observations_only = changedFieldNames.length === 1 && changedFieldNames[0] === 'labo_observations';
+
+    let savePromise;
+    let relatedCount = 1;
+    let effectiveBulkEdit = false;
+
+    if (isCreating) {
+        const createData = {
+            ...formData,
+            days_horaires: [{ date: formData.request_date, horaires: [formData.horaire || ''] }]
+        };
+        savePromise = fetch('/api/requests', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(createData)
+        }).then(r => r.json()).then(result => {
+            if (result.error) throw new Error(result.error);
+        });
+    } else {
+        // Un changement de date ne s'applique jamais aux autres demandes liées (filet de sécurité :
+        // les cases sont normalement déjà décochées/désactivées par updateBulkEditAvailability()).
+        effectiveBulkEdit = selectedRelatedIds.length > 0 && !changes.request_date;
+
+        if (effectiveBulkEdit) {
+            if (!window.allRequests || window.allRequests.length === 0) {
+                savePromise = saveRequestDirect(requestId, formData);
+            } else {
+                // La demande en cours d'édition reste toujours incluse, en plus des demandes
+                // liées explicitement cochées par l'utilisateur.
+                const related = window.allRequests.filter(r =>
+                    String(r.id) === String(requestId) || selectedRelatedIds.includes(String(r.id))
+                );
+                relatedCount = related.length;
+                const changedFields = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new]));
+                savePromise = Promise.all(related.map(r => saveRequestDirect(r.id, Object.assign({
+                    teacher_id: r.teacher_id, request_date: normalizeDateStr(r.request_date),
+                    class_name: r.class_name, horaire: r.horaire || '',
+                    material_description: r.material_description || '', selected_materials: r.selected_materials || '',
+                    computers_needed: r.computers_needed || 0, notes: r.notes || '',
+                    group_count: r.group_count ?? 1, material_prof: r.material_prof || '',
+                    request_name: r.request_name || '', is_lab_test: !!r.is_lab_test,
+                    labo_observations_only: formData.labo_observations_only
+                }, changedFields))));
+            }
+        } else {
+            savePromise = saveRequestDirect(requestId, formData);
+        }
+    }
+
+    savePromise.then(() => {
+        const modalEl = document.getElementById('editRequestModal');
+        let modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide(); else { modal = new bootstrap.Modal(modalEl); modal.hide(); }
+        setTimeout(() => {
+            modalEl.classList.remove('show');
+            document.body.classList.remove('modal-open');
+            const bd = document.querySelector('.modal-backdrop');
+            if (bd) bd.remove();
+        }, 100);
+
+        if (typeof loadRequests === 'function') loadRequests();
+        showSuccessToast(isCreating ? 'Demande créée avec succès' : effectiveBulkEdit ? `${relatedCount} demandes modifiées avec succès` : 'Demande modifiée avec succès');
+    }).catch(err => {
+        console.error('Error:', err);
+        showErrorToast('Erreur lors de la sauvegarde: ' + err.message);
+    });
+}
+
+// --- Delete ---
+function deleteRequest() {
+    const requestId = document.getElementById('editRequestId').value;
+    const teacherName = document.getElementById('editTeacher').selectedOptions[0].text;
+    const className = document.getElementById('editClassName').value;
+    const date = document.getElementById('editDate').value;
+
+    if (!confirm(`⚠️ Êtes-vous sûr de vouloir supprimer cette demande ?\n\nEnseignant: ${teacherName}\nClasse: ${className}\nDate: ${date}\n\nCette action est irréversible !`)) return;
+
+    fetch(`/api/requests/${requestId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            const modalEl = document.getElementById('editRequestModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            if (typeof loadRequests === 'function') loadRequests();
+            showSuccessToast('Demande supprimée avec succès');
+        })
+        .catch(err => showErrorToast('Erreur lors de la suppression: ' + err.message));
+}
+
+// --- Prepared toggle ---
+function formatDateHoraireFr(dateStr, horaire) {
+    const d = new Date(formatDateToYMD(dateStr) + 'T00:00:00');
+    const label = isNaN(d) ? dateStr : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return horaire ? `${label} (${horaire})` : label;
+}
+
+// Bascule le statut "préparée" d'une demande. Quand on la marque comme préparée (pas quand on
+// la démarque), le matériel préparé l'est en général pour toutes les séances du même TP (même
+// enseignant + même nom) : on propose de les marquer aussi. Utilisé à la fois par la modale
+// d'édition (togglePreparedFromModal) et par le bouton de la page "Voir les demandes".
+function togglePreparedWithRelated(requestId) {
+    const req = window.allRequests?.find(r => r.id === requestId);
+    const willBePrepared = !(req && req.prepared);
+
+    let relatedIds = [];
+    if (willBePrepared && req && req.request_name && window.allRequests) {
+        relatedIds = window.allRequests
+            .filter(r => r.id !== requestId && r.teacher_id === req.teacher_id && r.request_name === req.request_name && !r.prepared)
+            .map(r => r.id);
+    }
+
+    let applyToRelated = false;
+    if (relatedIds.length > 0) {
+        const list = relatedIds
+            .map(id => window.allRequests.find(r => r.id === id))
+            .filter(Boolean)
+            .map(r => `- ${formatDateHoraireFr(r.request_date, r.horaire)}`)
+            .join('\n');
+        applyToRelated = confirm(
+            `Voulez-vous aussi marquer comme préparées les autres séances du TP "${req.request_name}" ?\n\n${list}`
+        );
+    }
+
+    const idsToToggle = [requestId, ...(applyToRelated ? relatedIds : [])];
+
+    return Promise.all(idsToToggle.map(id => fetch(`/api/requests/${id}/toggle-prepared`, { method: 'POST' }).then(r => r.json())))
+        .then(results => {
+            const err = results.find(r => r.error);
+            if (err) throw new Error(err.error);
+            idsToToggle.forEach(id => {
+                const r = window.allRequests?.find(x => x.id === id);
+                if (r) r.prepared = willBePrepared;
+            });
+            return { willBePrepared, idsToToggle };
+        });
+}
+
+function togglePreparedFromModal() {
+    const requestId = parseInt(document.getElementById('editRequestId').value);
+    if (!requestId) return;
+    const btn = document.getElementById('modalPreparedBtn');
+    togglePreparedWithRelated(requestId)
+        .then(({ willBePrepared, idsToToggle }) => {
+            if (btn) {
+                btn.textContent = willBePrepared ? '↩ Non préparée' : '✅ Marquer préparée';
+                btn.className   = willBePrepared ? 'btn btn-outline-secondary' : 'btn btn-success';
+            }
+            if (typeof window.onPreparedToggled === 'function') window.onPreparedToggled(requestId, willBePrepared);
+            if (typeof loadRequests === 'function') loadRequests();
+            showSuccessToast(idsToToggle.length > 1 ? `${idsToToggle.length} demandes marquées comme préparées` : 'Statut mis à jour avec succès');
+        })
+        .catch(() => showErrorToast('Erreur lors de la mise à jour du statut'));
+}
+
+// --- Special modes toggle ---
+function toggleEditSpecialModes() {
+    const isAbsent   = document.getElementById('editAbsent').checked;
+    const isNoMat    = document.getElementById('editNoMaterial').checked;
+    const isExam     = document.getElementById('editExamMode').checked;
+
+    const hide = isAbsent || isNoMat || isExam;
+    // Un cours sans matériel de labo peut quand même demander des ordinateurs et des groupes :
+    // seule cette section reste visible dans ce mode-là.
+    const sansMaterielSeul = isNoMat && !isAbsent && !isExam;
+
+    ['editMaterialSection', 'editMaterialProfSection', 'editMaterialCheckboxSection'].forEach(id => {
+        const el = document.getElementById(id);
+        // '' plutôt que 'block' : laisse le CSS d'origine s'appliquer (les .row Bootstrap sont en flex)
+        if (el) el.style.display = hide ? 'none' : '';
+    });
+
+    const quantitySection = document.getElementById('editQuantitySection');
+    if (quantitySection) {
+        quantitySection.style.display = (hide && !sansMaterielSeul) ? 'none' : '';
+    }
+    const desc = document.getElementById('editMaterialDescription');
+    if (desc) {
+        if (hide) desc.removeAttribute('required'); else desc.setAttribute('required', 'required');
+    }
+
+    // Enforce only one checkbox active at a time
+    if ([isAbsent, isNoMat, isExam].filter(Boolean).length > 1) {
+        const active = document.activeElement;
+        if (active === document.getElementById('editAbsent')) {
+            document.getElementById('editNoMaterial').checked = false;
+            document.getElementById('editExamMode').checked = false;
+        } else if (active === document.getElementById('editNoMaterial')) {
+            document.getElementById('editAbsent').checked = false;
+            document.getElementById('editExamMode').checked = false;
+        } else if (active === document.getElementById('editExamMode')) {
+            document.getElementById('editAbsent').checked = false;
+            document.getElementById('editNoMaterial').checked = false;
+        }
+    }
+}
+
+// --- Validation modal ---
+function showValidationModal(requestId) {
+    currentValidationRequestId = requestId;
+    const currentRequest = window.allRequests.find(r => r.id === requestId);
+    if (!currentRequest) { showErrorToast('Erreur: Demande non trouvée'); return; }
+
+    fetch(`/api/pending-modifications?request_id=${requestId}`)
+        .then(r => r.json())
+        .then(modifications => {
+            const related = window.allRequests.filter(r =>
+                r.teacher_id === currentRequest.teacher_id &&
+                r.request_name === currentRequest.request_name &&
+                window.requestsWithPendingModifications.has(r.id)
+            );
+            displayModificationsPreview(modifications, related.length);
+            new bootstrap.Modal(document.getElementById('validationModal')).show();
+        })
+        .catch(() => showErrorToast('Erreur lors du chargement des modifications'));
+}
+
+function displayModificationsPreview(modifications, relatedCount = 1) {
+    const container = document.getElementById('modificationsPreview');
+    if (!container) return;
+    if (modifications.length === 0) { container.innerHTML = '<p class="text-muted">Aucune modification en attente.</p>'; return; }
+    let html = '';
+    if (relatedCount > 1) html += `<div class="alert alert-info"><strong>📋 Demandes liées :</strong> Cette action s'appliquera à <strong>${relatedCount} demandes</strong> du même enseignant avec le même nom.</div>`;
+    html += '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Champ</th><th>Valeur actuelle</th><th>Nouvelle valeur</th></tr></thead><tbody>';
+    modifications.forEach(mod => {
+        html += `<tr><td><strong>${getFieldLabel(mod.field_name)}</strong></td><td><span class="text-muted">${mod.original_value || '<em>Vide</em>'}</span></td><td><span class="text-primary fw-bold">${mod.new_value || '<em>Vide</em>'}</span></td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+function getFieldLabel(fieldName) {
+    return { request_name: 'Nom de la demande', class_name: 'Classe', material_description: 'Description du matériel',
+             material_prof: 'Matériel professeur', notes: 'Notes', horaire: 'Horaire',
+             quantity: 'Nombre de groupes', computers_needed: 'Ordinateurs nécessaires' }[fieldName] || fieldName;
+}
+
+function validateModifications() {
+    if (!currentValidationRequestId) { showErrorToast('Erreur: Aucune demande sélectionnée'); return; }
+    const current = window.allRequests.find(r => r.id === currentValidationRequestId);
+    if (!current) { showErrorToast('Erreur: Demande non trouvée'); return; }
+    const related = window.allRequests.filter(r =>
+        r.teacher_id === current.teacher_id && r.request_name === current.request_name &&
+        window.requestsWithPendingModifications.has(r.id)
+    );
+    if (related.length === 0) { showErrorToast('Aucune modification en attente trouvée'); return; }
+
+    Promise.all(related.map(r => fetch(`/api/pending-modifications/${r.id}/validate`, { method: 'POST' }).then(res => res.json())))
+    .then(results => {
+        const errors = results.filter(r => r.error);
+        if (errors.length) throw new Error(errors.map(e => e.error).join(', '));
+        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
+        if (modal) modal.hide();
+        related.forEach(r => {
+            window.modifiedRequests.delete(r.id.toString());
+            window.allPendingModifications.delete(r.id);
+            window.requestsWithPendingModifications.delete(r.id);
+            const req = window.allRequests.find(x => x.id === r.id);
+            if (req) { req.modified = false; req.prepared = false; }
+        });
+        if (typeof loadRequestsWithPendingModifications === 'function') {
+            loadRequestsWithPendingModifications().then(() => { if (typeof loadRequests === 'function') loadRequests(); });
+        } else if (typeof loadRequests === 'function') { loadRequests(); }
+        showSuccessToast(related.length > 1 ? `${related.length} demandes validées avec succès` : 'Modifications validées avec succès');
+    })
+    .catch(err => showErrorToast('Erreur lors de la validation: ' + err.message));
+}
+
+function rejectModifications() {
+    if (!currentValidationRequestId) { showErrorToast('Erreur: Aucune demande sélectionnée'); return; }
+    const current = window.allRequests.find(r => r.id === currentValidationRequestId);
+    if (!current) { showErrorToast('Erreur: Demande non trouvée'); return; }
+    const related = window.allRequests.filter(r =>
+        r.teacher_id === current.teacher_id && r.request_name === current.request_name &&
+        window.requestsWithPendingModifications.has(r.id)
+    );
+    const msg = related.length > 1
+        ? `Êtes-vous sûr de vouloir rejeter les modifications de ${related.length} demandes liées ? Elles seront définitivement supprimées.`
+        : 'Êtes-vous sûr de vouloir rejeter ces modifications ? Elles seront définitivement supprimées.';
+    if (!confirm(msg)) return;
+
+    Promise.all(related.map(r => fetch(`/api/pending-modifications/${r.id}/reject`, { method: 'POST' }).then(res => res.json())))
+    .then(results => {
+        const errors = results.filter(r => r.error);
+        if (errors.length) throw new Error(errors.map(e => e.error).join(', '));
+        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
+        if (modal) modal.hide();
+        related.forEach(r => {
+            window.modifiedRequests.delete(r.id.toString());
+            window.allPendingModifications.delete(r.id);
+            window.requestsWithPendingModifications.delete(r.id);
+            const req = window.allRequests.find(x => x.id === r.id);
+            if (req) req.modified = false;
+        });
+        if (typeof loadRequestsWithPendingModifications === 'function') {
+            loadRequestsWithPendingModifications().then(() => { if (typeof loadRequests === 'function') loadRequests(); });
+        } else if (typeof loadRequests === 'function') { loadRequests(); }
+        showSuccessToast(related.length > 1 ? `${related.length} demandes rejetées` : 'Modifications rejetées');
+    })
+    .catch(err => showErrorToast('Erreur lors du rejet: ' + err.message));
+}
+
+// --- Image modal ---
+function showImageModal(imageUrl, title) {
+    let imageModal = document.getElementById('imageModal');
+    if (!imageModal) {
+        imageModal = document.createElement('div');
+        imageModal.id = 'imageModal';
+        imageModal.className = 'modal fade';
+        imageModal.innerHTML = `<div class="modal-dialog modal-lg"><div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="imageModalTitle">Image</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body text-center"><img id="imageModalImg" src="" alt="Image" class="img-fluid"></div>
+        </div></div>`;
+        document.body.appendChild(imageModal);
+    }
+    document.getElementById('imageModalTitle').textContent = title || 'Image';
+    document.getElementById('imageModalImg').src = imageUrl;
+    const modal = new bootstrap.Modal(imageModal);
+    modal.show();
+    imageModal.removeAttribute('aria-hidden');
+}
+
+// --- Checkbox event listeners ---
+document.addEventListener('DOMContentLoaded', function() {
+    ['editAbsent', 'editNoMaterial', 'editExamMode'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', toggleEditSpecialModes);
+    });
+
+    // "Pas de matériel spécifique à la salle" est exclusif des autres cases du matériel peu mobile
+    const editAucunMaterielSalle = document.getElementById('editAucunMaterielSalle');
+    const editAutresMaterielsSalle = document.querySelectorAll('input[name="editMaterials"]:not(#editAucunMaterielSalle)');
+    if (editAucunMaterielSalle) {
+        editAucunMaterielSalle.addEventListener('change', function() {
+            if (this.checked) {
+                editAutresMaterielsSalle.forEach(cb => { cb.checked = false; });
+            }
+        });
+        editAutresMaterielsSalle.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.checked) {
+                    editAucunMaterielSalle.checked = false;
+                }
+            });
+        });
+    }
+});
+
+document.getElementById('editRequestModal')?.addEventListener('shown.bs.modal', () => {
+    ['editMaterialDescription', 'editMaterialProf', 'editNotes', 'editLaboObservations'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) autoResize(el);
+    });
+});
