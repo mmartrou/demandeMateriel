@@ -137,7 +137,6 @@ html, body {
     flex: none; margin-top: .5mm; font-size: 7.6pt; font-style: italic; color: #2c3238; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
 }
-.carte .nom-tp { display: none; flex: none; margin-top: .5mm; font-size: 7pt; color: var(--gris); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .carte .badges { flex: none; align-self: flex-end; padding-top: .3mm; display: flex; gap: 1.6mm; align-items: baseline; font-size: 9.5pt; font-weight: 700; }
 .carte .pc { font-size: 8.6pt; }
 .carte .pc.depassement { color: #c1121f; }
@@ -153,7 +152,6 @@ html, body {
 .carte.s .obs { -webkit-line-clamp: 1; margin-top: 0; }
 .carte.m .obs { -webkit-line-clamp: 3; }
 .carte.l .obs { -webkit-line-clamp: 4; }
-.carte.l .nom-tp { display: block; }
 
 /* mode « affichage » (affichage en salle) : seulement l'enseignant et le niveau, en plus gros */
 .carte.affichage .haut { flex-direction: column; align-items: flex-start; row-gap: .4mm; }
@@ -174,6 +172,7 @@ html, body {
 .pied .bloc.alerte h2 { color: #c1121f; }
 .pied .bloc ul { margin: 0; padding-left: 4mm; }
 .pied .bloc li { break-inside: avoid; }
+.pied .bloc li .desc { display: block; font-size: 7.4pt; color: var(--gris); }
 .pied .bloc p { margin: 0; white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 9; overflow: hidden; }
 .pied .bloc.observations { flex: 2; }
 
@@ -183,5 +182,18 @@ html, body {
 .legende .puce.chimie { background: var(--chimie); border-color: var(--chimie-trait); }
 .legende .puce.autre { background: var(--autre); border-color: var(--autre-trait); }
 .legende .rouge { color: #c1121f; font-weight: 700; }
+.legende .vert { color: #146c43; font-weight: 700; }
 
 .vide-message { margin: auto; text-align: center; color: var(--gris); font-size: 14pt; }
+
+/* ---------- colonnes d'occupation (comme dans l'éditeur) ---------- */
+.grille .occ-tete { font-size: 8pt; letter-spacing: .04em; border-left-width: 1.1pt; background: #e9ecef; }
+.grille .case.occ {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8.4pt; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--encre);
+    border-right: 0.5pt solid #9aa1a9;
+}
+.grille .case.occ:not(.sim) { border-left: 1.1pt solid var(--ligne-forte); }
+.grille .case.occ.sim { border-left: 0.5pt solid #9aa1a9; }
+.grille .case.occ.sim.ok { background: #d1e7dd; color: #0f5132; }
+.grille .case.occ.sim.ecart { background: #f8d7da; color: #842029; }

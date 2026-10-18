@@ -276,8 +276,8 @@
 
             // Calculer la hauteur en fonction de la durée du créneau
             const slotDuration = getSlotDuration(slot);
-            // Base: 60px pour 30min, 90px pour 45min, 120px pour 60min (1,5x la taille d'origine)
-            const cellHeight = (slotDuration / 30) * 60; // 30min → 60px, 45min → 90px, 60min → 120px
+            // Base: 50px pour 30min, 75px pour 45min, 100px pour 60min (entre l'éditeur principal, 40px, et 60px)
+            const cellHeight = (slotDuration / 30) * 50; // 30min → 50px, 45min → 75px, 60min → 100px
             const isOddRow = slotIndex % 2 === 1;
             const isStrongBoundary = strongBoundarySlots.includes(slot);
 
@@ -518,7 +518,7 @@
             const usedDuration = Math.min(remainingDuration, slotDuration);
             
             // Calculer la hauteur proportionnelle de ce créneau
-            const baseCellHeight = (slotDuration / 30) * 60; // 30min → 60px, 45min → 90px, 60min → 120px
+            const baseCellHeight = (slotDuration / 30) * 50; // 30min → 50px, 45min → 75px, 60min → 100px
             const proportionalHeight = (usedDuration / slotDuration) * baseCellHeight;
             
             totalHeight += proportionalHeight;

@@ -87,6 +87,28 @@ def _lignes_occupees(course, minutes_lignes):
     return idx_debut, idx_fin
 
 
+def _occupation(date_str, lignes_horaires, courses_en_salle):
+    """Colonnes « Occupation standard » et « Cours simultanés » de l'éditeur, pour chaque ligne affichée.
+
+    standard : nombre de cours attendu à ce créneau (réglé dans l'éditeur, par jour de semaine) ;
+    simultanes : cours réellement en salle à cet instant ; statut : 'ok' s'ils sont égaux, 'ecart' sinon."""
+    try:
+        jour = JOURS[datetime.strptime(date_str, '%Y-%m-%d').weekday()]
+    except ValueError:
+        jour = ''
+    standard = database.get_standard_occupation(jour) if jour in JOURS[:5] else {}
+    resultat = []
+    for libelle in lignes_horaires:
+        instant = site_settings.parse_time(libelle)
+        simultanes = sum(1 for c in courses_en_salle
+                         if site_settings.parse_time(c.get('time') or '9h00') <= instant
+                         < site_settings.parse_time(c.get('time') or '9h00') + int(c.get('duration') or 85))
+        attendu = standard.get(libelle)
+        statut = '' if attendu in (None, '') else ('ok' if simultanes == int(attendu) else 'ecart')
+        resultat.append({'standard': '' if attendu is None else attendu, 'simultanes': simultanes, 'statut': statut})
+    return resultat
+
+
 def _vue_cours(course, mode, lignes):
     """Ce qui est affiché dans la case d'un cours."""
     enseignant = course.get('teacher') or ''
@@ -102,7 +124,6 @@ def _vue_cours(course, mode, lignes):
         vue['enseignant'] = course.get('teacher_short_name') or enseignant
         vue['niveau'] = course.get('level_short_name') or niveau
         vue['observations'] = (course.get('labo_observations') or '').strip()
-        vue['nom_tp'] = (course.get('request_name') or '').strip()
         vue['effectif'] = course.get('students') if niveau == '2nd Classe' and course.get('students') else None
         vue['ordinateurs'] = course.get('ordinateurs') or 0
         vue['ordinateurs_depassement'] = bool(course.get('ordinateurs_overflow'))
@@ -185,6 +206,10 @@ def build_print_model(date_str, mode='technicien', trim=True):
     for i in range(premiere, derniere):
         lignes.append({'label': libelles[i], 'separator': libelles[i] in separateurs,
                        'minutes': durees[i], 'cells': [{'vide': True} for _ in range(nb_cellules)]})
+    if mode == 'technicien':
+        en_salle = [c for c in courses if salle_du_cours(c) not in SANS_SALLE]
+        for ligne, occ in zip(lignes, _occupation(date_str, [l['label'] for l in lignes], en_salle)):
+            ligne['occupation'] = occ
     for col, debut, fin, c in placements:
         r0, r1 = max(debut, premiere) - premiere, min(fin, derniere) - premiere
         lignes[r0]['cells'][col] = {'cours': _vue_cours(c, mode, r1 - r0), 'lignes': r1 - r0}
@@ -197,13 +222,12 @@ def build_print_model(date_str, mode='technicien', trim=True):
     if mode == 'technicien':
         for lt in database.get_lab_test_requests(date_str):
             texte = lt.get('teacher_name', '') or ''
-            if lt.get('horaire'):
-                texte = f"{lt['horaire']} — {texte}"
             if lt.get('class_name'):
                 texte += f" ({lt['class_name']})"
             if lt.get('request_name'):
                 texte += f" — {lt['request_name']}"
-            lab_tests.append(texte)
+            lab_tests.append({'horaire': lt.get('horaire') or '', 'texte': texte,
+                              'description': (lt.get('material_description') or '').strip()})
         observations = (database.get_planning_observations(date_str) or '').strip()
     a_signaler = [{'texte': f"{c.get('time', '')} — {c.get('teacher_short_name') or c.get('teacher', '')}"
                             f" ({c.get('level_short_name') or c.get('level', '')})"}
@@ -233,6 +257,7 @@ def build_print_model(date_str, mode='technicien', trim=True):
         'salles': salles,
         'groupes': groupes,
         'lignes': lignes,
+        'avec_occupation': mode == 'technicien',
         'lab_tests': lab_tests,
         'a_signaler': a_signaler,
         'observations': observations,

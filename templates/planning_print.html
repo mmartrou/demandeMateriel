@@ -33,7 +33,7 @@
         {% set nb_salles = p.salles|length %}
         {% set a_des_groupes = p.groupes|selectattr('label')|list|length > 0 %}
         <div class="grille {{ 'avec-groupes' if a_des_groupes }}"
-             style="grid-template-columns: 13mm repeat({{ nb_salles }}, minmax(0, 1fr));
+             style="grid-template-columns: 13mm repeat({{ nb_salles }}, minmax(0, 1fr)){{ ' 9.5mm 9.5mm' if p.avec_occupation }};
                     grid-template-rows: {{ '5.2mm' if a_des_groupes else '0' }} 8.4mm {% for l in p.lignes %}{{ l.minutes }}fr {% endfor %};">
             {% set ns = namespace(col=2) %}
             {% for g in p.groupes %}
@@ -43,6 +43,10 @@
             {% for salle in p.salles %}
             <div class="salle" style="grid-row: 2; grid-column: {{ loop.index + 1 }}">{{ salle.name }}</div>
             {% endfor %}
+            {% if p.avec_occupation %}
+            <div class="salle occ-tete" style="grid-row: 2; grid-column: {{ nb_salles + 2 }}" title="Occupation standard">Std</div>
+            <div class="salle occ-tete" style="grid-row: 2; grid-column: {{ nb_salles + 3 }}" title="Cours simultanés">Sim.</div>
+            {% endif %}
 
             {# fond : une case par ligne et par salle (traits horizontaux et verticaux) #}
             {% for ligne in p.lignes %}
@@ -51,6 +55,10 @@
             {% for salle in p.salles %}
             <div class="case {{ 'pause' if ligne.separator }} {{ 'derniere' if loop.last }}" style="grid-row: {{ r }}; grid-column: {{ loop.index + 1 }}"></div>
             {% endfor %}
+            {% if p.avec_occupation %}
+            <div class="case occ {{ 'pause' if ligne.separator }}" style="grid-row: {{ r }}; grid-column: {{ nb_salles + 2 }}">{{ ligne.occupation.standard }}</div>
+            <div class="case occ sim {{ ligne.occupation.statut }} {{ 'pause' if ligne.separator }}" style="grid-row: {{ r }}; grid-column: {{ nb_salles + 3 }}">{{ ligne.occupation.simultanes }}</div>
+            {% endif %}
             {% endfor %}
 
             {# cours : posés par-dessus le fond, sur autant de lignes que leur durée #}
@@ -68,13 +76,12 @@
                     </div>
                     {% if c.details %}
                     {% if c.observations %}<div class="obs">{{ c.observations }}</div>{% endif %}
-                    {% if c.nom_tp %}<div class="nom-tp">{{ c.nom_tp }}</div>{% endif %}
                     {% endif %}
                 </div>
                 {% if c.details %}
                 <div class="badges">
                     {% if c.effectif %}<span class="effectif">{{ c.effectif }}</span>{% endif %}
-                    {% if c.ordinateurs %}<span class="pc {{ 'depassement' if c.ordinateurs_depassement }}">{{ c.ordinateurs }} PC</span>{% endif %}
+                    {% if c.ordinateurs %}<span class="pc {{ 'depassement' if c.ordinateurs_depassement }}">💻 {{ c.ordinateurs }}</span>{% endif %}
                     {% if c.prepare %}<span class="prepare" title="Préparé">✓</span>{% endif %}
                 </div>
                 {% endif %}
@@ -92,8 +99,8 @@
         <section class="pied">
             {% if p.lab_tests %}
             <div class="bloc">
-                <h2>Tests au labo (sans salle)</h2>
-                <ul>{% for t in p.lab_tests %}<li>{{ t }}</li>{% endfor %}</ul>
+                <h2>🧪 Tests au labo</h2>
+                <ul>{% for t in p.lab_tests %}<li>{% if t.horaire %}<strong>{{ t.horaire }}</strong> — {% endif %}{{ t.texte }}{% if t.description %}<span class="desc">{{ t.description }}</span>{% endif %}</li>{% endfor %}</ul>
             </div>
             {% endif %}
             {% if p.a_signaler %}
@@ -117,7 +124,9 @@
             <span><i class="puce autre"></i>Autre / mixte</span>
             {% if p.mode == 'technicien' %}
             <span>✓ demande préparée</span>
-            <span><span class="rouge">PC !</span> plus d'ordinateurs demandés que dans la plus grande salle</span>
+            <span><span class="rouge">💻 !</span> plus d'ordinateurs demandés que dans la plus grande salle</span>
+            <span><strong>Std</strong> occupation standard · <strong>Sim.</strong> cours simultanés
+                (<span class="vert">vert</span> = égal au standard, <span class="rouge">rouge</span> = écart)</span>
             {% endif %}
         </footer>
     </main>

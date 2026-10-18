@@ -1588,7 +1588,7 @@ def get_lab_test_requests(date_str):
     placeholder = '%s' if db_type == 'postgresql' else '?'
     true_val = 'TRUE' if db_type == 'postgresql' else '1'
     cursor.execute(f'''
-        SELECT mr.horaire, mr.class_name, mr.request_name, t.name as teacher_name
+        SELECT mr.horaire, mr.class_name, mr.request_name, t.name as teacher_name, mr.material_description
         FROM material_requests mr
         JOIN teachers t ON mr.teacher_id = t.id
         WHERE mr.request_date = {placeholder} AND mr.is_lab_test = {true_val}
@@ -1597,7 +1597,8 @@ def get_lab_test_requests(date_str):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) if hasattr(r, 'keys') else
-            {'horaire': r[0], 'class_name': r[1], 'request_name': r[2], 'teacher_name': r[3]}
+            {'horaire': r[0], 'class_name': r[1], 'request_name': r[2], 'teacher_name': r[3],
+             'material_description': r[4]}
             for r in rows]
 
 def get_labo_observations_map(request_ids):
