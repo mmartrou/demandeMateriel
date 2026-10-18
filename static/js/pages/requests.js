@@ -292,6 +292,7 @@ function loadRequestsWithPendingModifications() {
                     <td>${request.id}</td>
                     <td><div class="fw-bold">${safeTeacherName || '<em class="text-muted">Nom manquant</em>'}</div></td>
                     <td>${displayRequestName}</td>
+                    <td class="text-center">${(request.labo_observations || '').trim() ? '<span title="Observation labo">✅</span>' : ''}</td>
                     <td>${formatDate(request.request_date)}${otherSchedules}</td>
                     <td>${displayHoraire}</td>
                     <td>${displayClassName}</td>
