@@ -1356,7 +1356,7 @@ async function printPlanning() {
     // navigateur, puis dirigé vers la page imprimable une fois le planning enregistré.
     const onglet = window.open('', '_blank');
     await savePlanningData();
-    const url = `/admin/planning-print?date=${encodeURIComponent(date)}&print=0`;
+    const url = `/admin/planning-print?date=${encodeURIComponent(date)}&print=1`;
     if (onglet) {
         onglet.location.href = url;
     } else {
