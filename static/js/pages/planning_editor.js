@@ -1,4 +1,4 @@
-// Script de la page planning_editor (extrait de templates/planning_editor.html).
+// Script de la page planning_editor (templates/planning_editor.html).
     // Rafraîchit la carte d'une demande modifiée/supprimée via la modale,
     // sans relancer l'optimiseur (les autres cours ne bougent pas).
     async function loadRequests() {
@@ -193,6 +193,11 @@
     }
 
     // Afficher le planning en grille type Excel
+    // Confirmations de routine (cours déplacé, planning enregistré) : console uniquement, pas de fenêtre à l'écran.
+    function logInfo(message) {
+        console.info(`✅ ${message}`);
+    }
+
     function renderPlanningGrid() {
         console.log('🎨 renderPlanningGrid() appelée, planningData:', planningData);
         if (!planningData) {
@@ -294,8 +299,8 @@
 
             // Calculer la hauteur en fonction de la durée du créneau
             const slotDuration = getSlotDuration(slot);
-            // Base: 40px pour 30min, 60px pour 45min, 80px pour 60min
-            const cellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
+            // Base: 50px pour 30min, 75px pour 45min, 100px pour 60min
+            const cellHeight = (slotDuration / 30) * 50; // 30min → 50px, 45min → 75px, 60min → 100px
             const isOddRow = slotIndex % 2 === 1;
             const isStrongBoundary = strongBoundarySlots.includes(slot);
 
@@ -536,7 +541,7 @@
             const usedDuration = Math.min(remainingDuration, slotDuration);
             
             // Calculer la hauteur proportionnelle de ce créneau
-            const baseCellHeight = (slotDuration / 30) * 40; // 30min → 40px, 45min → 60px, 60min → 80px
+            const baseCellHeight = (slotDuration / 30) * 50; // 30min → 50px, 45min → 75px, 60min → 100px
             const proportionalHeight = (usedDuration / slotDuration) * baseCellHeight;
             
             totalHeight += proportionalHeight;
@@ -988,7 +993,7 @@
                 updateStats();
                 savePlanningData();
 
-                showAlert(`Cours déplacé vers ${newRoom} à ${newSlot}`, 'success');
+                logInfo(`Cours déplacé vers ${newRoom} à ${newSlot}`);
             }
         });
     }
@@ -1156,7 +1161,7 @@
 
             console.log('📡 Réponse API status:', response.status);
             if (response.ok) {
-                showAlert('Planning enregistré avec succès!', 'success');
+                logInfo('Planning enregistré avec succès');
             } else {
                 const errorData = await response.json();
                 showAlert(`Erreur: ${errorData.error}`, 'danger');

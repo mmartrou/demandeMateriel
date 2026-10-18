@@ -3,9 +3,10 @@
    navigateur d'ajouter ses propres en-têtes et pieds de page (adresse, date, numéro de page). */
 
 :root {
-    --physique: #ffe3a3;  --physique-trait: #e0a100;
-    --chimie: #bdf1ea;    --chimie-trait: #1fa99e;
-    --autre: #e3e6ea;     --autre-trait: #8a929b;
+    /* mêmes couleurs que les cartes de l'éditeur de planning */
+    --physique: #f4c95d;  --physique-trait: #9a6a0a;
+    --chimie: #86c5e8;    --chimie-trait: #1f5f8b;
+    --autre: #c9cdc5;     --autre-trait: #565a54;
     --encre: #1b1f23;
     --gris: #6b7280;
     --ligne: #d0d5db;
