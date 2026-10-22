@@ -462,7 +462,8 @@ function eventLabel(ev) {
     const tpName = ev.request_name ? ` "${ev.request_name}"` : '';
     const labTest = ev.is_lab_test ? ' (Test au labo, pas de salle)' : '';
     const draft = ev.is_draft ? ' (Cours régulier, à vérifier)' : '';
-    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}${tpName}${labTest}${draft}. ${ev.description}`;
+    const room = ev.room ? ` - salle ${ev.room}` : '';
+    return `${ev.horaire ? ev.horaire + ' - ' : ''}${ev.teacher_name || ev.title.split(' - ')[0]} - ${ev.class_name || ev.title.split(' - ')[1] || ''}${tpName}${room}${labTest}${draft}. ${ev.description}`;
 }
 
 function buildEventHtml(ev, showTeacherName, styleObj) {
@@ -478,6 +479,7 @@ function buildEventHtml(ev, showTeacherName, styleObj) {
             <span class="ev-time">${ev.horaire || ''}${ev.is_lab_test ? ' 🧪' : ''}${ev.is_draft ? ' ⏳' : ''}</span>
             ${showTeacherName ? `<span class="ev-teacher">${teacherName}</span>` : ''}
             <span class="ev-class">${className}</span>
+            ${ev.room ? `<span class="ev-room">${escapeHtml(ev.room)}</span>` : ''}
             ${ev.request_name ? `<span class="ev-name">${escapeHtml(ev.request_name)}</span>` : ''}
         </div>`;
 }
@@ -487,7 +489,8 @@ function buildChipHtml(ev, showTeacherName) {
     const className = ev.class_name || (ev.title || '').split(' - ')[1] || '';
     const teacherName = ev.teacher_name || (ev.title || '').split(' - ')[0] || '';
     const namePart = ev.request_name ? ` — ${escapeHtml(ev.request_name)}` : '';
-    const label = (showTeacherName ? `${teacherName} - ${className}` : className) + namePart;
+    const roomPart = ev.room ? ` (${escapeHtml(ev.room)})` : '';
+    const label = (showTeacherName ? `${teacherName} - ${className}` : className) + namePart + roomPart;
     return `
         <span class="pronote-noh-chip" data-event-id="${ev.id}"
               style="background-color:${bgColor};"

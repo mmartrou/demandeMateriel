@@ -17,6 +17,7 @@ from database import (
     toggle_prepared_status,
     update_material_request,
     update_room_type,
+    get_saved_planning,
 )
 from routes.mes_tps import _enregistrer_template_tp
 from security import (
@@ -27,6 +28,9 @@ from security import (
     _is_teacher_scoped_user,
     api_error,
 )
+from planning_print import SANS_SALLE
+from datetime import datetime, timedelta, time
+from deadline_utils import _now_local
 
 bp = Blueprint('demandes', __name__)
 
@@ -134,6 +138,27 @@ def api_get_requests():
     return jsonify(requests_list)
 
 
+def _salles_par_demande(date_str):
+    """Retourne un dict {request_id: salle} pour toutes les demandes d'une date donnée."""
+    planning = get_saved_planning(date_str)
+    if not planning:
+        return {}
+    affectations = planning.get('room_assignments', {}) or {}
+    resultat = {}
+    for course in planning.get('courses', []) or []:
+        requestID = course.get('request_id')
+        salle = course.get('room') or affectations.get(str(course.get('id', '')), '')
+        if requestID is not None and salle not in SANS_SALLE:
+            resultat[requestID] = salle
+    return resultat
+
+
+def _salle_visible(date_cours, maintenant):
+    """Salle visible pour les jours passés, aujourd'hui, et demain à partir de 18h."""
+    debut = datetime.combine(date_cours - timedelta(days=1), time(18, 0), tzinfo=maintenant.tzinfo)
+    return maintenant >= debut
+
+
 @bp.route('/api/calendar-events', methods=['GET'])
 def api_calendar_events():
     """API endpoint to get calendar events with optional filters"""
@@ -210,8 +235,21 @@ def api_calendar_events():
                 filtered_requests.append(req)
         requests = filtered_requests
 
+    maintenant = _now_local()
+    cache_salles = {} # date_str -> {request_id: salle}
     events = []
     for req in requests:
+        d = req['request_date']
+        if isinstance(d, str):
+            d = datetime.strptime(d[:10], '%Y-%m-%d').date()
+        date_str = d.isoformat()
+
+        salle = ''
+        if _salle_visible(d, maintenant):
+            if date_str not in cache_salles:
+                cache_salles[date_str] = _salles_par_demande(date_str)
+            salle = cache_salles[date_str].get(req['id'], '')
+
         # Choose color based on status and type
         bg_color = '#007bff'  # Default blue
 
@@ -247,6 +285,7 @@ def api_calendar_events():
             'material_description': req.get('material_description'),
             'selected_materials': req.get('selected_materials'),
             'room_type': req.get('room_type'),
+            'room': salle,
             'prepared': req.get('prepared'),
             'modified': req.get('modified')
         })
