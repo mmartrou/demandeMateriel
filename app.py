@@ -17,7 +17,7 @@ from flask import Flask, url_for  # noqa: E402
 import security  # noqa: E402
 from database import close_request_connection, init_database  # noqa: E402
 from routes import (  # noqa: E402
-    admin, auth, demandes, edition_planning, images, jours, mes_tps, modifications, pages, salles,
+    admin, auth, demandes, edition_planning, images, jours, mes_tps, pages, salles,
 )
 
 app = Flask(__name__)
@@ -53,7 +53,7 @@ def asset(filename):
 
 
 # security en premier : ses hooks (encodage, authentification, rôles) s'appliquent à toutes les routes
-for module in (security, auth, pages, mes_tps, demandes, modifications, images, admin, salles, jours,
+for module in (security, auth, pages, mes_tps, demandes, images, admin, salles, jours,
                edition_planning):
     app.register_blueprint(module.bp)
 

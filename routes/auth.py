@@ -154,15 +154,6 @@ if os.environ.get('FLASK_ENV') == 'development' and not os.environ.get('RAILWAY_
         ) + '</ul>'
 
 
-@bp.route('/api/me', methods=['GET'])
-def api_me():
-    """Retourne l'utilisateur connecté."""
-    user = _get_current_user()
-    if not user:
-        return jsonify({'authenticated': False}), 401
-    return jsonify({'authenticated': True, 'user': user, 'effective_mode': _get_effective_user_mode(user)})
-
-
 @bp.route('/api/acting-mode', methods=['POST'])
 def api_set_acting_mode():
     """Permet à l'admin de choisir son mode: admin ou professeur."""

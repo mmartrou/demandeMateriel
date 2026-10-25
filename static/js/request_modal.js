@@ -2,13 +2,10 @@
 // planning_editor). Les valeurs fournies par Flask viennent de window.APP_CONFIG,
 // déclaré dans templates/base.html.
 // --- Shared state (shared with host page via window) ---
-if (!window.requestsWithPendingModifications) window.requestsWithPendingModifications = new Set();
-if (!window.allPendingModifications) window.allPendingModifications = new Map();
 window.allRequests = window.allRequests || [];
 window.modifiedRequests = window.modifiedRequests || new Map();
 
 let originalRequestData = {};
-let currentValidationRequestId = null;
 let currentRelatedList = []; // demandes liées (même enseignant + même nom), dans le délai de dépôt, hors la demande en cours d'édition
 
 function autoResize(el) {
@@ -628,25 +625,6 @@ async function saveRequestDirect(reqId, data) {
     return true;
 }
 
-async function savePendingModifications(requestId, changes) {
-    const promises = [];
-    for (const [fieldName, change] of Object.entries(changes)) {
-        promises.push(fetch('/api/pending-modifications', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                request_id: requestId,
-                field_name: fieldName,
-                original_value: change.original !== undefined && change.original !== null ? String(change.original) : '',
-                new_value:      change.new      !== undefined && change.new      !== null ? String(change.new)      : '',
-                modified_by: 'User'
-            })
-        }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Erreur serveur'); }); return r.json(); }));
-    }
-    try { await Promise.all(promises); return true; }
-    catch (e) { console.error('Erreur sauvegarde modifications en attente:', e); return false; }
-}
-
 function calculateRequestChanges(requestId, newData) {
     const changes = {};
     for (const field of ['request_name', 'class_name', 'material_description', 'material_prof', 'notes', 'horaire', 'request_date', 'image_url']) {
@@ -961,111 +939,6 @@ function toggleEditSpecialModes() {
             document.getElementById('editNoMaterial').checked = false;
         }
     }
-}
-
-// --- Validation modal ---
-function showValidationModal(requestId) {
-    currentValidationRequestId = requestId;
-    const currentRequest = window.allRequests.find(r => r.id === requestId);
-    if (!currentRequest) { showErrorToast('Erreur: Demande non trouvée'); return; }
-
-    fetch(`/api/pending-modifications?request_id=${requestId}`)
-        .then(r => r.json())
-        .then(modifications => {
-            const related = window.allRequests.filter(r =>
-                r.teacher_id === currentRequest.teacher_id &&
-                r.request_name === currentRequest.request_name &&
-                window.requestsWithPendingModifications.has(r.id)
-            );
-            displayModificationsPreview(modifications, related.length);
-            new bootstrap.Modal(document.getElementById('validationModal')).show();
-        })
-        .catch(() => showErrorToast('Erreur lors du chargement des modifications'));
-}
-
-function displayModificationsPreview(modifications, relatedCount = 1) {
-    const container = document.getElementById('modificationsPreview');
-    if (!container) return;
-    if (modifications.length === 0) { container.innerHTML = '<p class="text-muted">Aucune modification en attente.</p>'; return; }
-    let html = '';
-    if (relatedCount > 1) html += `<div class="alert alert-info"><strong>📋 Demandes liées :</strong> Cette action s'appliquera à <strong>${relatedCount} demandes</strong> du même enseignant avec le même nom.</div>`;
-    html += '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Champ</th><th>Valeur actuelle</th><th>Nouvelle valeur</th></tr></thead><tbody>';
-    modifications.forEach(mod => {
-        html += `<tr><td><strong>${getFieldLabel(mod.field_name)}</strong></td><td><span class="text-muted">${mod.original_value || '<em>Vide</em>'}</span></td><td><span class="text-primary fw-bold">${mod.new_value || '<em>Vide</em>'}</span></td></tr>`;
-    });
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-}
-
-function getFieldLabel(fieldName) {
-    return { request_name: 'Nom de la demande', class_name: 'Classe', material_description: 'Description du matériel',
-             material_prof: 'Matériel professeur', notes: 'Notes', horaire: 'Horaire',
-             quantity: 'Nombre de groupes', computers_needed: 'Ordinateurs nécessaires' }[fieldName] || fieldName;
-}
-
-function validateModifications() {
-    if (!currentValidationRequestId) { showErrorToast('Erreur: Aucune demande sélectionnée'); return; }
-    const current = window.allRequests.find(r => r.id === currentValidationRequestId);
-    if (!current) { showErrorToast('Erreur: Demande non trouvée'); return; }
-    const related = window.allRequests.filter(r =>
-        r.teacher_id === current.teacher_id && r.request_name === current.request_name &&
-        window.requestsWithPendingModifications.has(r.id)
-    );
-    if (related.length === 0) { showErrorToast('Aucune modification en attente trouvée'); return; }
-
-    Promise.all(related.map(r => fetch(`/api/pending-modifications/${r.id}/validate`, { method: 'POST' }).then(res => res.json())))
-    .then(results => {
-        const errors = results.filter(r => r.error);
-        if (errors.length) throw new Error(errors.map(e => e.error).join(', '));
-        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
-        if (modal) modal.hide();
-        related.forEach(r => {
-            window.modifiedRequests.delete(r.id.toString());
-            window.allPendingModifications.delete(r.id);
-            window.requestsWithPendingModifications.delete(r.id);
-            const req = window.allRequests.find(x => x.id === r.id);
-            if (req) { req.modified = false; req.prepared = false; }
-        });
-        if (typeof loadRequestsWithPendingModifications === 'function') {
-            loadRequestsWithPendingModifications().then(() => { if (typeof loadRequests === 'function') loadRequests(); });
-        } else if (typeof loadRequests === 'function') { loadRequests(); }
-        showSuccessToast(related.length > 1 ? `${related.length} demandes validées avec succès` : 'Modifications validées avec succès');
-    })
-    .catch(err => showErrorToast('Erreur lors de la validation: ' + err.message));
-}
-
-function rejectModifications() {
-    if (!currentValidationRequestId) { showErrorToast('Erreur: Aucune demande sélectionnée'); return; }
-    const current = window.allRequests.find(r => r.id === currentValidationRequestId);
-    if (!current) { showErrorToast('Erreur: Demande non trouvée'); return; }
-    const related = window.allRequests.filter(r =>
-        r.teacher_id === current.teacher_id && r.request_name === current.request_name &&
-        window.requestsWithPendingModifications.has(r.id)
-    );
-    const msg = related.length > 1
-        ? `Êtes-vous sûr de vouloir rejeter les modifications de ${related.length} demandes liées ? Elles seront définitivement supprimées.`
-        : 'Êtes-vous sûr de vouloir rejeter ces modifications ? Elles seront définitivement supprimées.';
-    if (!confirm(msg)) return;
-
-    Promise.all(related.map(r => fetch(`/api/pending-modifications/${r.id}/reject`, { method: 'POST' }).then(res => res.json())))
-    .then(results => {
-        const errors = results.filter(r => r.error);
-        if (errors.length) throw new Error(errors.map(e => e.error).join(', '));
-        const modal = bootstrap.Modal.getInstance(document.getElementById('validationModal'));
-        if (modal) modal.hide();
-        related.forEach(r => {
-            window.modifiedRequests.delete(r.id.toString());
-            window.allPendingModifications.delete(r.id);
-            window.requestsWithPendingModifications.delete(r.id);
-            const req = window.allRequests.find(x => x.id === r.id);
-            if (req) req.modified = false;
-        });
-        if (typeof loadRequestsWithPendingModifications === 'function') {
-            loadRequestsWithPendingModifications().then(() => { if (typeof loadRequests === 'function') loadRequests(); });
-        } else if (typeof loadRequests === 'function') { loadRequests(); }
-        showSuccessToast(related.length > 1 ? `${related.length} demandes rejetées` : 'Modifications rejetées');
-    })
-    .catch(err => showErrorToast('Erreur lors du rejet: ' + err.message));
 }
 
 // --- Image modal ---

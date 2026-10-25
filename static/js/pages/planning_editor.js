@@ -465,61 +465,6 @@
         console.log('✅ renderPlanningGrid() terminé avec succès');
     }
     
-    // Créer une carte de cours
-    function createCourseCard(course, startSlotIndex, timeSlots) {
-        const card = document.createElement('div');
-        card.className = `course-card ${getCourseType(course.subject)}`;
-        card.draggable = true;
-        card.dataset.courseId = course.id;
-        
-        // Calculer la position de fin précise du cours
-        const durationInMinutes = typeof course.duration === 'number' ? course.duration : parseDurationToMinutes(course.duration || 85);
-        const endSlotPosition = calculateEndSlotPosition(startSlotIndex, durationInMinutes);
-        
-        // Utiliser CSS Grid pour positionner et étendre le cours
-        // +2 car nous avons une ligne d'en-tête (index 1), les créneaux commencent à l'index 2
-        const gridRowStart = startSlotIndex + 2;
-        const gridRowEnd = endSlotPosition + 2;
-        
-        card.style.gridRowStart = gridRowStart;
-        card.style.gridRowEnd = gridRowEnd;
-        card.style.zIndex = '10';
-        
-        // Formatage de la durée pour affichage
-        const durationText = course.duration ? formatDuration(course.duration) : '';
-        
-        // Construire la liste des équipements spécifiques
-        const equipments = [];
-        if (course.ordinateurs > 0) equipments.push(`💻 ${course.ordinateurs} PC`);
-        if (course.eviers > 0) equipments.push(`🚰 ${course.eviers} éviers`);
-        if (course.hotte > 0) equipments.push(`🌬️ Hotte`);
-        if (course.bancs_optiques > 0) equipments.push(`🔬 Bancs opt.`);
-        if (course.obscurite_totale > 0) equipments.push(`🌑 Obscurité totale`);
-        if (course.becs_electriques > 0) equipments.push(`🔥 Becs élec.`);
-        if (course.support_filtration > 0) equipments.push(`⚗️ Filtration`);
-        if (course.imprimante > 0) equipments.push(`🖨️ Imprimante`);
-        if (course.examen > 0) equipments.push(`📝 Examen`);
-        
-        const equipmentLine = equipments.length > 0 ? `<div class="course-equipment" style="font-size: 0.7em; margin-top: 2px;">${equipments.join(', ')}</div>` : '';
-        const requestNameLine = course.request_name ? `<div class="course-request-name" style="font-size: 0.75em; font-style: italic; margin-top: 1px; color: #555;">${course.request_name}</div>` : '';
-        
-        card.innerHTML = `
-            <div class="course-title">${course.subject}</div>
-            <div class="course-level">${course.level}</div>
-            <div class="course-teacher">${course.teacher}</div>
-            <div class="course-time">${course.time}${durationText ? ` (${durationText})` : ''}</div>
-            ${requestNameLine}
-            ${equipmentLine}
-        `;
-        
-        console.log(`📅 Cours ${course.subject} - Grid: lignes ${gridRowStart} à ${gridRowEnd} (${durationInMinutes}min)`);
-        
-        // Ajouter les événements de drag
-        setupDragEvents(card);
-        
-        return card;
-    }
-
     // Créer une carte de cours avec débordement contrôlé
     function createCourseCardWithOverflow(course, startSlotIndex, timeSlots) {
         const card = document.createElement('div');
@@ -619,30 +564,6 @@
         });
 
         return card;
-    }
-    
-    // Calculer la hauteur d'un cours basée sur sa durée
-    function calculateCourseHeight(duration) {
-        // Système de hauteur proportionnelle à la durée réelle
-        // Base : 40px pour 55min (cours le plus court)
-        // Échelle : 55min=40px, 85min=60px, 110min=80px
-        const baseHeight = 40; // pixels pour 55 minutes (cours le plus court)
-        const baseDuration = 55; // minutes (cours le plus court)
-        
-        // Convertir la durée en minutes si nécessaire
-        let durationInMinutes = duration;
-        if (typeof duration === 'string') {
-            // Parser la durée si c'est une chaîne (ex: "1h30", "90min", "1.5h")
-            durationInMinutes = parseDurationToMinutes(duration);
-        }
-        
-        // Calculer la hauteur proportionnelle avec un facteur d'échelle légèrement réduit
-        const scaleFactor = 0.7; // Pour éviter des cours trop hauts
-        const rawHeight = (durationInMinutes / baseDuration) * baseHeight;
-        const calculatedHeight = Math.max(35, Math.min(120, rawHeight * scaleFactor));
-        
-        console.log(`📏 Durée: ${duration} (${durationInMinutes}min) -> Hauteur: ${Math.round(calculatedHeight)}px`);
-        return Math.round(calculatedHeight);
     }
     
     // Mesurer dynamiquement la hauteur réelle des lignes de la grille
@@ -822,14 +743,6 @@
         return exactEndPosition;
     }
 
-    // Calculer combien de créneaux de 15min un cours doit occuper (fonction de compatibilité)
-    function calculateSlotsNeeded(duration) {
-        const durationInMinutes = typeof duration === 'number' ? duration : parseDurationToMinutes(duration);
-        const slotsNeeded = Math.ceil(durationInMinutes / 15);
-        console.log(`📐 Durée ${duration} (${durationInMinutes}min) = ${slotsNeeded} créneaux de 15min`);
-        return slotsNeeded;
-    }
-
     // Parser une durée en string vers des minutes
     function parseDurationToMinutes(durationStr) {
         if (typeof durationStr === 'number') return durationStr;
@@ -896,16 +809,6 @@
         } else {
             return 'other';
         }
-    }
-    
-    // Formater l'en-tête des jours
-    function formatDayHeader(day) {
-        const date = new Date(day);
-        const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-        const dayName = dayNames[date.getDay()];
-        const dayNum = date.getDate();
-        const month = date.getMonth() + 1;
-        return `${dayName} ${dayNum}/${month}`;
     }
     
     // Configurer les événements de drag pour les cours
@@ -996,15 +899,6 @@
                 logInfo(`Cours déplacé vers ${newRoom} à ${newSlot}`);
             }
         });
-    }
-    
-    // Obtenir l'info de position à partir de la cellule
-    function getPositionFromCell(cell) {
-        if (!cell || !cell.dataset) return null;
-        return {
-            room: cell.dataset.room,
-            slot: cell.dataset.slot
-        };
     }
     
     // Mettre à jour les statistiques

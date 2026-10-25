@@ -52,53 +52,6 @@ def is_working_day(date):
     """
     return date.weekday() in WORKING_DAYS
 
-def add_working_hours(start_datetime, hours_to_add):
-    """
-    Ajoute des heures ouvrées à partir d'une date/heure de départ
-    
-    Args:
-        start_datetime (datetime): Date/heure de départ
-        hours_to_add (int): Nombre d'heures ouvrées à ajouter
-        
-    Returns:
-        datetime: Date/heure après ajout des heures ouvrées
-    """
-    current = start_datetime
-    remaining_hours = hours_to_add
-    
-    while remaining_hours > 0:
-        # Si on n'est pas sur un jour ouvré, passer au prochain jour ouvré
-        if not is_working_day(current):
-            current = current.replace(hour=8, minute=0, second=0) + timedelta(days=1)
-            continue
-        
-        # Heures de travail : 8h-18h (10h par jour)
-        work_start = current.replace(hour=8, minute=0, second=0)
-        work_end = current.replace(hour=18, minute=0, second=0)
-        
-        # Si on est avant les heures de travail
-        if current < work_start:
-            current = work_start
-        
-        # Si on est après les heures de travail, passer au jour suivant
-        if current >= work_end:
-            current = current.replace(hour=8, minute=0, second=0) + timedelta(days=1)
-            continue
-        
-        # Calculer les heures disponibles aujourd'hui
-        hours_left_today = (work_end - current).total_seconds() / 3600
-        
-        if remaining_hours <= hours_left_today:
-            # On peut terminer aujourd'hui
-            current += timedelta(hours=remaining_hours)
-            remaining_hours = 0
-        else:
-            # Passer au jour suivant
-            remaining_hours -= hours_left_today
-            current = current.replace(hour=8, minute=0, second=0) + timedelta(days=1)
-    
-    return current
-
 def _is_working_date(d, overrides):
     """d : objet date (ou datetime). overrides : dict {date_str: bool} ou None."""
     date_str = d.strftime('%Y-%m-%d')

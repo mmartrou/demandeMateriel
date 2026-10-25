@@ -109,8 +109,6 @@ def _is_admin_only_route(path, method):
     if path.startswith('/admin'):
         return True
     admin_prefixes = (
-        '/api/pending-modifications',
-        '/api/requests-with-pending-modifications',
         '/api/working-days',
         '/api/room-availability',
         '/api/site-settings',
@@ -134,16 +132,11 @@ def _is_privileged_route(path, method):
     )
 
 
-def _is_sensitive_route(path, method):
-    return _is_admin_only_route(path, method) or _is_privileged_route(path, method)
-
-
 def _is_public_route(path):
     public_routes = {
         '/login',
         '/auth/google',
         '/logout',
-        '/api/me',
     }
     if path == '/dev-login' and os.environ.get('FLASK_ENV') == 'development':
         return True

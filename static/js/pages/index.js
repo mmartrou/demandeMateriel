@@ -568,12 +568,6 @@ document.addEventListener('DOMContentLoaded', function() {
         imageError.style.display = 'none';
     }
 
-    function showUploadInstructions(message) {
-        uploadInstructions.textContent = message;
-        uploadInstructions.style.display = 'block';
-        hideImageError();
-    }
-
     function updateUploadStatus(message, type = 'info') {
         const className = type === 'success' ? 'text-success' : type === 'error' ? 'text-danger' : 'text-info';
         uploadStatus.textContent = '';
@@ -824,6 +818,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-
-

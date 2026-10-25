@@ -1,5 +1,4 @@
 """Administration : tableau de bord, établissement, comptes, enseignants, niveaux et effectifs."""
-import os
 
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
@@ -22,7 +21,7 @@ from database import (
     update_teacher_short_name,
 )
 from routes.salles import _availability_page_title
-from security import _get_current_user, _is_admin_user, _parse_teacher_email_map, api_error
+from security import _get_current_user, _is_admin_user, api_error
 import site_settings
 
 bp = Blueprint('admin', __name__)
@@ -206,17 +205,6 @@ def api_admin_delete_level(level_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-
-@bp.route('/api/admin/debug-email-map')
-def api_admin_debug_email_map():
-    """Debug: show TEACHER_EMAIL_MAP parsing result (admin/labo)."""
-    user = _get_current_user()
-    if not user or user.get('role') not in ('admin', 'labo'):
-        return jsonify({'error': 'Non autorisé'}), 403
-    raw = os.getenv('TEACHER_EMAIL_MAP', '')
-    parsed = _parse_teacher_email_map()
-    return jsonify({'raw_length': len(raw), 'parsed': parsed, 'keys': list(parsed.keys())})
 
 
 @bp.route('/admin/students')

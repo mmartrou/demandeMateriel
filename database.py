@@ -514,20 +514,6 @@ def init_database():
         )
     ''')
 
-    # Create pending modifications table for tracking changes before validation
-    cursor.execute(f'''
-        CREATE TABLE IF NOT EXISTS pending_modifications (
-            id {auto_increment},
-            request_id INTEGER NOT NULL,
-            field_name {text_type} NOT NULL,
-            original_value {text_type},
-            new_value {text_type},
-            created_at {timestamp_default},
-            modified_by {text_type},
-            FOREIGN KEY (request_id) REFERENCES material_requests(id) ON DELETE CASCADE
-        )
-    ''')
-    
     # Add a new table for storing planning data
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS plannings (
@@ -986,21 +972,6 @@ def get_material_requests(start_date=None, end_date=None, teacher_id=None):
     conn.close()
     return requests
 
-def get_requests_for_calendar():
-    """Get all requests formatted for calendar display"""
-    conn, _ = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT mr.id, mr.request_date, mr.class_name, mr.material_description, 
-               mr.quantity, t.name as teacher_name
-        FROM material_requests mr
-        JOIN teachers t ON mr.teacher_id = t.id
-        ORDER BY mr.request_date
-    ''')
-    requests = cursor.fetchall()
-    conn.close()
-    return requests
-
 def get_material_request_by_id(request_id):
     """Get a specific material request by ID"""
     conn, db_type = get_db_connection()
@@ -1180,31 +1151,6 @@ def delete_material_request(request_id):
     deleted = cursor.rowcount > 0
     conn.close()
     return deleted
-
-def get_grouped_requests_by_name(teacher_id, request_name):
-    """Get all requests with the same name from the same teacher, grouped by date/time"""
-    if not request_name or not request_name.strip():
-        return []
-        
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    cursor.execute(f'''
-        SELECT request_date, horaire, class_name
-        FROM material_requests 
-        WHERE teacher_id = {placeholder} AND request_name = {placeholder}
-        ORDER BY request_date, horaire
-    ''', (teacher_id, request_name.strip()))
-    
-    results = cursor.fetchall()
-    conn.close()
-    
-    if db_type == 'postgresql':
-        return [dict(row) for row in results]
-    else:
-        columns = [description[0] for description in (cursor.description or [])]
-        return [dict(zip(columns, row)) for row in results]
 
 def update_room_type(request_id, room_type, manual=True):
     """Update the room type of a material request.
@@ -1979,203 +1925,6 @@ def delete_room_availability(availability_id):
         logger.error(f"Erreur lors de la suppression du créneau {availability_id}: {e}")
         return False
 
-
-def add_pending_modification(request_id, field_name, original_value, new_value, modified_by='System'):
-    """Add a pending modification to the database"""
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    
-    try:
-        logger.info(f"💾 Tentative d'ajout modification: request_id={request_id}, field={field_name}, original='{original_value}', new='{new_value}'")
-        
-        cursor.execute(f'''
-            INSERT INTO pending_modifications 
-            (request_id, field_name, original_value, new_value, modified_by) 
-            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-        ''', (request_id, field_name, original_value, new_value, modified_by))
-        
-        affected_rows = cursor.rowcount
-        logger.info(f"✅ INSERT réussi - {affected_rows} ligne(s) insérée(s)")
-        
-        conn.commit()
-        logger.info(f"✅ COMMIT réussi pour la modification de la demande {request_id}")
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de l'ajout de la modification en attente: {e}")
-        logger.error(f"   request_id={request_id}, field={field_name}, db_type={db_type}")
-        import traceback
-        logger.error(f"   Traceback: {traceback.format_exc()}")
-        conn.rollback()
-        conn.close()
-        return False
-
-def get_pending_modifications(request_id=None):
-    """Get pending modifications for a specific request or all requests"""
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    
-    try:
-        if request_id:
-            cursor.execute(f'''
-                SELECT pm.id, pm.request_id, pm.field_name, pm.original_value, pm.new_value,
-                       pm.created_at, pm.modified_by, mr.teacher_id, t.name as teacher_name, mr.request_name
-                FROM pending_modifications pm
-                JOIN material_requests mr ON pm.request_id = mr.id
-                JOIN teachers t ON mr.teacher_id = t.id
-                WHERE pm.request_id = {placeholder}
-                ORDER BY pm.created_at DESC
-            ''', (request_id,))
-        else:
-            cursor.execute('''
-                SELECT pm.id, pm.request_id, pm.field_name, pm.original_value, pm.new_value,
-                       pm.created_at, pm.modified_by, mr.teacher_id, t.name as teacher_name, mr.request_name
-                FROM pending_modifications pm
-                JOIN material_requests mr ON pm.request_id = mr.id
-                JOIN teachers t ON mr.teacher_id = t.id
-                ORDER BY pm.created_at DESC
-            ''')
-        
-        modifications = cursor.fetchall()
-        conn.close()
-        return modifications
-    except Exception as e:
-        logger.error(f"Erreur lors de la récupération des modifications en attente: {e}")
-        conn.close()
-        return []
-
-def get_requests_with_pending_modifications():
-    """Get all request IDs that have pending modifications"""
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            SELECT DISTINCT request_id 
-            FROM pending_modifications 
-            ORDER BY request_id
-        ''')
-        
-        request_ids = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return request_ids
-    except Exception as e:
-        logger.error(f"Erreur lors de la récupération des demandes avec modifications: {e}")
-        conn.close()
-        return []
-
-def validate_pending_modifications(request_id):
-    """Apply all pending modifications for a request and remove them from pending table"""
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-
-    allowed_fields = {
-        'request_date',
-        'horaire',
-        'class_name',
-        'material_description',
-        'quantity',
-        'selected_materials',
-        'computers_needed',
-        'notes',
-        'group_count',
-        'material_prof',
-        'request_name',
-        'room_type',
-        'image_url',
-        'exam'
-    }
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
-    false_val = 'FALSE' if db_type == 'postgresql' else '0'
-    
-    try:
-        # Get all pending modifications for this request
-        cursor.execute(f'''
-            SELECT field_name, new_value 
-            FROM pending_modifications 
-            WHERE request_id = {placeholder}
-        ''', (request_id,))
-        
-        modifications = cursor.fetchall()
-        
-        if not modifications:
-            conn.close()
-            return False
-        
-        # Apply each modification to the material_requests table
-        for mod in modifications:
-            # Gérer tuple ou dict
-            if isinstance(mod, dict):
-                field_name = mod['field_name']
-                new_value = mod['new_value']
-            elif hasattr(mod, '_asdict'):
-                mod_dict = mod._asdict()
-                field_name = mod_dict['field_name']
-                new_value = mod_dict['new_value']
-            else:
-                # Tuple classique [field_name, new_value]
-                field_name = mod[0]
-                new_value = mod[1]
-
-            if field_name not in allowed_fields:
-                logger.warning(f"Champ de modification non autorisé ignoré: {field_name}")
-                continue
-            
-            cursor.execute(f'''
-                UPDATE material_requests 
-                SET {field_name} = {placeholder} 
-                WHERE id = {placeholder}
-            ''', (new_value, request_id))
-        
-        # Reset both modified and prepared flags to FALSE since modifications are now applied
-        # Une demande modifiée doit être re-préparée
-        cursor.execute(f'''
-            UPDATE material_requests 
-            SET modified = {false_val}, prepared = {false_val}
-            WHERE id = {placeholder}
-        ''', (request_id,))
-        
-        # Remove the pending modifications
-        cursor.execute(f'''
-            DELETE FROM pending_modifications 
-            WHERE request_id = {placeholder}
-        ''', (request_id,))
-        
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"Erreur lors de la validation des modifications: {e}")
-        conn.rollback()
-        conn.close()
-        return False
-
-def reject_pending_modifications(request_id):
-    """Reject and remove all pending modifications for a request"""
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-    
-    placeholder = '%s' if db_type == 'postgresql' else '?'
-    
-    try:
-        cursor.execute(f'''
-            DELETE FROM pending_modifications 
-            WHERE request_id = {placeholder}
-        ''', (request_id,))
-        
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"Erreur lors du rejet des modifications: {e}")
-        conn.close()
-        return False
 
 def get_tp_templates(teacher_id, level):
     """Retourne les templates TP d'un enseignant pour un niveau donné, triés par nom."""

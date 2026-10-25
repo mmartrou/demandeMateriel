@@ -1,8 +1,4 @@
 // Script de la page requests (extrait de templates/requests.html).
-// Page-level shared state
-window.requestsWithPendingModifications = new Set();
-window.allPendingModifications = new Map();
-
 function setCookie(name, value, days = 30) {
     const expires = new Date();
     expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
@@ -29,17 +25,6 @@ function enhanceRequestDisplay(request, fieldName, originalValue) {
         return `<div class="modified-field recently-modified">${requestChanges[fieldName].diff}</div>`;
     }
     
-    // Vérifier les modifications en attente dans la base de données
-    const pendingMods = window.allPendingModifications.get(request.id);
-    if (pendingMods) {
-        const fieldModification = pendingMods.find(mod => mod.field_name === fieldName);
-        if (fieldModification) {
-            // Générer l'affichage de la différence
-            const diff = generateDiffDisplay(fieldModification.original_value, fieldModification.new_value);
-            return `<div class="modified-field">${diff}</div>`;
-        }
-    }
-    
     // Aucune modification, affichage normal
     return originalValue;
 }
@@ -64,51 +49,10 @@ function initializeFilters() {
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeFilters();
-    // Charger d'abord les modifications en attente, puis les demandes
-    loadRequestsWithPendingModifications().then(() => {
-        loadRequests();
-    });
+    loadRequests();
 });
 
-function loadRequestsWithPendingModifications() {
-    // Ces deux routes sont réservées admin/labo côté serveur (403 pour un enseignant).
-    if (!['admin', 'labo'].includes(window.APP_CONFIG.userMode)) return Promise.resolve();
-
-    // Charger les IDs des demandes avec modifications et toutes les modifications en attente
-    // Retourner une Promise pour permettre l'attente de la fin du chargement
-    const idsPromise = fetch('/api/requests-with-pending-modifications')
-        .then(response => response.json())
-        .then(requestIds => {
-            window.requestsWithPendingModifications = new Set(requestIds);
-            console.log(`📋 ${requestIds.length} demandes avec modifications en attente chargées`);
-        })
-        .catch(error => {
-            console.error('Error loading pending modifications IDs:', error);
-        });
-    
-    const modsPromise = fetch('/api/pending-modifications')
-        .then(response => response.json())
-        .then(modifications => {
-            // Reconstruire complètement la Map à partir des données de la base
-            window.allPendingModifications.clear();
-            
-            // Grouper les modifications par request_id
-            modifications.forEach(mod => {
-                const requestId = mod.request_id;
-                if (!window.allPendingModifications.has(requestId)) {
-                    window.allPendingModifications.set(requestId, []);
-                }
-                window.allPendingModifications.get(requestId).push(mod);
-            });
-            console.log(`📝 ${modifications.length} modifications en attente chargées pour ${window.allPendingModifications.size} demandes`);
-        })
-        .catch(error => {
-            console.error('Error loading all pending modifications:', error);
-        });
-    
-    // Retourner une Promise qui attend les deux chargements
-    return Promise.all([idsPromise, modsPromise]);
-}function loadRequests() {
+function loadRequests() {
     const loadingIndicator = document.getElementById('loadingIndicator');
     const tableBody = document.getElementById('requestsTableBody');
     const noResults = document.getElementById('noResults');
@@ -201,7 +145,6 @@ function loadRequestsWithPendingModifications() {
                 const statusBadge = getStatusBadge(request);
                 const preparedButton = getPreparedButton(request);
                 const confirmDraftButton = getConfirmDraftButton(request);
-                const validationButton = getValidationButton(request);
                 
                 // Trouver les autres demandes du même enseignant avec le même nom
                 const relatedRequests = window.allRequests.filter(r => 
@@ -306,7 +249,6 @@ function loadRequestsWithPendingModifications() {
                     <td>
                         ${preparedButton}
                         ${confirmDraftButton ? `<br class="d-block d-sm-none">${confirmDraftButton}` : ''}
-                        ${validationButton ? `<br class="d-block d-sm-none">${validationButton}` : ''}
                     </td>
                     <td><small class="text-muted">${formatDateTime(request.created_at)}</small></td>
                 `;
@@ -386,10 +328,6 @@ function getStatusBadge(request) {
     } else {
         badges.push('<span class="badge bg-light text-dark">⏳ Non préparée</span>');
     }
-    // Vérifier si la demande a des modifications en attente (persisté en base)
-    if (window.requestsWithPendingModifications.has(request.id)) {
-        badges.push('<span class="badge bg-warning">⚠️ Modifiée</span>');
-    }
     return badges.join(' ');
 }
 
@@ -414,20 +352,6 @@ function confirmDraftRequest(requestId) {
         .catch(err => showErrorToast('Erreur : ' + err.message));
 }
 
-function getValidationButton(request) {
-    if (window.requestsWithPendingModifications.has(request.id)) {
-        // Vérifier si la demande peut encore être modifiée (délai 2 jours ouvrés)
-        if (!canEditRequest(request)) {
-            return `<span class="btn btn-sm btn-secondary disabled" title="Délai insuffisant - impossible de valider (moins de 2 jours ouvrés)">
-                        🔒 Délai dépassé
-                    </span>`;
-        }
-        return `<button class="btn btn-sm btn-warning" onclick="showValidationModal(${request.id}); event.stopPropagation();" title="Valider les modifications en attente">
-                    📝 Valider modifications
-                </button>`;
-    }
-    return '';
-}
 function togglePrepared(requestId) {
     togglePreparedWithRelated(requestId)
         .then(({ idsToToggle }) => {
@@ -439,4 +363,3 @@ function togglePrepared(requestId) {
             showErrorToast('Erreur lors de la mise à jour du statut');
         });
 }
-

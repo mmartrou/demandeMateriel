@@ -255,34 +255,6 @@
     </div>
 </div>
 
-<!-- Modal de validation des modifications -->
-<div class="modal fade" id="validationModal" tabindex="-1" aria-labelledby="validationModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="validationModalLabel">📝 Valider les modifications</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-3">Les modifications suivantes sont en attente de validation :</p>
-                <div id="modificationsPreview" class="mb-3"></div>
-                <div class="alert alert-info">
-                    <strong>Note :</strong> Une fois validées, ces modifications seront appliquées définitivement à la demande.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                <button type="button" class="btn btn-danger" onclick="rejectModifications()" title="Rejeter et supprimer les modifications">
-                    ❌ Rejeter
-                </button>
-                <button type="button" class="btn btn-success" onclick="validateModifications()" title="Appliquer les modifications">
-                    ✅ Valider
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Modal image agrandie -->
 <div class="modal fade" id="imageModal" tabindex="-1">
     <div class="modal-dialog modal-lg">

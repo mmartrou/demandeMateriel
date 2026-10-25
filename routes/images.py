@@ -1,64 +1,9 @@
-"""Images des demandes : validation d'un lien Google Drive, informations et envoi de fichiers."""
+"""Images des demandes : envoi de fichiers vers Google Drive (ou stockage local de secours)."""
 from flask import Blueprint, jsonify, request
 
-from google_drive_service import (
-    extract_google_drive_id,
-    get_image_info,
-    validate_google_drive_image,
-)
 from security import api_error
 
 bp = Blueprint('images', __name__)
-
-
-# API endpoints pour les images Google Drive
-@bp.route('/api/validate-google-drive-image', methods=['POST'])
-def api_validate_google_drive_image():
-    """API endpoint to validate a Google Drive image URL/ID"""
-    try:
-        data = request.get_json()
-        url_or_id = data.get('url_or_id', '').strip()
-        
-        if not url_or_id:
-            return jsonify({'error': 'URL ou ID Google Drive manquant'}), 400
-        
-        # Extraire l'ID depuis l'URL ou valider l'ID
-        drive_id = extract_google_drive_id(url_or_id)
-        if not drive_id:
-            return jsonify({'error': 'URL ou ID Google Drive invalide'}), 400
-        
-        # Valider que l'image est accessible
-        is_valid, error_message, image_url = validate_google_drive_image(drive_id)
-        
-        if not is_valid:
-            return jsonify({'error': error_message}), 400
-        
-        # Récupérer les informations de l'image
-        image_info = get_image_info(drive_id)
-        
-        return jsonify({
-            'valid': True,
-            'drive_id': drive_id,
-            'image_url': image_url,
-            'image_info': image_info
-        })
-        
-    except Exception as e:
-        return api_error('Erreur lors de la validation de l\'image', e)
-
-
-@bp.route('/api/image-info/<drive_id>', methods=['GET'])
-def api_get_image_info(drive_id):
-    """API endpoint to get information about a Google Drive image"""
-    try:
-        image_info = get_image_info(drive_id)
-        if not image_info:
-            return jsonify({'error': 'Image non trouvée ou inaccessible'}), 404
-        
-        return jsonify(image_info)
-        
-    except Exception as e:
-        return api_error('Erreur lors de la récupération des informations image', e)
 
 
 @bp.route('/api/upload-image', methods=['POST'])
