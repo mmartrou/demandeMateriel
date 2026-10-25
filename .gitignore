@@ -132,6 +132,10 @@ dmypy.json
 .pyre/
 
 # Application specific
+# data/ : base SQLite locale
+data/
+# Images jointes aux demandes (stockées uniquement sur le serveur : à inclure dans ses sauvegardes)
+static/uploads/
 material_requests.db
 *.csv
 test_export.csv

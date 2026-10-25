@@ -10,8 +10,8 @@ from datetime import datetime
 # Configuration des logs
 logger = logging.getLogger(__name__)
 
-DATABASE_PATH = os.path.join('imagesDemandesMateriel', 'base', 'material_requests.db')
-SQLITE_ALT_PATH = 'demandeMateriel.db'
+# Base SQLite locale (développement, ou secours sans DATABASE_URL) : data/, non versionné
+DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'material_requests.db')
 
 # Flask est optionnel : database.py doit rester utilisable en script autonome
 try:
@@ -36,18 +36,12 @@ def _ouvrir_connexion():
         except Exception as e:
             logger.warning(f"Échec PostgreSQL: {e}")
 
-    # Fallback vers SQLite: try both paths
-    try:
-        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        logger.info(f"Fallback vers SQLite: {DATABASE_PATH}")
-        return conn, 'sqlite'
-    except Exception:
-        conn = sqlite3.connect(SQLITE_ALT_PATH)
-        conn.row_factory = sqlite3.Row
-        logger.info(f"Fallback vers SQLite: {SQLITE_ALT_PATH}")
-        return conn, 'sqlite'
+    # Fallback vers SQLite
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    logger.info(f"Fallback vers SQLite: {DATABASE_PATH}")
+    return conn, 'sqlite'
 
 
 class _ConnexionPartagee:

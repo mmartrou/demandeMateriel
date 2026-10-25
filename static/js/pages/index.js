@@ -612,7 +612,7 @@ document.addEventListener('DOMContentLoaded', function() {
             previewImg.src = e.target.result;
             imagePreview.style.display = 'block';
             uploadImageBtn.disabled = false;
-            updateUploadStatus('📁 Image sélectionnée - Cliquez sur "Uploader vers Drive"');
+            updateUploadStatus('📁 Image sélectionnée - Cliquez sur "Envoyer l\'image"');
         };
         reader.readAsDataURL(file);
         selectedFile = file;
@@ -706,7 +706,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Annuler la prise de photo
     cancelPhotoBtn.addEventListener('click', stopCamera);
 
-    // Upload vers le serveur (qui gère l'upload vers Google Drive)
+    // Envoi de l'image au serveur (stockée dans static/uploads/)
     uploadImageBtn.addEventListener('click', function() {
         if (!selectedFile) {
             showImageError('Aucune image sélectionnée');
@@ -721,7 +721,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         uploadImageBtn.disabled = true;
         uploadImageBtn.innerHTML = '⏳ Upload en cours...';
-        updateUploadStatus('📤 Upload vers Google Drive... <strong>Ne quittez pas la page</strong>', 'info');
+        updateUploadStatus('📤 Envoi de l\'image...<strong>Ne quittez pas la page</strong>', 'info');
 
         fetch('/api/upload-image', {
             method: 'POST',
@@ -736,11 +736,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Image uploadée avec succès
                 imageUrlInput.value = data.image_url;
                 
-                if (data.local_storage) {
-                    updateUploadStatus('✅ Image sauvegardée et prête à utiliser!', 'success');
-                } else {
-                    updateUploadStatus('✅ Image uploadée sur Google Drive!', 'success');
-                }
+                updateUploadStatus('✅ Image sauvegardée et prête à utiliser!', 'success');
                 
                 // Plus besoin d'instructions - tout est automatique !
                 hideImageError();
@@ -757,7 +753,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setNavigationLock(false);
             
             uploadImageBtn.disabled = false;
-            uploadImageBtn.innerHTML = '⬆️ Uploader vers Drive';
+            uploadImageBtn.innerHTML = '⬆️ Envoyer l\'image';
         });
     });
 

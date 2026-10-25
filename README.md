@@ -65,7 +65,7 @@ Notes:
 - Un enseignant non associé via `TEACHER_EMAIL_MAP` (ou déjà mappé en base `users`) est refusé.
 - Les enseignants ne peuvent plus lire/modifier les demandes des autres.
 
-> 📖 **Guide détaillé OVH VPS** : Voir [DEPLOYMENT.md](DEPLOYMENT.md)
+> 📖 **Guide détaillé OVH VPS** : Voir [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## Utilisation
 
@@ -92,18 +92,22 @@ Notes:
 
 ```
 demandeMateriel/
-├── app.py                 # Application Flask principale
-├── database.py           # Configuration et modèles de base de données
-├── requirements.txt      # Dépendances Python
-├── templates/           # Templates HTML
-│   ├── base.html        # Template de base
-│   ├── index.html       # Formulaire de demande
-│   ├── requests.html    # Vue liste des demandes
-│   └── calendar.html    # Vue calendrier
-├── static/             # Fichiers statiques
-│   ├── css/           # Feuilles de style
-│   └── js/            # Scripts JavaScript
-└── README.md          # Documentation
+├── app.py                  # Création de l'application Flask, enregistrement des blueprints
+├── routes/                 # Routes, un blueprint par thème (demandes, admin, salles, planning…)
+├── database.py             # Accès à la base (PostgreSQL, ou SQLite en secours)
+├── planning_generator.py   # Répartition des TP dans les salles (OR-Tools)
+├── planning_print.py       # Données de l'impression du planning
+├── security.py             # Rôles, protection des routes, gestion des erreurs
+├── site_settings.py        # Réglages de l'établissement
+├── deadline_utils.py       # Règle du délai en jours ouvrés
+├── templates/              # Templates HTML (Jinja)
+├── static/                 # CSS, JS (static/js/pages/ : un script par template), uploads/ (images des demandes, non versionné)
+├── tests/                  # Tests automatiques (pytest)
+├── docs/                   # Guides : déploiement, Railway
+├── deploy/                 # Configuration nginx et systemd (VPS)
+├── data/                   # Non versionné : base SQLite locale
+├── requirements.txt        # Dépendances Python (requirements-dev.txt : + pytest)
+└── Procfile, railway.json, runtime.txt   # Déploiement Railway
 ```
 
 ## Technologies utilisées
