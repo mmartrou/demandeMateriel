@@ -1,4 +1,4 @@
-"""Données de la page imprimable du planning (/admin/planning-print).
+"""Données de la page imprimable du planning (/admin/planning-print) - ancien planning_print.py.
 
 Tout vient de la base : le planning enregistré (cours, salle de chaque cours), puis les informations
 qui peuvent avoir changé depuis (noms courts, observations labo, effectifs, ordre des salles), les

@@ -14,14 +14,14 @@ from database import (
     get_standard_occupation,
     set_standard_occupation,
 )
-from planning_generator import (
+from planning import (
     build_course_data_entry,
     generer_excel_from_saved_planning,
     generer_planning_excel,
     get_new_requests_for_date,
     get_planning_data_for_editor_v2,
 )
-from planning_print import build_print_model, salles_a_jour
+from planning import build_print_model, salles_a_jour
 from security import _is_privileged_user, api_error
 import site_settings
 

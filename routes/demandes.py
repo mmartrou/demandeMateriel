@@ -28,7 +28,7 @@ from security import (
     _is_teacher_scoped_user,
     api_error,
 )
-from planning_print import SANS_SALLE
+from planning import SANS_SALLE
 from datetime import datetime, timedelta, time
 from deadline_utils import _now_local
 

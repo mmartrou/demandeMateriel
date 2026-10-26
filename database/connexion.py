@@ -79,7 +79,7 @@ def get_db_connection():
 
     Dans une requête HTTP, la même connexion est réutilisée d'un appel à l'autre
     (voir _ConnexionPartagee). Hors contexte Flask (scripts, init_database,
-    planning_generator lancé seul), le comportement historique est conservé :
+    paquet planning lancé seul), le comportement historique est conservé :
     une connexion neuve à chaque appel, que l'appelant referme lui-même.
     """
     if not (_FLASK_DISPONIBLE and has_app_context()):

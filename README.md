@@ -95,8 +95,7 @@ demandeMateriel/
 ├── app.py                  # Création de l'application Flask, enregistrement des blueprints
 ├── routes/                 # Routes, un blueprint par thème (demandes, admin, salles, planning…)
 ├── database/               # Accès à la base (PostgreSQL, ou SQLite en secours), un module par thème
-├── planning_generator.py   # Répartition des TP dans les salles (OR-Tools)
-├── planning_print.py       # Données de l'impression du planning
+├── planning/               # Planning des salles : optimisation OR-Tools, éditeur, export Excel, impression
 ├── security.py             # Rôles, protection des routes, gestion des erreurs
 ├── site_settings.py        # Réglages de l'établissement
 ├── deadline_utils.py       # Règle du délai en jours ouvrés
