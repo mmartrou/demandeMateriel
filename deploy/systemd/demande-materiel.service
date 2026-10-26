@@ -3,11 +3,15 @@ Description=Demande Materiel Flask app (Gunicorn)
 After=network.target
 
 [Service]
-User=www-data
-Group=www-data
+# --preload : init_database() (app.py) ne tourne qu'une fois, avant de lancer les workers.
+# Sans lui, les workers la lancent en même temps sur PostgreSQL et l'un peut planter au démarrage.
+# Compte propriétaire du code dans /opt/demande-materiel (ubuntu sur le VPS OVH).
+# Le .env et static/uploads/ doivent être lisibles (et uploads/ inscriptible) par ce compte.
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/opt/demande-materiel
 EnvironmentFile=/opt/demande-materiel/.env
-ExecStart=/opt/demande-materiel/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8080 --timeout 120 app:app
+ExecStart=/opt/demande-materiel/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8080 --timeout 120 --preload app:app
 Restart=always
 RestartSec=5
 

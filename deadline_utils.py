@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Le couperet est toujours exprimé dans le fuseau horaire de l'établissement, indépendamment du
-# fuseau du serveur (les hébergeurs type Railway tournent en UTC par défaut). Fuseau et heure
+# fuseau du serveur (les serveurs tournent souvent en UTC). Fuseau et heure
 # viennent des réglages de /admin/establishment (Europe/Madrid et 8h par défaut).
 def _school_tz():
     import site_settings

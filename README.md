@@ -103,11 +103,10 @@ demandeMateriel/
 ├── templates/              # Templates HTML (Jinja)
 ├── static/                 # CSS, JS (static/js/pages/ : un script par template), uploads/ (images des demandes, non versionné)
 ├── tests/                  # Tests automatiques (pytest)
-├── docs/                   # Guides : déploiement, Railway
-├── deploy/                 # Configuration nginx et systemd (VPS)
+├── docs/                   # Guide de déploiement (VPS OVH)
+├── deploy/                 # Configuration nginx et systemd du VPS
 ├── data/                   # Non versionné : base SQLite locale
-├── requirements.txt        # Dépendances Python (requirements-dev.txt : + pytest)
-└── Procfile, railway.json, runtime.txt   # Déploiement Railway
+└── requirements.txt        # Dépendances Python (requirements-dev.txt : + pytest)
 ```
 
 ## Technologies utilisées

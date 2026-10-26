@@ -138,7 +138,7 @@ def _is_public_route(path):
         '/auth/google',
         '/logout',
     }
-    if path == '/dev-login' and os.environ.get('FLASK_ENV') == 'development':
+    if path == '/dev-login' and os.environ.get('DEV_LOGIN') == '1':
         return True
     return path in public_routes or path.startswith('/static/')
 

@@ -51,21 +51,31 @@ Créer `/opt/demande-materiel/.env`:
 ```env
 # Flask
 FLASK_ENV=production
-PORT=8080
-
-# Sécurité API/admin (obligatoire en production)
-ADMIN_TOKEN=remplace_par_un_token_long_aleatoire
+FLASK_SECRET_KEY=remplace_par_une_cle_longue_aleatoire
+SESSION_COOKIE_SECURE=true
 MAX_UPLOAD_MB=10
 
-# Base de données (choisir une option)
-# Option A (recommandée): PostgreSQL
+# Base de données PostgreSQL (Neon)
+# Sans DATABASE_URL, ou si la connexion échoue, l'appli bascule sur SQLite (data/material_requests.db)
 DATABASE_URL=postgresql://user:password@host:5432/database
 
-# Option B: SQLite fallback si DATABASE_URL absent/invalide
-# (rien à configurer)
+# Connexion Google des utilisateurs
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+ADMIN_EMAIL=prenom.nom@etablissement.fr
 ```
 
-Générer un token fort:
+La liste complète des variables est dans `.env.example`. Ne jamais mettre `DEV_LOGIN` sur le serveur.
+
+Protéger le fichier (lisible uniquement par root et par le compte du service, ici `ubuntu`) :
+
+```bash
+sudo chown root:ubuntu /opt/demande-materiel/.env
+sudo chmod 640 /opt/demande-materiel/.env
+```
+
+> ⚠️ Le compte qui fait tourner le service (ligne `User=` du fichier systemd) doit pouvoir lire ce fichier : l'appli le relit au démarrage et plante (`PermissionError`) sinon.
+
+Générer une clé secrète forte :
 
 ```bash
 python3 - << 'PY'
@@ -94,6 +104,8 @@ L'application est accessible sur `http://localhost:8080`.
 Flask recharge automatiquement le code quand un fichier est modifié (mode debug activé par défaut dans `app.py`).
 
 > **Note :** un fichier `.env` valide est nécessaire (cf. section 4). Pour un test rapide en local avec SQLite, seuls `FLASK_SECRET_KEY` et `GOOGLE_CLIENT_ID` sont indispensables.
+>
+> Pour se connecter sans Google en local, ajouter `DEV_LOGIN=1` au `.env` de son poste puis ouvrir `http://localhost:8080/dev-login`. Cette route n'existe que si `DEV_LOGIN=1` et ne répond qu'à `localhost`.
 
 ## 6) Service systemd (Gunicorn)
 
@@ -101,6 +113,13 @@ Copier le modèle fourni dans ce repo:
 
 - Source: `deploy/systemd/demande-materiel.service`
 - Destination: `/etc/systemd/system/demande-materiel.service`
+
+Vérifier les lignes `User=` / `Group=` : elles doivent désigner le compte propriétaire du code (`ubuntu` sur le VPS actuel). Puis créer le dossier des images avec ce même compte :
+
+```bash
+mkdir -p /opt/demande-materiel/static/uploads
+sudo chown -R ubuntu:ubuntu /opt/demande-materiel/static/uploads
+```
 
 Puis:
 
@@ -189,11 +208,14 @@ sudo systemctl restart demande-materiel
 sudo systemctl status demande-materiel --no-pager
 ```
 
-## 11) Notes importantes pour ce projet
+## 11) Sauvegardes
 
-- Les routes admin/API sensibles exigent `ADMIN_TOKEN` si défini.
-- Depuis un client JS, envoyer le token via:
-  - Header `X-Admin-Token: <token>`
-  - ou `Authorization: Bearer <token>`
-- Le backend limite les uploads selon `MAX_UPLOAD_MB`.
+Les images jointes aux demandes sont stockées **uniquement** sur le serveur, dans `/opt/demande-materiel/static/uploads/` (ce dossier n'est pas versionné). Il doit faire partie des sauvegardes du VPS. La base de données, elle, est sur Neon.
+
+## 12) Notes importantes pour ce projet
+
+- L'accès est protégé par la connexion Google et les rôles (admin, labo, enseignant) ; il n'y a pas de jeton d'API.
+- Le backend limite les uploads selon `MAX_UPLOAD_MB` (et nginx selon `client_max_body_size`).
 - Le service Gunicorn écoute en local `127.0.0.1:8080`; Nginx publie en 80/443.
+- Gunicorn est lancé avec `--preload` : la vérification de la base (`init_database()`) n'est faite qu'une fois au démarrage, et non par chacun des workers en parallèle.
+- En cas d'échec au démarrage, `sudo journalctl -u demande-materiel -n 300 --no-pager | grep -A 30 Traceback | head -40` affiche la vraie cause.

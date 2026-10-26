@@ -122,7 +122,8 @@ def logout():
     return redirect(url_for('auth.login'))
 
 
-if os.environ.get('FLASK_ENV') == 'development' and not os.environ.get('RAILWAY_ENVIRONMENT'):
+# Activée uniquement par DEV_LOGIN=1 (jamais sur le serveur) : connexion sans Google, pour le développement local.
+if os.environ.get('DEV_LOGIN') == '1':
     @bp.route('/dev-login')
     def dev_login():
         """Connexion rapide sans Google OAuth (dev uniquement)."""
