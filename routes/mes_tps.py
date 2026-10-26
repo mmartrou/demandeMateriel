@@ -20,7 +20,7 @@ bp = Blueprint('mes_tps', __name__)
 
 
 # Nom généré automatiquement pour les cours issus de l'emploi du temps (voir
-# database.create_draft_requests_for_week) : ce n'est pas un nom de TP choisi par l'enseignant.
+# database.generate_draft_requests_for_week, dans database/emploi_du_temps.py) : ce n'est pas un nom de TP choisi par l'enseignant.
 def _est_nom_brouillon_auto(request_name, class_name):
     return bool(class_name) and request_name.strip() == f"{class_name} (cours régulier)"
 

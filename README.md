@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 3. Initialiser la base de données :
 ```bash
-python database.py
+python -m database
 ```
 
 4. Lancer l'application :
@@ -94,7 +94,7 @@ Notes:
 demandeMateriel/
 ├── app.py                  # Création de l'application Flask, enregistrement des blueprints
 ├── routes/                 # Routes, un blueprint par thème (demandes, admin, salles, planning…)
-├── database.py             # Accès à la base (PostgreSQL, ou SQLite en secours)
+├── database/               # Accès à la base (PostgreSQL, ou SQLite en secours), un module par thème
 ├── planning_generator.py   # Répartition des TP dans les salles (OR-Tools)
 ├── planning_print.py       # Données de l'impression du planning
 ├── security.py             # Rôles, protection des routes, gestion des erreurs
