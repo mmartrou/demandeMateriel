@@ -2,7 +2,7 @@
 from flask import Blueprint, redirect, render_template, url_for
 
 from database import get_all_teachers
-from security import _get_current_user, _is_teacher_scoped_user
+from security import _get_current_user, _is_teacher_scoped_user, _is_privileged_user
 
 bp = Blueprint('pages', __name__)
 
@@ -17,8 +17,7 @@ def planning():
 @bp.route('/')
 def accueil():
     """Point d'entrée du site : générateur de planning pour admin/labo, calendrier pour les enseignants."""
-    user = _get_current_user()
-    if user and user.get('role') in {'admin', 'labo'}:
+    if _is_privileged_user():
         return redirect(url_for('edition_planning.planning_editor'))
     return redirect(url_for('pages.calendar'))
 
