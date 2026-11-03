@@ -17,14 +17,6 @@ const PT_DAY_END_MIN = 20 * 60 + 15; // 20h15 (marge après le dernier créneau 
 const PT_PX_PER_MIN = 1;           // 1 minute = 1px de hauteur (soit 60px/heure, cf. --pt-hour-px)
 const PT_GAP_PX = 2;
 
-function parseHoraireToMinutes(horaire) {
-    if (!horaire) return null;
-    const match = String(horaire).match(/(\d{1,2})h(\d{0,2})/);
-    if (!match) return null;
-    const hours = parseInt(match[1], 10);
-    const minutes = match[2] ? parseInt(match[2], 10) : 0;
-    return hours * 60 + minutes;
-}
 
 function getEventDurationMinutes(event) {
     const custom = Number(event.custom_duration);

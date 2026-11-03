@@ -9,15 +9,6 @@ const PT_PX_PER_MIN = 1;
 const DUREES_PAR_NIVEAU = window.APP_CONFIG.dureesParNiveau;
 function dureeParNiveau(niveau) { return DUREES_PAR_NIVEAU[niveau] || 85; }
 
-function parseHoraireToMinutes(horaire) {
-    if (!horaire) return null;
-    const match = String(horaire).match(/(\d{1,2})h(\d{0,2})/);
-    if (!match) return null;
-    const hours = parseInt(match[1], 10);
-    const minutes = match[2] ? parseInt(match[2], 10) : 0;
-    return hours * 60 + minutes;
-}
-
 function showSuccessToast(message) {
     if (typeof window.showToast === 'function') window.showToast('success', 'Succès', message);
     else alert(message);

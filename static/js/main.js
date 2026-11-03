@@ -295,6 +295,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+
+function parseHoraireToMinutes(horaire) {
+    if (!horaire) return null;
+    const match = String(horaire).match(/(\d{1,2})h(\d{0,2})/);
+    if (!match) return null;
+    const hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    return hours * 60 + minutes;
+}
+
+
 // Export functions for global use
 window.showSuccessToast = showSuccessToast;
 window.showErrorToast = showErrorToast;

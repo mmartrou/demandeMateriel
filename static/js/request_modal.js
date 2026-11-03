@@ -92,7 +92,10 @@ function renderRelatedRequestsList() {
     const listEl = document.getElementById('relatedRequestsList');
     if (!listEl) return;
     listEl.innerHTML = '';
-    const sorted = [...currentRelatedList].sort((a, b) => (a.request_date || '').localeCompare(b.request_date || ''));
+    const sorted = [...currentRelatedList].sort((a, b) =>
+        (a.request_date || '').localeCompare(b.request_date || '')
+        || (parseHoraireToMinutes(a.horaire) ?? 9999) - (parseHoraireToMinutes(b.horaire) ?? 9999)
+    );
     sorted.forEach(r => {
         const ymd = formatDateToYMD(r.request_date);
         const dateLabel = ymd ? ymd.split('-').reverse().join('/') : (r.request_date || '');
