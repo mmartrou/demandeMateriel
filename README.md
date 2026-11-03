@@ -57,7 +57,7 @@ FLASK_SECRET_KEY=une-cle-secrete-longue
 Associer les emails enseignants à la table `teachers` via `TEACHER_EMAIL_MAP` (JSON):
 
 ```bash
-TEACHER_EMAIL_MAP={"prenom.nom@etablissement.fr":"Bonfand","autre@etablissement.fr":"Martrou"}
+TEACHER_EMAIL_MAP={"prenom.nom@etablissement.fr":"Nom","autre.prof@etablissement.fr":"Autre Nom"}
 ```
 
 Notes:

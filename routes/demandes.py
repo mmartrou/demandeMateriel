@@ -134,8 +134,16 @@ def api_get_requests():
                 pass
         if not _is_privileged_user():
             r.pop('labo_observations', None)
+        r['request_date'] = _date_iso(r.get('request_date'))
         requests_list.append(r)
     return jsonify(requests_list)
+
+
+def _date_iso(d):
+    """Date de demande au format ISO (YYYY-MM-DD)"""
+    if d is None or isinstance(d, str):
+        return d[:10] if d else d
+    return d.isoformat()[:10]
 
 
 def _salles_par_demande(date_str):
@@ -557,6 +565,7 @@ def api_get_request_by_id(request_id):
     from deadline_utils import is_request_deadline_respected
     deadline_info = is_request_deadline_respected(r['request_date'])
     r['deadline'] = deadline_info
+    r['request_date'] = _date_iso(r['request_date'])
     return jsonify(r)
 
 
