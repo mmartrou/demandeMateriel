@@ -62,7 +62,7 @@
                 throw new Error(payload.error || 'Connexion refusée');
             }
 
-            window.location.href = '{{ url_for("pages.index") }}';
+            window.location.href = '{{ url_for("pages.accueil") }}';
         } catch (error) {
             errorBox.textContent = error.message || 'Erreur de connexion';
             errorBox.classList.remove('d-none');

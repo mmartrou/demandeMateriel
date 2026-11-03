@@ -1,5 +1,5 @@
 """Pages principales : accueil, calendrier, liste des demandes, générateur de planning."""
-from flask import Blueprint, render_template
+from flask import Blueprint, redirect, render_template, url_for
 
 from database import get_all_teachers
 from security import _get_current_user, _is_teacher_scoped_user
@@ -15,6 +15,15 @@ def planning():
 
 
 @bp.route('/')
+def accueil():
+    """Point d'entrée du site : générateur de planning pour admin/labo, calendrier pour les enseignants."""
+    user = _get_current_user()
+    if user and user.get('role') in {'admin', 'labo'}:
+        return redirect(url_for('pages.planning'))
+    return redirect(url_for('pages.calendar'))
+
+
+@bp.route('/nouvelle-demande')
 def index():
     """Home page with material request form"""
     user = _get_current_user()

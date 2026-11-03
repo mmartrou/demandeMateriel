@@ -24,7 +24,7 @@ bp = Blueprint('auth', __name__)
 def login():
     """Page de connexion via Google."""
     if _is_authenticated():
-        return redirect(url_for('pages.index'))
+        return redirect(url_for('pages.accueil'))
     return render_template('login.html')
 
 
@@ -147,7 +147,7 @@ if os.environ.get('DEV_LOGIN') == '1':
                 'teacher_name': teacher['name']
             }
             session['acting_mode'] = 'admin' if role == 'admin' else 'teacher'
-            return redirect(url_for('pages.index'))
+            return redirect(url_for('pages.accueil'))
         return '<h3>Dev Login</h3><ul>' + ''.join(
             f'<li><a href="?teacher_id={t["id"]}&role=teacher">{t["name"]}</a>'
             f' — <a href="?teacher_id={t["id"]}&role=admin">(admin)</a></li>'
