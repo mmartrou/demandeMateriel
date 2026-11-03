@@ -19,7 +19,7 @@ def accueil():
     """Point d'entrée du site : générateur de planning pour admin/labo, calendrier pour les enseignants."""
     user = _get_current_user()
     if user and user.get('role') in {'admin', 'labo'}:
-        return redirect(url_for('pages.planning'))
+        return redirect(url_for('edition_planning.planning_editor'))
     return redirect(url_for('pages.calendar'))
 
 
