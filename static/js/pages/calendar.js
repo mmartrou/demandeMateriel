@@ -8,6 +8,7 @@ if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
 let events = [];
 // Jours non ouvrés configurés dans /admin/working-days (ensemble de dates 'YYYY-MM-DD')
 let nonWorkingDays = new Set();
+let firstOpenRequestDate = null; // première date (AAAA-MM-JJ) encore ouverte aux demandes, voir /api/calendar-info
 
 // myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par _request_modal_js.html (inclus plus haut)
 
@@ -102,6 +103,7 @@ function loadCalendarInfo() {
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
         .then(data => {
             nonWorkingDays = new Set(data.non_working_days || []);
+            firstOpenRequestDate = data.next_deadline ? data.next_deadline.request_date : null;
             renderDeadlineBanner(data.next_deadline);
             renderWeekView();
         })
@@ -320,6 +322,14 @@ function layoutDayEvents(dayEvents) {
     return sorted;
 }
 
+// Classe d'état d'un jour : passé, aujourd'hui, délai de dépôt dépassé, ou rien (demande encore possible).
+function dayStateClass(dayDate, todayStr) {
+    if (dayDate < todayStr) return ' past';
+    if (dayDate === todayStr) return ' today';
+    if (firstOpenRequestDate && dayDate < firstOpenRequestDate) return ' closed';
+    return '';
+}
+
 function renderWeekView() {
     const weekDays = getWeekDays(currentWeekStart);
     const weekEnd = new Date(currentWeekStart);
@@ -367,10 +377,9 @@ function renderWeekView() {
     // ---- En-tête (jours) ----
     let headHtml = `<div class="pronote-head-cell"></div>`;
     eventsByDay.forEach(({ day, dayDate }, index) => {
-        const isToday = dayDate === todayStr;
         const isHoliday = nonWorkingDays.has(dayDate);
         headHtml += `
-            <div class="pronote-head-cell${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}">
+            <div class="pronote-head-cell${dayStateClass(dayDate, todayStr)}${isHoliday ? ' holiday' : ''}">
                 ${dayNames[index]}
                 <span class="pronote-head-daynum">${day.getDate()}/${day.getMonth() + 1}</span>
             </div>`;
@@ -410,7 +419,7 @@ function renderWeekView() {
             colHtml += `<div class="pronote-now-line" style="top:${top}px;"></div>`;
         }
         const isHoliday = nonWorkingDays.has(dayDate);
-        dayColsHtml += `<div class="pronote-day-col${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}" style="height:${gridHeight}px;">${colHtml}</div>`;
+        dayColsHtml += `<div class="pronote-day-col${dayStateClass(dayDate, todayStr)}${isHoliday ? ' holiday' : ''}" style="height:${gridHeight}px;">${colHtml}</div>`;
     });
 
     // ---- Ligne "sans horaire" (absences, pas besoin de matériel non planifiés, etc.) ----
@@ -423,7 +432,7 @@ function renderWeekView() {
                 chips += buildChipHtml(ev, showTeacherName);
             });
             const isHoliday = nonWorkingDays.has(dayDate);
-            noHorRowHtml += `<div class="pronote-noh-cell${isHoliday ? ' holiday' : ''}">${chips}</div>`;
+            noHorRowHtml += `<div class="pronote-noh-cell${dayStateClass(dayDate, todayStr)}${isHoliday ? ' holiday' : ''}">${chips}</div>`;
         });
     }
 
