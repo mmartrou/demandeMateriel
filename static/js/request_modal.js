@@ -421,15 +421,19 @@ function loadDraftTpOptions(teacherId, level) {
     const select = document.getElementById('draftTpSelect');
     if (!select) return;
     select.innerHTML = '<option value="">Chargement...</option>';
-    fetch(`/api/tp-templates?teacher_id=${teacherId}&level=${encodeURIComponent(level || '')}`)
-        .then(r => r.json())
-        .then(templates => {
+    const params = `teacher_id=${teacherId}&level=${encodeURIComponent(level || '')}`;
+    Promise.all([
+        fetch(`/api/tp-templates?${params}`).then(r => r.json()),
+        // Un problème de dossiers ne doit pas empêcher de choisir un TP : liste simple en secours.
+        fetch(`/api/tp-chapters?${params}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ])
+        .then(([templates, chapters]) => {
             if (!Array.isArray(templates) || templates.length === 0) {
                 select.innerHTML = '<option value="">Aucun TP enregistré pour ce niveau</option>';
                 return;
             }
-            select.innerHTML = '<option value="">-- Choisir un TP --</option>' +
-                templates.map(t => `<option value="${t.id}">${escapeHtml(t.request_name)}</option>`).join('');
+            select.innerHTML = '<option value="">-- Choisir un TP --</option>';
+            appendTpOptions(select, Array.isArray(chapters) ? chapters : [], templates, t => new Option(t.request_name, t.id));
         })
         .catch(() => {
             select.innerHTML = '<option value="">Erreur de chargement</option>';

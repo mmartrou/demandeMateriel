@@ -16,7 +16,8 @@ def get_tp_templates(teacher_id, level):
         placeholder = '%s' if db_type == 'postgresql' else '?'
         cursor.execute(f'''
             SELECT id, request_name, material_description, selected_materials,
-                   material_prof, computers_needed, group_count, notes, image_url, room_type
+                   material_prof, computers_needed, group_count, notes, image_url, room_type,
+                   chapter_id
             FROM tp_templates
             WHERE teacher_id = {placeholder} AND level = {placeholder}
             ORDER BY request_name
@@ -32,7 +33,8 @@ def get_tp_templates(teacher_id, level):
                     'id': row[0], 'request_name': row[1], 'material_description': row[2],
                     'selected_materials': row[3], 'material_prof': row[4],
                     'computers_needed': row[5], 'group_count': row[6],
-                    'notes': row[7], 'image_url': row[8], 'room_type': row[9]
+                    'notes': row[7], 'image_url': row[8], 'room_type': row[9],
+                    'chapter_id': row[10]
                 })
         return result
     except Exception as e:
@@ -101,7 +103,7 @@ def get_tp_template_by_id(template_id):
         cursor.execute(f'''
             SELECT id, teacher_id, level, request_name, material_description,
                    selected_materials, material_prof, computers_needed,
-                   group_count, notes, image_url, room_type
+                   group_count, notes, image_url, room_type, chapter_id
             FROM tp_templates
             WHERE id = {placeholder}
         ''', (template_id,))
@@ -116,11 +118,141 @@ def get_tp_template_by_id(template_id):
             'material_description': row[4], 'selected_materials': row[5],
             'material_prof': row[6], 'computers_needed': row[7],
             'group_count': row[8], 'notes': row[9], 'image_url': row[10],
-            'room_type': row[11]
+            'room_type': row[11], 'chapter_id': row[12]
         }
     except Exception as e:
         logger.error(f"Erreur get_tp_template_by_id: {e}")
         return None
+
+
+def _select_tp_chapters(where, params):
+    """SELECT commun aux lectures de dossiers. `where` utilise {ph} pour les paramètres."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        # (number IS NULL) : même ordre sous PostgreSQL (NULL à la fin) et SQLite (NULL au début)
+        cursor.execute(f'''
+            SELECT id, teacher_id, level, number, title
+            FROM tp_chapters
+            WHERE {where.format(ph=ph)}
+            ORDER BY (number IS NULL), number, title
+        ''', params)
+        rows = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"Erreur lecture tp_chapters: {e}")
+        return []
+
+
+def get_tp_chapters(teacher_id, level):
+    """Dossiers d'un enseignant pour un niveau : numérotés d'abord (par numéro), puis par nom."""
+    return _select_tp_chapters('teacher_id = {ph} AND level = {ph}', (teacher_id, level))
+
+
+def get_tp_chapter_by_id(chapter_id):
+    rows = _select_tp_chapters('id = {ph}', (chapter_id,))
+    return rows[0] if rows else None
+
+
+def add_tp_chapter(teacher_id, level, number, title):
+    """Crée un dossier (numéro et/ou nom) et renvoie son id, ou None en cas d'erreur."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        if db_type == 'postgresql':
+            cursor.execute('''
+                INSERT INTO tp_chapters (teacher_id, level, number, title)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            ''', (teacher_id, level, number, title))
+            row = cursor.fetchone()
+            new_id = (row['id'] if isinstance(row, dict) else row[0]) if row else None
+        else:
+            cursor.execute(
+                'INSERT INTO tp_chapters (teacher_id, level, number, title) VALUES (?, ?, ?, ?)',
+                (teacher_id, level, number, title)
+            )
+            new_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return new_id
+    except Exception as e:
+        logger.error(f"Erreur add_tp_chapter: {e}")
+        return None
+
+
+def update_tp_chapter(chapter_id, number, title):
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(
+            f'UPDATE tp_chapters SET number = {ph}, title = {ph} WHERE id = {ph}',
+            (number, title, chapter_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur update_tp_chapter: {e}")
+        return False
+
+
+def delete_tp_chapter(chapter_id):
+    """Supprime un dossier ; ses TP ne sont pas supprimés, ils redeviennent « sans dossier »."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'UPDATE tp_templates SET chapter_id = NULL WHERE chapter_id = {ph}', (chapter_id,))
+        cursor.execute(f'DELETE FROM tp_chapters WHERE id = {ph}', (chapter_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur delete_tp_chapter: {e}")
+        return False
+
+
+def set_tp_template_chapter(template_id, chapter_id):
+    """Range un TP dans un dossier (chapter_id=None : le sort de son dossier)."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'UPDATE tp_templates SET chapter_id = {ph} WHERE id = {ph}', (chapter_id, template_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur set_tp_template_chapter: {e}")
+        return False
+
+
+def rename_tp_template(template_id, teacher_id, level, old_name, new_name, from_date):
+    """Renomme un TP par son id, ainsi que les demandes de ce TP à partir de from_date (YYYY-MM-DD).
+
+    Les demandes doivent suivre : les demandes liées reposent sur le nom, et enregistrer une
+    demande portant encore l'ancien nom recréerait l'ancien TP (voir upsert_tp_template).
+    Les demandes passées gardent leur nom d'origine.
+    """
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        cursor.execute(f'UPDATE tp_templates SET request_name = {ph} WHERE id = {ph}', (new_name, template_id))
+        cursor.execute(f'''
+            UPDATE material_requests SET request_name = {ph}
+            WHERE teacher_id = {ph} AND class_name = {ph} AND request_name = {ph} AND request_date >= {ph}
+        ''', (new_name, teacher_id, level, old_name, from_date))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur rename_tp_template: {e}")
+        return False
 
 
 def get_recurring_courses(teacher_id):

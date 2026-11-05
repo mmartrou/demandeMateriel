@@ -440,6 +440,22 @@ def init_database():
         )
     ''')
 
+    # Dossiers de TP d'un enseignant par niveau (page Mes TPs) : numéro et/ou nom, ex. "Chapitre 1 : Les ions"
+    cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS tp_chapters (
+            id {auto_increment},
+            teacher_id INTEGER NOT NULL,
+            level {text_type} NOT NULL,
+            number INTEGER,
+            title {text_type},
+            CHECK (number IS NOT NULL OR (title IS NOT NULL AND title <> '')),
+            FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+        )
+    ''')
+
+    # Migration : dossier (chapitre) d'un TP, vide par défaut = TP non rangé
+    _add_column_if_missing(cursor, db_type, 'tp_templates', 'chapter_id', 'INTEGER')
+
     # Table de l'emploi du temps type (cours récurrents) d'un enseignant : jour de semaine (0=Lundi..4=Vendredi)
     # + horaire + niveau. Sert de base pour générer automatiquement des demandes "brouillon" chaque semaine.
     cursor.execute(f'''

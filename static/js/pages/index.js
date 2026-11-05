@@ -107,8 +107,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            const resp = await fetch(`/api/tp-templates?teacher_id=${teacherId}&level=${encodeURIComponent(level)}`);
-            const templates = await resp.json();
+            const params = `teacher_id=${teacherId}&level=${encodeURIComponent(level)}`;
+            const [templates, chapters] = await Promise.all([
+                fetch(`/api/tp-templates?${params}`).then(r => r.json()),
+                // Un problème de dossiers ne doit pas empêcher de choisir un TP : liste simple en secours.
+                fetch(`/api/tp-chapters?${params}`).then(r => r.ok ? r.json() : []).catch(() => []),
+            ]);
 
             if (!templates.length) {
                 section.style.display = 'none';
@@ -116,12 +120,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             select.innerHTML = '<option value="">— Nouveau TP —</option>';
-            templates.forEach((t, i) => {
+            appendTpOptions(select, Array.isArray(chapters) ? chapters : [], templates, t => {
                 const opt = document.createElement('option');
-                opt.value = i;
+                opt.value = t.id;
                 opt.textContent = t.request_name;
                 opt.dataset.template = JSON.stringify(t);
-                select.appendChild(opt);
+                return opt;
             });
             section.style.display = 'block';
         } catch(e) {

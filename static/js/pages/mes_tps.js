@@ -1,25 +1,42 @@
 // Script de la page mes_tps (extrait de templates/mes_tps.html).
     console.log('mes_tps.js chargé, myTeacherId =', myTeacherId);
+    // Dossiers de l'enseignant pour le niveau affiché : vide = pas de dossiers, la page reste une liste simple.
+    let currentChapters = [];
+
     document.getElementById('levelSelect').addEventListener('change', function() {
         if (!this.value) return;
-        const url = `/api/tp-templates?teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}`;
-        console.log('Fetching:', url);
-        fetch(url)
-            .then(r => {
-                if (!r.ok) return r.json().then(err => { throw new Error(err.error || r.statusText); });
-                return r.json();
-            })
-            .then(templates => {
-                if (!Array.isArray(templates)) {
+        const params = `teacher_id=${myTeacherId}&level=${encodeURIComponent(this.value)}`;
+        const fetchJson = url => fetch(url).then(r => {
+            if (!r.ok) return r.json().then(err => { throw new Error(err.error || r.statusText); });
+            return r.json();
+        });
+        Promise.all([fetchJson(`/api/tp-templates?${params}`), fetchJson(`/api/tp-chapters?${params}`)])
+            .then(([templates, chapters]) => {
+                if (!Array.isArray(templates) || !Array.isArray(chapters)) {
                     document.getElementById('tp-list').innerHTML = '<p class="text-danger">Réponse inattendue du serveur.</p>';
                     return;
                 }
-                renderTpList('tp-list', templates, true);
+                currentChapters = chapters;
+                if (chapters.length === 0) renderTpList('tp-list', templates, true);
+                else renderTpAccordion('tp-list', chapters, templates);
             })
             .catch(err => {
-                document.getElementById('tp-list').innerHTML = `<p class="text-danger">Erreur : ${err.message}</p>`;
+                document.getElementById('tp-list').innerHTML = `<p class="text-danger">Erreur : ${escapeHtml(err.message)}</p>`;
             });
     });
+
+    function tpItemHtml(tp, editable) {
+        const action = editable
+            ? `ondblclick="openTpDetail(${tp.id}, true)"`
+            : `ondblclick="copyTpTemplate(${tp.id})"`;
+        return `
+            <div class="list-group-item list-group-item-action"
+                ${action} style="cursor: pointer;">
+                <strong>${escapeHtml(tp.request_name)}</strong>
+                <small class="text-muted ms-2">${escapeHtml(tp.room_type || 'Mixte')}</small>
+                ${!editable ? '<span class="badge bg-outline-secondary float-end">Double-clic pour copier</span>' : ''}
+            </div>`;
+    }
 
     function renderTpList(containerId, templates, editable) {
         const container = document.getElementById(containerId);
@@ -27,21 +44,128 @@
             container.innerHTML = '<p class="text-muted">Aucun TP trouvé pour ce niveau.</p>';
             return;
         }
-        let html = '<div class="list-group">';
-        for (const tp of templates) {
-            const action = editable
-                ? `ondblclick="openTpDetail(${tp.id}, true)"`
-                : `ondblclick="copyTpTemplate(${tp.id})"`;
-            html += `
-                <div class="list-group-item list-group-item-action"
-                    ${action} style="cursor: pointer;">
-                    <strong>${tp.request_name}</strong>
-                    <small class="text-muted ms-2">${tp.room_type || 'Mixte'}</small>
-                    ${!editable ? '<span class="badge bg-outline-secondary float-end">Double-clic pour copier</span>' : ''}
+        container.innerHTML = `<div class="list-group">${templates.map(tp => tpItemHtml(tp, editable)).join('')}</div>`;
+    }
+
+    // Un panneau par dossier (tous ouverts), puis "Sans dossier" s'il contient des TP.
+    function renderTpAccordion(containerId, chapters, templates) {
+        const panels = chapters.map(ch => ({ chapter: ch, label: chapterLabel(ch), tps: templates.filter(t => t.chapter_id === ch.id) }));
+        const sansDossier = templates.filter(t => !chapters.some(ch => ch.id === t.chapter_id));
+        if (sansDossier.length) panels.push({ chapter: null, label: 'Sans dossier', tps: sansDossier });
+
+        const html = panels.map(p => {
+            const collapseId = `tpChapter-${p.chapter ? p.chapter.id : 'none'}`;
+            const actions = p.chapter ? `
+                <button type="button" class="btn btn-sm btn-link text-secondary" data-edit-chapter="${p.chapter.id}" title="Modifier le dossier">✏️</button>
+                <button type="button" class="btn btn-sm btn-link text-danger" data-delete-chapter="${p.chapter.id}" title="Supprimer le dossier">🗑️</button>` : '';
+            const body = p.tps.length
+                ? `<div class="list-group list-group-flush">${p.tps.map(tp => tpItemHtml(tp, true)).join('')}</div>`
+                : '<p class="text-muted small m-2">Aucun TP dans ce dossier : rangez-y un TP depuis sa fiche.</p>';
+            return `
+                <div class="accordion-item">
+                    <h2 class="accordion-header d-flex align-items-center">
+                        <button class="accordion-button flex-grow-1" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="true" aria-controls="${collapseId}">
+                            ${escapeHtml(p.label)} <span class="badge bg-secondary ms-2">${p.tps.length}</span>
+                        </button>
+                        ${actions}
+                    </h2>
+                    <div id="${collapseId}" class="accordion-collapse collapse show">
+                        <div class="accordion-body p-0">${body}</div>
+                    </div>
                 </div>`;
+        }).join('');
+
+        const container = document.getElementById(containerId);
+        container.innerHTML = `<div class="accordion">${html}</div>`;
+        container.querySelectorAll('[data-edit-chapter]').forEach(btn => {
+            btn.addEventListener('click', () => openChapterModal(chapters.find(ch => ch.id === Number(btn.dataset.editChapter))));
+        });
+        container.querySelectorAll('[data-delete-chapter]').forEach(btn => {
+            btn.addEventListener('click', () => deleteChapter(chapters.find(ch => ch.id === Number(btn.dataset.deleteChapter))));
+        });
+    }
+
+    // --- Dossiers : création, modification, suppression ---
+    function reloadMyTps() {
+        document.getElementById('levelSelect').dispatchEvent(new Event('change'));
+    }
+
+    function openChapterModal(chapter) {
+        document.getElementById('chapterId').value = chapter ? chapter.id : '';
+        document.getElementById('chapterNumber').value = chapter && chapter.number != null ? chapter.number : '';
+        document.getElementById('chapterTitle').value = chapter ? (chapter.title || '') : '';
+        document.getElementById('chapterModalLabel').textContent = chapter ? 'Modifier le dossier' : 'Nouveau dossier';
+        const modalEl = document.getElementById('chapterModal');
+        (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
+    }
+
+    function saveChapter() {
+        const id = document.getElementById('chapterId').value;
+        const number = document.getElementById('chapterNumber').value.trim();
+        const title = document.getElementById('chapterTitle').value.trim();
+        if (!number && !title) {
+            showErrorToast('Indiquez un numéro, un nom, ou les deux');
+            return;
         }
-        html += '</div>';
-        container.innerHTML = html;
+        const level = document.getElementById('levelSelect').value;
+        fetch(id ? `/api/tp-chapters/${id}` : '/api/tp-chapters', {
+            method: id ? 'PUT' : 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ level, number, title })
+        })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+        .then(() => {
+            bootstrap.Modal.getInstance(document.getElementById('chapterModal'))?.hide();
+            showSuccessToast(id ? 'Dossier modifié' : 'Dossier créé');
+            reloadMyTps();
+        })
+        .catch(err => showErrorToast('Erreur : ' + err.message));
+    }
+
+    function deleteChapter(chapter) {
+        if (!chapter) return;
+        if (!confirm(`Supprimer le dossier « ${chapterLabel(chapter)} » ? Ses TP ne sont pas supprimés, ils iront dans « Sans dossier ».`)) return;
+        fetch(`/api/tp-chapters/${chapter.id}`, { method: 'DELETE' })
+            .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+            .then(() => {
+                showSuccessToast('Dossier supprimé');
+                reloadMyTps();
+            })
+            .catch(err => showErrorToast('Erreur : ' + err.message));
+    }
+
+    document.getElementById('btnNewChapter').addEventListener('click', function() {
+        if (!document.getElementById('levelSelect').value) {
+            showErrorToast('Choisissez d\'abord un niveau pour votre nouveau dossier.');
+            return;
+        }
+        openChapterModal(null);
+    });
+    document.getElementById('btnSaveChapter').addEventListener('click', saveChapter);
+
+    // Liste "Dossier" ajoutée à la fiche d'un TP (modale partagée avec les autres pages, d'où l'ajout
+    // dynamique) ; seulement si l'enseignant a des dossiers pour ce niveau.
+    function setTpChapterField(selectedChapterId) {
+        document.getElementById('tpChapterField')?.remove();
+        if (!currentChapters.length) return;
+        const nameCol = document.getElementById('editRequestName')?.closest('.col-md-3');
+        if (!nameCol) return;
+        nameCol.insertAdjacentHTML('afterend', `
+            <div class="col-md-3" id="tpChapterField">
+                <label for="tpChapterSelect" class="form-label">📁 Dossier</label>
+                <select class="form-select" id="tpChapterSelect"></select>
+            </div>`);
+        const select = document.getElementById('tpChapterSelect');
+        select.appendChild(new Option('Sans dossier', ''));
+        currentChapters.forEach(ch => select.appendChild(new Option(chapterLabel(ch), ch.id)));
+        select.value = selectedChapterId != null ? String(selectedChapterId) : '';
+    }
+
+    // chapter_id à envoyer, ou undefined si la fiche n'a pas de liste "Dossier" (rangement inchangé).
+    function readTpChapterField() {
+        const select = document.getElementById('tpChapterSelect');
+        if (!select) return undefined;
+        return select.value ? parseInt(select.value, 10) : null;
     }
 
     let currentTpTemplateId = null;
@@ -94,6 +218,9 @@
                         <div id="tpImageStatus" class="mt-1"></div>`;
                     document.getElementById('tpImageUpload').addEventListener('change', handleTpImageUpload);
                 }
+
+                if (editable) setTpChapterField(tp.chapter_id);
+                else document.getElementById('tpChapterField')?.remove();
 
                 document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
                     .forEach(el => el.disabled = !editable);
@@ -180,6 +307,8 @@
             document.getElementById('tpImageUpload').addEventListener('change', handleTpImageUpload);
         }
 
+        setTpChapterField(null);
+
         document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')
             .forEach(el => el.disabled = false);
 
@@ -249,6 +378,8 @@
             image_url:            document.getElementById('tpImageUrl')?.value || '',
             room_type:            'Mixte'
         };
+        const chapterId = readTpChapterField();
+        if (chapterId !== undefined) data.chapter_id = chapterId;
 
         fetch('/api/tp-templates', {
             method: 'POST',
@@ -310,13 +441,15 @@
             image_url:           document.getElementById('tpImageUrl')?.value || '',
             room_type:           'Mixte'
         };
+        const chapterId = readTpChapterField();
+        if (chapterId !== undefined) data.chapter_id = chapterId;
 
         fetch(`/api/tp-templates/${templateId}`, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         })
-        .then(r => { if (!r.ok) throw new Error('Erreur serveur'); return r.json(); })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Erreur serveur'); }); return r.json(); })
         .then(() => {
             const modalEl = document.getElementById('editRequestModal');
             const modal = bootstrap.Modal.getInstance(modalEl);
@@ -373,6 +506,9 @@
                 });
                 const relatedCard = document.getElementById('editAllRelated')?.closest('.card');
                 if (relatedCard) relatedCard.style.display = 'none';
+
+                // Le dossier d'un collègue ne concerne pas la copie
+                document.getElementById('tpChapterField')?.remove();
 
                 // Tout en lecture seule
                 document.querySelectorAll('#editRequestModal input, #editRequestModal select, #editRequestModal textarea')

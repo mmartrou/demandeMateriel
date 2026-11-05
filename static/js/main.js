@@ -306,6 +306,32 @@ function parseHoraireToMinutes(horaire) {
 }
 
 
+// Libellé d'un dossier de TP : "Chapitre 1 : Les ions", "Chapitre 1" ou "Les ions".
+function chapterLabel(ch) {
+    const num = ch.number != null ? `Chapitre ${ch.number}` : '';
+    const title = ch.title || '';
+    return num && title ? `${num} : ${title}` : (num || title);
+}
+
+// Ajoute les TP à un <select>, regroupés par dossier (<optgroup>) si l'enseignant en a, sinon en liste simple.
+// makeOption(tp) construit l'<option> de chaque TP (chaque page a ses propres valeurs/attributs).
+function appendTpOptions(select, chapters, templates, makeOption) {
+    if (!chapters.length) {
+        templates.forEach(t => select.appendChild(makeOption(t)));
+        return;
+    }
+    const groups = chapters.map(ch => ({ label: chapterLabel(ch), tps: templates.filter(t => t.chapter_id === ch.id) }));
+    const sansDossier = templates.filter(t => !chapters.some(ch => ch.id === t.chapter_id));
+    groups.push({ label: 'Sans dossier', tps: sansDossier });
+    groups.filter(g => g.tps.length).forEach(g => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = g.label;
+        g.tps.forEach(t => optgroup.appendChild(makeOption(t)));
+        select.appendChild(optgroup);
+    });
+}
+
+
 // Export functions for global use
 window.showSuccessToast = showSuccessToast;
 window.showErrorToast = showErrorToast;

@@ -5,15 +5,23 @@ from flask import Blueprint, jsonify, redirect, render_template, request, url_fo
 
 from database import (
     add_recurring_course,
+    add_tp_chapter,
     delete_recurring_course,
+    delete_tp_chapter,
     generate_draft_requests_for_week,
     get_all_teachers,
     get_db_connection,
     get_recurring_courses,
+    get_tp_chapter_by_id,
+    get_tp_chapters,
     get_tp_template_by_id,
     get_tp_templates,
+    rename_tp_template,
+    set_tp_template_chapter,
+    update_tp_chapter,
     upsert_tp_template,
 )
+from deadline_utils import get_earliest_valid_date
 from security import _get_current_user, _is_owner_or_admin, _is_privileged_user, api_error
 
 bp = Blueprint('mes_tps', __name__)
@@ -23,6 +31,42 @@ bp = Blueprint('mes_tps', __name__)
 # database.generate_draft_requests_for_week, dans database/emploi_du_temps.py) : ce n'est pas un nom de TP choisi par l'enseignant.
 def _est_nom_brouillon_auto(request_name, class_name):
     return bool(class_name) and request_name.strip() == f"{class_name} (cours régulier)"
+
+
+def _cle_chapitre(number, title):
+    """Ce qui distingue deux dossiers à l'affichage (nom comparé sans tenir compte des majuscules)."""
+    return (number, (title or '').strip().lower())
+
+
+def _lire_chapitre(data):
+    """Lit et valide numéro + nom d'un dossier. Renvoie (number, title, message_erreur)."""
+    title = (data.get('title') or '').strip() or None
+    raw_number = data.get('number')
+    if raw_number in (None, ''):
+        number = None
+    else:
+        try:
+            number = int(raw_number)
+        except (TypeError, ValueError):
+            return None, None, 'Le numéro du chapitre doit être un nombre'
+    if number is None and not title:
+        return None, None, 'Indiquez un numéro, un nom, ou les deux'
+    return number, title, None
+
+
+def _dossier_en_double(teacher_id, level, number, title, chapter_id=None):
+    """Un autre dossier du niveau a-t-il déjà ce numéro ET ce nom ? (chapter_id : dossier modifié, exclu)"""
+    cle = _cle_chapitre(number, title)
+    return any(ch['id'] != chapter_id and _cle_chapitre(ch['number'], ch['title']) == cle
+               for ch in get_tp_chapters(teacher_id, level))
+
+
+def _dossier_valide(chapter_id, teacher_id, level):
+    """Un TP ne peut être rangé que dans un dossier du même enseignant et du même niveau (None = sans dossier)."""
+    if chapter_id is None:
+        return True
+    ch = get_tp_chapter_by_id(chapter_id)
+    return bool(ch) and ch['teacher_id'] == teacher_id and ch['level'] == level
 
 
 def _enregistrer_template_tp(data, group_count):
@@ -119,6 +163,9 @@ def api_create_tp_template():
         existing = get_tp_templates(user['teacher_id'], level)
         if any(t.get('request_name') == request_name for t in existing):
             return jsonify({'error': f'Un TP nommé "{request_name}" existe déjà pour ce niveau'}), 409
+        chapter_id = data.get('chapter_id') or None
+        if not _dossier_valide(chapter_id, user['teacher_id'], level):
+            return jsonify({'error': 'Dossier invalide'}), 400
         upsert_tp_template(
             teacher_id=user['teacher_id'],
             level=level,
@@ -132,6 +179,10 @@ def api_create_tp_template():
             image_url=data.get('image_url', ''),
             room_type=data.get('room_type', 'Mixte')
         )
+        if chapter_id is not None:
+            created = next((t for t in get_tp_templates(user['teacher_id'], level) if t['request_name'] == request_name), None)
+            if created:
+                set_tp_template_chapter(created['id'], chapter_id)
         return jsonify({'success': True})
     except Exception as e:
         return api_error('Erreur lors de la création du template TP', e)
@@ -207,10 +258,26 @@ def api_update_tp_template(template_id):
         if not _is_owner_or_admin(template.get('teacher_id')):
             return jsonify({'error': 'Non autorisé'}), 403
         data = request.get_json(silent=True) or {}
+
+        # Dossier : vérifié avant toute écriture ; absent des données = rangement inchangé.
+        chapter_id = data.get('chapter_id') or None
+        if not _dossier_valide(chapter_id, template['teacher_id'], template['level']):
+            return jsonify({'error': 'Dossier invalide'}), 400
+
+        # Renommage par l'id : l'upsert ci-dessous, indexé sur le nom, créerait sinon un second TP.
+        old_name = template['request_name']
+        new_name = (data.get('request_name') or old_name).strip()
+        if new_name != old_name:
+            if any(t['request_name'] == new_name for t in get_tp_templates(template['teacher_id'], template['level'])):
+                return jsonify({'error': f'Un TP nommé "{new_name}" existe déjà pour ce niveau'}), 409
+            if not rename_tp_template(template_id, template['teacher_id'], template['level'],
+                                      old_name, new_name, get_earliest_valid_date()):
+                return jsonify({'error': 'Erreur lors du renommage du TP'}), 500
+
         upsert_tp_template(
             teacher_id=template['teacher_id'],
             level=template.get('level', ''),
-            request_name=data.get('request_name', template.get('request_name', '')),
+            request_name=new_name,
             material_description=data.get('material_description', ''),
             selected_materials=data.get('selected_materials', ''),
             material_prof=data.get('material_prof', ''),
@@ -220,9 +287,86 @@ def api_update_tp_template(template_id):
             image_url=data.get('image_url', ''),
             room_type=data.get('room_type', 'Mixte')
         )
+        if 'chapter_id' in data:
+            set_tp_template_chapter(template_id, chapter_id)
         return jsonify({'success': True})
     except Exception as e:
         return api_error('Erreur lors de la mise à jour du template TP', e)
+
+
+@bp.route('/api/tp-chapters', methods=['GET'])
+def api_get_tp_chapters():
+    """Dossiers d'un enseignant pour un niveau (mêmes droits de lecture que /api/tp-templates :
+    le labo et l'admin en ont besoin pour la modale de modification d'une demande)."""
+    try:
+        teacher_id = request.args.get('teacher_id', type=int)
+        level = request.args.get('level', '')
+        if not teacher_id or not level:
+            return jsonify({'error': 'teacher_id et level sont requis'}), 400
+        return jsonify(get_tp_chapters(teacher_id, level))
+    except Exception as e:
+        return api_error('Erreur lors de la récupération des dossiers', e)
+
+
+@bp.route('/api/tp-chapters', methods=['POST'])
+def api_create_tp_chapter():
+    """Crée un dossier pour l'enseignant connecté."""
+    try:
+        user = _get_current_user()
+        if not user or not user.get('teacher_id'):
+            return jsonify({'error': 'Non autorisé'}), 401
+        data = request.get_json(silent=True) or {}
+        level = (data.get('level') or '').strip()
+        if not level:
+            return jsonify({'error': 'level est requis'}), 400
+        number, title, erreur = _lire_chapitre(data)
+        if erreur:
+            return jsonify({'error': erreur}), 400
+        if _dossier_en_double(user['teacher_id'], level, number, title):
+            return jsonify({'error': 'Un dossier avec ce numéro et ce nom existe déjà'}), 409
+        chapter_id = add_tp_chapter(user['teacher_id'], level, number, title)
+        if chapter_id is None:
+            return jsonify({'error': 'Erreur lors de la création du dossier'}), 500
+        return jsonify({'success': True, 'id': chapter_id})
+    except Exception as e:
+        return api_error('Erreur lors de la création du dossier', e)
+
+
+@bp.route('/api/tp-chapters/<int:chapter_id>', methods=['PUT'])
+def api_update_tp_chapter(chapter_id):
+    """Modifie le numéro et/ou le nom d'un dossier."""
+    try:
+        chapter = get_tp_chapter_by_id(chapter_id)
+        if not chapter:
+            return jsonify({'error': 'Dossier non trouvé'}), 404
+        if not _is_owner_or_admin(chapter['teacher_id']):
+            return jsonify({'error': 'Non autorisé'}), 403
+        number, title, erreur = _lire_chapitre(request.get_json(silent=True) or {})
+        if erreur:
+            return jsonify({'error': erreur}), 400
+        if _dossier_en_double(chapter['teacher_id'], chapter['level'], number, title, chapter_id):
+            return jsonify({'error': 'Un dossier avec ce numéro et ce nom existe déjà'}), 409
+        if not update_tp_chapter(chapter_id, number, title):
+            return jsonify({'error': 'Erreur lors de la modification du dossier'}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la modification du dossier', e)
+
+
+@bp.route('/api/tp-chapters/<int:chapter_id>', methods=['DELETE'])
+def api_delete_tp_chapter(chapter_id):
+    """Supprime un dossier ; ses TP sont conservés et redeviennent « sans dossier »."""
+    try:
+        chapter = get_tp_chapter_by_id(chapter_id)
+        if not chapter:
+            return jsonify({'error': 'Dossier non trouvé'}), 404
+        if not _is_owner_or_admin(chapter['teacher_id']):
+            return jsonify({'error': 'Non autorisé'}), 403
+        if not delete_tp_chapter(chapter_id):
+            return jsonify({'error': 'Erreur lors de la suppression du dossier'}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors de la suppression du dossier', e)
 
 
 @bp.route('/api/recurring-courses', methods=['GET'])
