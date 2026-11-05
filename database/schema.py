@@ -455,6 +455,8 @@ def init_database():
 
     # Migration : dossier (chapitre) d'un TP, vide par défaut = TP non rangé
     _add_column_if_missing(cursor, db_type, 'tp_templates', 'chapter_id', 'INTEGER')
+    # Migration : ordre choisi par glisser-déposer dans Mes TPs, vide = après les TP ordonnés, par nom
+    _add_column_if_missing(cursor, db_type, 'tp_templates', 'position', 'INTEGER')
 
     # Table de l'emploi du temps type (cours récurrents) d'un enseignant : jour de semaine (0=Lundi..4=Vendredi)
     # + horaire + niveau. Sert de base pour générer automatiquement des demandes "brouillon" chaque semaine.

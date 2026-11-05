@@ -73,5 +73,7 @@
 {% block extra_js %}
 {% include '_request_modal.html' %}
 {% include '_request_modal_js.html' %}
+<!-- Glisser-déposer des TP entre dossiers (fonctionne aussi au doigt sur tablette) -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script src="{{ asset('js/pages/mes_tps.js') }}"></script>
 {% endblock %}

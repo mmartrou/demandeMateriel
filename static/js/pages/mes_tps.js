@@ -25,14 +25,18 @@
             });
     });
 
-    function tpItemHtml(tp, editable) {
+    // sortable : poignée ⠿ de glisser-déposer (dossiers de Mes TPs, si SortableJS a pu être chargé)
+    function tpItemHtml(tp, editable, sortable = false) {
         const action = editable
             ? `ondblclick="openTpDetail(${tp.id}, true)"`
             : `ondblclick="copyTpTemplate(${tp.id})"`;
+        const handle = sortable
+            ? '<span class="tp-handle text-muted me-2" title="Glisser pour déplacer ou réordonner" style="cursor: grab;">⠿</span>'
+            : '';
         return `
-            <div class="list-group-item list-group-item-action"
+            <div class="list-group-item list-group-item-action${sortable ? ' tp-item' : ''}" data-template-id="${tp.id}"
                 ${action} style="cursor: pointer;">
-                <strong>${escapeHtml(tp.request_name)}</strong>
+                ${handle}<strong>${escapeHtml(tp.request_name)}</strong>
                 <small class="text-muted ms-2">${escapeHtml(tp.room_type || 'Mixte')}</small>
                 ${!editable ? '<span class="badge bg-outline-secondary float-end">Double-clic pour copier</span>' : ''}
             </div>`;
@@ -47,20 +51,28 @@
         container.innerHTML = `<div class="list-group">${templates.map(tp => tpItemHtml(tp, editable)).join('')}</div>`;
     }
 
-    // Un panneau par dossier (tous ouverts), puis "Sans dossier" s'il contient des TP.
+    // Un panneau par dossier (tous ouverts), puis "Sans dossier" (toujours affiché avec le glisser-déposer,
+    // pour pouvoir y déposer un TP sorti d'un dossier).
     function renderTpAccordion(containerId, chapters, templates) {
+        const sortable = typeof Sortable !== 'undefined';
         const panels = chapters.map(ch => ({ chapter: ch, label: chapterLabel(ch), tps: templates.filter(t => t.chapter_id === ch.id) }));
         const sansDossier = templates.filter(t => !chapters.some(ch => ch.id === t.chapter_id));
-        if (sansDossier.length) panels.push({ chapter: null, label: 'Sans dossier', tps: sansDossier });
+        if (sansDossier.length || sortable) panels.push({ chapter: null, label: 'Sans dossier', tps: sansDossier });
 
+        const emptyHint = sortable
+            ? 'Aucun TP : glissez-en un ici, ou rangez-le depuis sa fiche.'
+            : 'Aucun TP dans ce dossier : rangez-y un TP depuis sa fiche.';
         const html = panels.map(p => {
             const collapseId = `tpChapter-${p.chapter ? p.chapter.id : 'none'}`;
             const actions = p.chapter ? `
                 <button type="button" class="btn btn-sm btn-link text-secondary" data-edit-chapter="${p.chapter.id}" title="Modifier le dossier">✏️</button>
                 <button type="button" class="btn btn-sm btn-link text-danger" data-delete-chapter="${p.chapter.id}" title="Supprimer le dossier">🗑️</button>` : '';
-            const body = p.tps.length
-                ? `<div class="list-group list-group-flush">${p.tps.map(tp => tpItemHtml(tp, true)).join('')}</div>`
-                : '<p class="text-muted small m-2">Aucun TP dans ce dossier : rangez-y un TP depuis sa fiche.</p>';
+            // La liste reste présente même vide : c'est la zone où l'on dépose les TP.
+            const body = `
+                <div class="list-group list-group-flush tp-sortable" data-chapter-id="${p.chapter ? p.chapter.id : ''}" style="min-height: 2.5rem;">
+                    ${p.tps.map(tp => tpItemHtml(tp, true, sortable)).join('')}
+                    <p class="tp-empty-hint text-muted small m-2"${p.tps.length ? ' style="display: none;"' : ''}>${emptyHint}</p>
+                </div>`;
             return `
                 <div class="accordion-item">
                     <h2 class="accordion-header d-flex align-items-center">
@@ -82,6 +94,38 @@
         });
         container.querySelectorAll('[data-delete-chapter]').forEach(btn => {
             btn.addEventListener('click', () => deleteChapter(chapters.find(ch => ch.id === Number(btn.dataset.deleteChapter))));
+        });
+        if (sortable) {
+            container.querySelectorAll('.tp-sortable').forEach(list => new Sortable(list, {
+                group: 'mes-tps',          // même groupe : on peut passer d'un dossier à l'autre
+                handle: '.tp-handle',
+                draggable: '.tp-item',     // le texte "Aucun TP" n'est pas déplaçable
+                animation: 150,
+                onEnd: evt => {
+                    if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
+                    saveArrangement(evt.to);
+                }
+            }));
+        }
+    }
+
+    // Enregistre le contenu d'un dossier après un glisser-déposer. Seul le dossier d'arrivée est
+    // envoyé : dans celui de départ, l'ordre relatif des TP restants ne change pas.
+    function saveArrangement(list) {
+        const templateIds = [...list.querySelectorAll('.tp-item')].map(el => Number(el.dataset.templateId));
+        fetch('/api/tp-templates/arrangement', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                chapter_id: list.dataset.chapterId ? Number(list.dataset.chapterId) : null,
+                template_ids: templateIds
+            })
+        })
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error); }); return r.json(); })
+        .then(() => reloadMyTps())  // met à jour les compteurs et les textes "Aucun TP"
+        .catch(err => {
+            showErrorToast('Erreur : ' + err.message);
+            reloadMyTps();  // remet chaque TP à sa vraie place
         });
     }
 

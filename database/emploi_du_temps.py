@@ -9,18 +9,20 @@ logger = logging.getLogger(__name__)
 
 
 def get_tp_templates(teacher_id, level):
-    """Retourne les templates TP d'un enseignant pour un niveau donné, triés par nom."""
+    """Retourne les templates TP d'un enseignant pour un niveau donné : dans l'ordre choisi par
+    glisser-déposer (position), puis par nom pour ceux qui n'ont pas de position."""
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
         placeholder = '%s' if db_type == 'postgresql' else '?'
+        # (position IS NULL) : même ordre sous PostgreSQL (NULL à la fin) et SQLite (NULL au début)
         cursor.execute(f'''
             SELECT id, request_name, material_description, selected_materials,
                    material_prof, computers_needed, group_count, notes, image_url, room_type,
                    chapter_id
             FROM tp_templates
             WHERE teacher_id = {placeholder} AND level = {placeholder}
-            ORDER BY request_name
+            ORDER BY (position IS NULL), position, request_name
         ''', (teacher_id, level))
         rows = cursor.fetchall()
         conn.close()
@@ -208,7 +210,8 @@ def delete_tp_chapter(chapter_id):
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
         ph = '%s' if db_type == 'postgresql' else '?'
-        cursor.execute(f'UPDATE tp_templates SET chapter_id = NULL WHERE chapter_id = {ph}', (chapter_id,))
+        cursor.execute(f'UPDATE tp_templates SET chapter_id = NULL, position = NULL WHERE chapter_id = {ph}',
+                       (chapter_id,))
         cursor.execute(f'DELETE FROM tp_chapters WHERE id = {ph}', (chapter_id,))
         conn.commit()
         conn.close()
@@ -219,17 +222,36 @@ def delete_tp_chapter(chapter_id):
 
 
 def set_tp_template_chapter(template_id, chapter_id):
-    """Range un TP dans un dossier (chapter_id=None : le sort de son dossier)."""
+    """Range un TP dans un dossier (chapter_id=None : le sort de son dossier). Sa position est
+    effacée : il se place à la fin de son nouveau dossier."""
     try:
         conn, db_type = get_db_connection()
         cursor = conn.cursor()
         ph = '%s' if db_type == 'postgresql' else '?'
-        cursor.execute(f'UPDATE tp_templates SET chapter_id = {ph} WHERE id = {ph}', (chapter_id, template_id))
+        cursor.execute(f'UPDATE tp_templates SET chapter_id = {ph}, position = NULL WHERE id = {ph}',
+                       (chapter_id, template_id))
         conn.commit()
         conn.close()
         return True
     except Exception as e:
         logger.error(f"Erreur set_tp_template_chapter: {e}")
+        return False
+
+
+def arrange_tp_templates(chapter_id, template_ids):
+    """Glisser-déposer : range ces TP dans le dossier chapter_id (None = sans dossier), dans cet ordre."""
+    try:
+        conn, db_type = get_db_connection()
+        cursor = conn.cursor()
+        ph = '%s' if db_type == 'postgresql' else '?'
+        for position, template_id in enumerate(template_ids):
+            cursor.execute(f'UPDATE tp_templates SET chapter_id = {ph}, position = {ph} WHERE id = {ph}',
+                           (chapter_id, position, template_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Erreur arrange_tp_templates: {e}")
         return False
 
 

@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, url_fo
 from database import (
     add_recurring_course,
     add_tp_chapter,
+    arrange_tp_templates,
     delete_recurring_course,
     delete_tp_chapter,
     generate_draft_requests_for_week,
@@ -287,11 +288,40 @@ def api_update_tp_template(template_id):
             image_url=data.get('image_url', ''),
             room_type=data.get('room_type', 'Mixte')
         )
-        if 'chapter_id' in data:
+        # Seulement si le dossier change : sinon la position choisie par glisser-déposer serait perdue.
+        if 'chapter_id' in data and chapter_id != template.get('chapter_id'):
             set_tp_template_chapter(template_id, chapter_id)
         return jsonify({'success': True})
     except Exception as e:
         return api_error('Erreur lors de la mise à jour du template TP', e)
+
+
+@bp.route('/api/tp-templates/arrangement', methods=['PUT'])
+def api_arrange_tp_templates():
+    """Glisser-déposer dans Mes TPs : {chapter_id, template_ids} = contenu d'un dossier
+    (chapter_id null = sans dossier), dans l'ordre affiché."""
+    try:
+        data = request.get_json(silent=True) or {}
+        template_ids = data.get('template_ids')
+        if not isinstance(template_ids, list) or not template_ids \
+                or not all(isinstance(i, int) and not isinstance(i, bool) for i in template_ids):
+            return jsonify({'error': 'template_ids doit être une liste d\'identifiants'}), 400
+        templates = [get_tp_template_by_id(i) for i in template_ids]
+        if not all(templates):
+            return jsonify({'error': 'Template non trouvé'}), 404
+        teacher_id, level = templates[0]['teacher_id'], templates[0]['level']
+        if any(t['teacher_id'] != teacher_id or t['level'] != level for t in templates):
+            return jsonify({'error': 'Les TP doivent être du même enseignant et du même niveau'}), 400
+        if not _is_owner_or_admin(teacher_id):
+            return jsonify({'error': 'Non autorisé'}), 403
+        chapter_id = data.get('chapter_id') or None
+        if not _dossier_valide(chapter_id, teacher_id, level):
+            return jsonify({'error': 'Dossier invalide'}), 400
+        if not arrange_tp_templates(chapter_id, template_ids):
+            return jsonify({'error': 'Erreur lors du rangement des TP'}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return api_error('Erreur lors du rangement des TP', e)
 
 
 @bp.route('/api/tp-chapters', methods=['GET'])

@@ -100,6 +100,7 @@ from .emploi_du_temps import (  # noqa: E402, F401
     update_tp_chapter,
     delete_tp_chapter,
     set_tp_template_chapter,
+    arrange_tp_templates,
     rename_tp_template,
     get_recurring_courses,
     add_recurring_course,
