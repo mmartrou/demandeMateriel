@@ -138,7 +138,9 @@ def _select_tp_chapters(where, params):
             WHERE {where.format(ph=ph)}
             ORDER BY (number IS NULL), number, title
         ''', params)
-        rows = [dict(row) for row in cursor.fetchall()]
+        # Noms de colonnes : PostgreSQL renvoie ici de simples tuples (pas de RealDictCursor), SQLite des sqlite3.Row
+        colonnes = [col[0] for col in cursor.description]
+        rows = [dict(zip(colonnes, row)) for row in cursor.fetchall()]
         conn.close()
         return rows
     except Exception as e:
