@@ -1,0 +1,63 @@
+.time-slot {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    margin: 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.time-slot.available {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+.time-slot.available:hover {
+    background-color: #c1e1c5;
+}
+
+.time-slot:not(.available) {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+
+.time-slot:not(.available):hover {
+    background-color: #e9ecef;
+}
+
+.day-column {
+    min-width: 120px;
+}
+
+.time-grid {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.current-slots {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.slot-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    background-color: #f8f9fa;
+}
+
+.slot-item:hover {
+    background-color: #e9ecef;
+}
+
+.btn-remove {
+    padding: 2px 8px;
+    font-size: 12px;
+}

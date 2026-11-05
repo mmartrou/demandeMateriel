@@ -1,0 +1,305 @@
+.calendar-header {
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.teacher-name {
+    font-weight: bold;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 3px solid #007bff;
+}
+
+/* ---- Grille type Pronote ---- */
+:root {
+    --pt-hour-px: 60px;   /* hauteur d'une heure dans la grille */
+    --pt-time-col: 56px;  /* largeur de la colonne des heures */
+}
+
+.pronote-wrap {
+    overflow-x: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.pronote-timetable {
+    min-width: 760px;
+}
+
+.pronote-head,
+.pronote-body,
+.pronote-noh-row {
+    display: grid;
+    grid-template-columns: var(--pt-time-col) repeat(5, 1fr);
+}
+
+.pronote-head {
+    border-bottom: 2px solid #dee2e6;
+    background: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.pronote-head-cell {
+    padding: 0.5rem 0.25rem;
+    text-align: center;
+    font-weight: 600;
+    color: #495057;
+    border-left: 1px solid #dee2e6;
+}
+
+.pronote-head-cell:first-child {
+    border-left: none;
+}
+
+.pronote-head-cell.today {
+    background: #e7f1ff;
+    color: #0d6efd;
+}
+
+.pronote-head-daynum {
+    display: block;
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.pronote-body {
+    position: relative;
+}
+
+.pronote-time-col {
+    position: relative;
+    border-right: 1px solid #dee2e6;
+}
+
+.pronote-time-label {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 0.72rem;
+    color: #adb5bd;
+    white-space: nowrap;
+}
+
+.pronote-day-col {
+    position: relative;
+    border-left: 1px solid #eef0f2;
+    background-image: linear-gradient(#eef0f2 1px, transparent 1px);
+    background-size: 100% var(--pt-hour-px);
+    background-position: 0 0;
+}
+
+.pronote-day-col.today {
+    background-color: #f5f9ff;
+}
+
+/* Jours passés : gris très léger */
+.pronote-day-col.past,
+.pronote-noh-cell.past {
+    background-color: #f4f5f6;
+}
+.pronote-head-cell.past {
+    background-color: #eceef0;
+    color: #868e96;
+}
+
+/* Jours à venir dont le délai de dépôt est dépassé : beige/orangé discret */
+.pronote-day-col.closed,
+.pronote-noh-cell.closed {
+    background-color: #fff6e9;
+}
+.pronote-head-cell.closed {
+    background-color: #fdebd0;
+    color: #8a5a14;
+}
+
+.pronote-now-line {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    height: 2px;
+    background: #dc3545;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.pronote-now-line::before {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dc3545;
+}
+
+.pronote-event {
+    position: absolute;
+    border-radius: 0.35rem;
+    padding: 0.2rem 0.35rem;
+    color: #fff !important;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    transition: box-shadow 0.15s, filter 0.15s;
+}
+
+.pronote-event:hover,
+.pronote-event:focus {
+    filter: brightness(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 5;
+    outline: none;
+}
+
+.pronote-event .ev-time {
+    font-weight: 700;
+    display: block;
+}
+
+.pronote-event .ev-teacher {
+    opacity: 0.9;
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-event .ev-class {
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-event .ev-room {
+    font-size: 0.9em;
+    opacity: 0.95;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-event .ev-name {
+    font-style: italic;
+    opacity: 0.95;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-noh-row {
+    border-top: 1px solid #dee2e6;
+    background: #fbfbfb;
+}
+
+.pronote-noh-label {
+    font-size: 0.68rem;
+    color: #6c757d;
+    padding: 0.4rem 0.25rem;
+    text-align: right;
+}
+
+.pronote-noh-cell {
+    padding: 0.3rem;
+    border-left: 1px solid #eef0f2;
+    min-height: 2.2rem;
+}
+
+.pronote-noh-chip {
+    display: inline-block;
+    color: #fff !important;
+    font-size: 0.68rem;
+    border-radius: 0.3rem;
+    padding: 0.15rem 0.4rem;
+    margin: 0.1rem;
+    cursor: pointer;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pronote-empty-week {
+    padding: 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+
+/* ---- Jours non ouvrés (fériés, vacances...) : hachurés ---- */
+.pronote-day-col.holiday {
+    background-color: #f1f3f5;
+    background-image:
+        repeating-linear-gradient(-45deg, rgba(108, 117, 125, 0.18) 0, rgba(108, 117, 125, 0.18) 2px, transparent 2px, transparent 10px),
+        linear-gradient(#e2e5e8 1px, transparent 1px);
+    background-size: auto, 100% var(--pt-hour-px);
+}
+
+.pronote-noh-cell.holiday {
+    background-color: #f1f3f5;
+    background-image: repeating-linear-gradient(-45deg, rgba(108, 117, 125, 0.18) 0, rgba(108, 117, 125, 0.18) 2px, transparent 2px, transparent 10px);
+}
+
+.pronote-head-cell.holiday {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(108, 117, 125, 0.18) 0,
+        rgba(108, 117, 125, 0.18) 2px,
+        transparent 2px,
+        transparent 10px
+    );
+    color: #6c757d;
+}
+
+
+/* ---- Barre de navigation de semaine ---- */
+.week-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+}
+
+.week-toolbar .week-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.week-toolbar h5 {
+    margin: 0;
+    min-width: 18rem;
+    text-align: center;
+}
+
+/* ---- Bandeau date limite ---- */
+.deadline-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.05rem;
+}
+
+.deadline-banner .deadline-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+}

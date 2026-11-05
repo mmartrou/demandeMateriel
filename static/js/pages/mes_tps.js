@@ -382,7 +382,7 @@
         (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
     }
 
-    // Mêmes conventions que saveRequestChanges() dans _request_modal_js.html
+    // Mêmes conventions que saveRequestChanges() dans request_modal.js
     function buildMaterialFields() {
         if (document.getElementById('editAbsent')?.checked) {
             return { selected_materials: 'Absent', material_description: 'Enseignant absent' };

@@ -10,7 +10,7 @@ let events = [];
 let nonWorkingDays = new Set();
 let firstOpenRequestDate = null; // première date (AAAA-MM-JJ) encore ouverte aux demandes, voir /api/calendar-info
 
-// myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par _request_modal_js.html (inclus plus haut)
+// myTeacherId, escapeHtml et dureeParNiveau sont déjà fournis par request_modal.js (chargé plus haut)
 
 // Plage horaire affichée dans la grille (correspond aux horaires proposés dans le formulaire de demande)
 const PT_DAY_START_MIN = 9 * 60;   // 9h00
