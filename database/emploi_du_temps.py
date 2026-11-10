@@ -4,6 +4,7 @@ import logging
 from .connexion import get_db_connection
 from .demandes import add_material_request
 from .jours import is_working_day_configured
+from .enseignants import get_all_levels
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +385,8 @@ def generate_draft_requests_for_week(teacher_id, week_start_date, enforce_deadli
     if not courses:
         return 0, 0
 
+    groupes_par_niveau = {l['name']: l['default_groups'] for l in get_all_levels()}
+
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     placeholder = '%s' if db_type == 'postgresql' else '?'
@@ -416,7 +419,8 @@ def generate_draft_requests_for_week(teacher_id, week_start_date, enforce_deadli
             horaire=course['horaire'],
             selected_materials='Pas besoin de matériel',
             request_name=f"{course['class_name']} (cours régulier)",
-            is_draft=True
+            is_draft=True,
+            group_count=groupes_par_niveau.get(course['class_name'], 1)
         )
         created += 1
     conn.close()

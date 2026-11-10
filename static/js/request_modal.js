@@ -368,6 +368,12 @@ function populateEditForm(request) {
 
     parseAndSetSpecificMaterials(request.selected_materials || '');
 
+    const auMoinsUneCaseMaterielCochee = document.querySelector('input[name="editMaterials"]:checked');
+    if (!auMoinsUneCaseMaterielCochee) {
+        const cb = document.getElementById('editAucunMaterielSalle');
+        if (cb) cb.checked = true;
+    }
+
     const imageSection = document.getElementById('editImageSection');
     if (imageSection) {
         const safe = request.image_url && request.image_url.trim() ? sanitizeImageUrl(request.image_url) : '';
