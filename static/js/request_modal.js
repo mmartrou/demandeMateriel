@@ -87,6 +87,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('editAllRelated').addEventListener('change', toggleAllRelatedCheckboxes);
 });
 
+function libelleEcartJours(ecart) {
+    if (ecart === 0) return 'le même jour';
+    if (ecart === 1) return 'le lendemain';
+    if (ecart > 1) return `dans ${ecart} jours`;
+    if (ecart < -1) return `il y a ${-ecart} jours`;
+}
+
 // Construit la liste à cocher des demandes liées, une case par TP (voir currentRelatedList).
 function renderRelatedRequestsList() {
     const listEl = document.getElementById('relatedRequestsList');
@@ -96,15 +103,17 @@ function renderRelatedRequestsList() {
         (a.request_date || '').localeCompare(b.request_date || '')
         || (parseHoraireToMinutes(a.horaire) ?? 9999) - (parseHoraireToMinutes(b.horaire) ?? 9999)
     );
+    const dateDemande = document.getElementById('editDate').value;
     sorted.forEach(r => {
         const ymd = formatDateToYMD(r.request_date);
+        const ecartJoursDemandeEtDemandeLiee = Math.round((new Date(ymd) - new Date(dateDemande)) / 86400000); // 24 x 60 x 60 x 1000 = 86 400 000 (nombre de ms dans un jour)
         const dateLabel = ymd ? ymd.split('-').reverse().join('/') : (r.request_date || '');
         const horaireLabel = r.horaire ? ` — ${r.horaire}` : '';
         const wrapper = document.createElement('div');
         wrapper.className = 'form-check';
         wrapper.innerHTML = `
             <input class="form-check-input related-request-checkbox" type="checkbox" value="${r.id}" id="relatedReq${r.id}">
-            <label class="form-check-label" for="relatedReq${r.id}">${escapeHtml(dateLabel + horaireLabel)}</label>
+            <label class="form-check-label" for="relatedReq${r.id}">${escapeHtml(`${dateLabel}${horaireLabel} (${libelleEcartJours(ecartJoursDemandeEtDemandeLiee)})`)}</label>
         `;
         listEl.appendChild(wrapper);
     });
