@@ -90,8 +90,8 @@ document.addEventListener('DOMContentLoaded', function() {
 function libelleEcartJours(ecart) {
     if (ecart === 0) return 'le même jour';
     if (ecart === 1) return 'le lendemain';
-    if (ecart > 1) return `dans ${ecart} jours`;
-    if (ecart < -1) return `il y a ${-ecart} jours`;
+    if (ecart > 1) return `${ecart} jours après`;
+    if (ecart < -1) return `${-ecart} jours avant`;
 }
 
 // Construit la liste à cocher des demandes liées, une case par TP (voir currentRelatedList).
