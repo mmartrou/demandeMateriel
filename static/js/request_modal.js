@@ -91,7 +91,7 @@ function libelleEcartJours(ecart) {
     if (ecart === 0) return 'le même jour';
     if (ecart === 1) return 'le lendemain';
     if (ecart > 1) return `${ecart} jours après`;
-    if (ecart < -1) return `${-ecart} jours avant`;
+    if (ecart <= -1) return `${-ecart} jours avant`;
 }
 
 // Construit la liste à cocher des demandes liées, une case par TP (voir currentRelatedList).

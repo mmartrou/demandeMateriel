@@ -31,7 +31,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', os.getenv('SECRET_KEY', secrets.t
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-app.permanent_session_lifetime = timedelta(hours=8)
+app.permanent_session_lifetime = timedelta(days=8)
 
 # Configuration pour gérer les erreurs d'encodage UTF-8
 app.config['JSON_AS_ASCII'] = False
