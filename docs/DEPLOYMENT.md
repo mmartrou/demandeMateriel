@@ -210,7 +210,25 @@ sudo systemctl status demande-materiel --no-pager
 
 ## 11) Sauvegardes
 
-Les images jointes aux demandes sont stockées **uniquement** sur le serveur, dans `/opt/demande-materiel/static/uploads/` (ce dossier n'est pas versionné). Il doit faire partie des sauvegardes du VPS. La base de données, elle, est sur Neon.
+La base PostgreSQL et les images jointes (`/opt/demande-materiel/static/uploads/`, non versionné) sont **uniquement** sur le VPS : sans sauvegarde, la perte du disque ferait tout perdre.
+
+Le script [deploy/backup/sauvegarde.sh](../deploy/backup/sauvegarde.sh) écrit chaque nuit, dans `~/sauvegardes/`, un `pg_dump` de la base et une archive des images, et supprime celles de plus de 14 jours. Il lit `DATABASE_URL` dans le `.env`.
+
+```bash
+chmod +x /opt/demande-materiel/deploy/backup/sauvegarde.sh
+/opt/demande-materiel/deploy/backup/sauvegarde.sh          # essai à la main
+crontab -e                                                  # puis ajouter la ligne :
+# 30 3 * * * /opt/demande-materiel/deploy/backup/sauvegarde.sh >> $HOME/sauvegardes/sauvegarde.log 2>&1
+```
+
+Une sauvegarde qui reste sur le VPS ne protège pas d'une perte du VPS : copiez régulièrement `~/sauvegardes/` ailleurs (autre machine, stockage externe).
+
+Restaurer une sauvegarde dans une base vide :
+
+```bash
+pg_restore --no-owner --no-privileges -d "postgresql://utilisateur:motdepasse@localhost:5432/base_vide" ~/sauvegardes/base_AAAA-MM-JJ_HHMM.dump
+tar -xzf ~/sauvegardes/uploads_AAAA-MM-JJ_HHMM.tar.gz -C /opt/demande-materiel/static/
+```
 
 ## 12) Notes importantes pour ce projet
 
