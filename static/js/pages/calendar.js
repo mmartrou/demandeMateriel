@@ -17,6 +17,11 @@ const PT_DAY_START_MIN = 9 * 60;   // 9h00
 const PT_DAY_END_MIN = 20 * 60 + 15; // 20h15 (marge après le dernier créneau possible : 18h15 + 110 min)
 const PT_PX_PER_MIN = 1;           // 1 minute = 1px de hauteur (soit 60px/heure, cf. --pt-hour-px)
 const PT_GAP_PX = 2;
+const NOW_LINE_REFRESH_MS = 30 * 1000;  // fréquence de déplacement de la ligne rouge "maintenant"
+
+// Jour (AAAA-MM-JJ) considéré comme "aujourd'hui" lors du dernier dessin de la grille ; null tant
+// qu'elle n'a pas été dessinée. Sert à détecter le passage de minuit (voir updateNowLine).
+let renderedTodayStr = null;
 
 
 function getEventDurationMinutes(event) {
@@ -156,6 +161,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (this.value) {
             setCookie('selectedTeacher', this.value);
         }
+    });
+
+    // La ligne rouge "maintenant" avance toute seule. Les navigateurs ralentissent les minuteurs
+    // d'un onglet en arrière-plan : on remet la ligne à l'heure dès que l'onglet redevient visible.
+    setInterval(updateNowLine, NOW_LINE_REFRESH_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) updateNowLine();
     });
 });
 
@@ -348,6 +360,7 @@ function renderWeekView() {
     const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
     const showTeacherName = !document.getElementById('calendarFilterTeacher').value;
     const todayStr = ymd(new Date());
+    renderedTodayStr = todayStr;
     const gridHeight = (PT_DAY_END_MIN - PT_DAY_START_MIN) * PT_PX_PER_MIN;
 
     // Répartir les événements par jour, avec calcul de leur position temporelle
@@ -457,6 +470,33 @@ function renderWeekView() {
             }
         });
     });
+}
+
+// Fait avancer la ligne rouge de l'heure actuelle sans redessiner la grille (donc sans toucher au
+// défilement ni aux fenêtres ouvertes). Appelée toutes les NOW_LINE_REFRESH_MS, et au retour sur l'onglet.
+function updateNowLine() {
+    if (renderedTodayStr === null) return;             // grille pas encore dessinée
+    const now = new Date();
+    if (ymd(now) !== renderedTodayStr) {               // minuit passé : "aujourd'hui" n'est plus le même jour
+        renderWeekView();
+        return;
+    }
+    // Seule la colonne d'aujourd'hui porte la classe "today" ; absente si la semaine affichée ne le contient pas
+    const todayCol = document.querySelector('#pronoteTimetable .pronote-day-col.today');
+    if (!todayCol) return;
+
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let line = todayCol.querySelector('.pronote-now-line');
+    if (nowMin < PT_DAY_START_MIN || nowMin > PT_DAY_END_MIN) {   // hors de la plage affichée
+        if (line) line.remove();
+        return;
+    }
+    if (!line) {
+        line = document.createElement('div');
+        line.className = 'pronote-now-line';
+        todayCol.appendChild(line);
+    }
+    line.style.top = `${(nowMin - PT_DAY_START_MIN) * PT_PX_PER_MIN}px`;
 }
 
 function eventLabel(ev) {
