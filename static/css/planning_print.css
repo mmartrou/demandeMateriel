@@ -66,6 +66,8 @@ html, body {
     padding-bottom: 2.2mm; margin-bottom: 2.4mm;
     border-bottom: 0.8pt solid var(--ligne-forte);
 }
+/* version « affichage » : seulement la date, centrée */
+.entete.affichage { grid-template-columns: 1fr; }
 .entete .site { font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: var(--gris); }
 .entete .site strong { display: block; font-size: 10.5pt; letter-spacing: .04em; color: var(--encre); text-transform: none; }
 .entete h1 { margin: 0; font-size: 21pt; line-height: 1; font-weight: 700; letter-spacing: .01em; text-align: center; }
@@ -184,6 +186,15 @@ html, body {
 .legende .puce.autre { background: var(--autre); border-color: var(--autre-trait); }
 .legende .rouge { color: #c1121f; font-weight: 700; }
 .legende .vert { color: #146c43; font-weight: 700; }
+
+/* pastille affichée dans le coin seulement quand l'actualisation automatique échoue (réseau coupé, session
+   expirée...) : l'écran projeté montre alors un planning peut-être périmé, et il faut que quelqu'un le voie */
+.etat-maj {
+    position: fixed; right: 10px; bottom: 10px; z-index: 20;
+    padding: 4px 10px; border-radius: 6px;
+    background: #c1121f; color: #fff; font-size: 13px; font-weight: 600;
+}
+@media print { .etat-maj { display: none; } }
 
 .vide-message { margin: auto; text-align: center; color: var(--gris); font-size: 14pt; }
 

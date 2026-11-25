@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="{{ asset('css/planning_print.css') }}">
 </head>
 <body>
+    {# Version affichage (projetée) : rien d'autre que le planning, donc pas de barre d'outils #}
+    {% if p.mode != 'affichage' %}
     <div class="barre">
         <a href="{{ url_for('edition_planning.planning_editor') }}">← Retour à l'éditeur</a>
         <a href="{{ url_for('edition_planning.planning_print', date=p.date, mode='technicien') }}"
@@ -16,16 +18,21 @@
            class="{{ 'actif' if p.mode == 'affichage' }}">Version affichage</a>
         <button type="button" class="imprimer" onclick="window.print()">Imprimer</button>
     </div>
+    {% endif %}
 
     <main class="feuille">
-        <header class="entete">
+        <header class="entete {{ 'affichage' if p.mode == 'affichage' }}">
+            {% if p.mode == 'technicien' %}
             <div class="site"><strong>{{ p.site_name }}</strong>Planning du laboratoire</div>
+            {% endif %}
             <h1>{{ p.date_label }}</h1>
+            {% if p.mode == 'technicien' %}
             <div class="meta">
-                <span class="version">{{ 'Version techniciens' if p.mode == 'technicien' else 'Affichage' }}</span><br>
+                <span class="version">Version techniciens</span><br>
                 {{ p.nb_cours }} cours · {{ p.salles|length }} salles<br>
                 Édité le {{ p.edite_le }}
             </div>
+            {% endif %}
         </header>
 
         {# Grille : colonne 1 = heures, puis une colonne par salle. Lignes 1-2 = groupes et salles, puis une
@@ -67,7 +74,7 @@
             {% for cellule in ligne.cells %}
             {% if cellule and cellule.cours %}
             {% set c = cellule.cours %}
-            <div class="carte {{ c.matiere }} {{ cellule.taille }} {{ '' if c.details else 'affichage' }}"
+            <div class="carte {{ c.matiere if p.mode == 'technicien' }} {{ cellule.taille }} {{ '' if c.details else 'affichage' }}"
                  style="grid-row: {{ r }} / span {{ cellule.lignes }}; grid-column: {{ loop.index + 1 }}">
                 <div class="corps">
                     <div class="haut">
@@ -118,21 +125,28 @@
         </section>
         {% endif %}
 
+        {% if p.mode == 'technicien' %}
         <footer class="legende">
             <span><i class="puce physique"></i>Physique</span>
             <span><i class="puce chimie"></i>Chimie</span>
             <span><i class="puce autre"></i>Mixte</span>
-            {% if p.mode == 'technicien' %}
             <span>✓ demande préparée</span>
             <span><span class="rouge">💻 !</span> plus d'ordinateurs demandés que dans la plus grande salle</span>
             <span><strong>Std</strong> occupation standard · <strong>Sim.</strong> cours simultanés
                 (<span class="vert">vert</span> = égal au standard, <span class="rouge">rouge</span> = écart)</span>
-            {% endif %}
         </footer>
+        {% endif %}
     </main>
+
+    {% if p.mode == 'affichage' and not auto_print %}
+    <div id="etat-maj" class="etat-maj" hidden></div>
+    {% endif %}
 
     {% if auto_print %}
     <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });</script>
+    {% elif p.mode == 'affichage' %}
+    {# Page projetée : elle se met à jour quand le planning est modifié dans l'éditeur #}
+    <script src="{{ asset('js/pages/planning_print.js') }}"></script>
     {% endif %}
 </body>
 </html>
