@@ -402,22 +402,26 @@ def init_database():
         CREATE TABLE IF NOT EXISTS plannings (
             date {text_type} PRIMARY KEY,
             data {text_type} NOT NULL,
-            observations {text_type}
+            observations {text_type},
+            version INTEGER NOT NULL DEFAULT 0
         );
     ''')
-    # Migration : ajouter observations si absent
-    if db_type == 'postgresql':
-        cursor.execute("""
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name='plannings' AND column_name='observations'
-        """)
-        if cursor.fetchone() is None:
-            cursor.execute('ALTER TABLE plannings ADD COLUMN observations TEXT')
-    else:
-        try:
-            cursor.execute('ALTER TABLE plannings ADD COLUMN observations TEXT')
-        except Exception:
-            pass
+    # Migrations : ajouter observations et version si absentes. `version` augmente de 1 à chaque
+    # modification du planning : c'est ce qui permet à plusieurs postes de repérer qu'un collègue
+    # l'a modifié, et de refuser un enregistrement fait à partir d'une copie périmée.
+    for colonne, definition in (('observations', 'TEXT'), ('version', 'INTEGER NOT NULL DEFAULT 0')):
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='plannings' AND column_name=%s
+            """, (colonne,))
+            if cursor.fetchone() is None:
+                cursor.execute(f'ALTER TABLE plannings ADD COLUMN {colonne} {definition}')
+        else:
+            try:
+                cursor.execute(f'ALTER TABLE plannings ADD COLUMN {colonne} {definition}')
+            except Exception:
+                pass
 
     # Table des templates de TP (TPs précédemment demandés, classés par enseignant+niveau)
     cursor.execute(f'''

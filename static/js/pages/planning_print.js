@@ -1,6 +1,6 @@
-// Actualisation automatique de la page d'affichage du planning (mode "affichage", projetée sur un écran) :
-// quand un technicien modifie le planning dans l'éditeur, la feuille affichée se met à jour toute seule.
-// Chargé seulement en mode "affichage" et hors impression (voir templates/planning_print.html).
+// Actualisation automatique de la page du planning (version "affichage" projetée sur un écran, et version
+// "techniciens") : quand un technicien modifie le planning dans l'éditeur, la feuille affichée se met à jour
+// toute seule. Chargé sauf pour l'ouverture directe en impression, ?print=1 (voir templates/planning_print.html).
 //
 // Principe : on redemande toutes les INTERVALLE_MS la même adresse, on compare la feuille reçue à celle
 // qui est affichée et, si elle diffère, on la remplace (sans recharger la page, donc sans clignotement).
@@ -12,10 +12,14 @@
     let signatureAffichee = null;
     let enCours = false;
 
-    // Empreinte du contenu de la feuille : si elle change, le planning a changé.
-    // (En mode affichage la feuille ne contient aucune heure ni compteur qui varie tout seul.)
+    // Empreinte du contenu de la feuille : si elle change, le planning a changé. Le bloc ".meta" (version
+    // techniciens : "Édité le <heure actuelle>") est exclu, car il change chaque minute sans que le planning
+    // ait changé ; il est mis à jour en même temps que le reste quand la feuille est remplacée.
     function signature(feuille) {
-        return feuille.innerHTML;
+        const copie = feuille.cloneNode(true);
+        const meta = copie.querySelector('.meta');
+        if (meta) meta.remove();
+        return copie.innerHTML;
     }
 
     function signalerProbleme(texte) {

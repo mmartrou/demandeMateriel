@@ -11,9 +11,13 @@ from database import (
     get_all_student_numbers,
     get_all_teachers,
     get_db_connection,
+    get_planning_version,
     get_standard_occupation,
+    move_course,
+    set_planning_observations,
     set_standard_occupation,
 )
+from database import save_planning as enregistrer_planning
 from planning import (
     build_course_data_entry,
     generer_excel_from_saved_planning,
@@ -206,6 +210,53 @@ def api_generate_planning_from_editor():
         return api_error('Erreur lors de la génération du planning depuis l\'éditeur', e)
 
 
+def _date_valide(valeur):
+    try:
+        datetime.strptime(valeur or '', '%Y-%m-%d')
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+@bp.route('/api/planning-editor/version', methods=['GET'])
+def api_planning_version():
+    """Numéro de version du planning d'une date : appelé toutes les quelques secondes par chaque poste
+    ouvert sur l'éditeur, pour savoir s'il doit recharger le planning (voir database/plannings.py)."""
+    date = request.args.get('date', '')
+    if not _date_valide(date):
+        return jsonify({'error': 'Date invalide'}), 400
+    version, existe = get_planning_version(date)
+    return jsonify({'version': version, 'existe': existe})
+
+
+_ERREURS_DEPLACEMENT = {
+    'planning_introuvable': ("Aucun planning enregistré pour cette date", 404),
+    'cours_introuvable': ("Ce cours n'existe plus dans le planning (supprimé par quelqu'un d'autre ?)", 404),
+    'salle_inconnue': ("Salle inconnue", 400),
+    'creneau_invalide': ("Horaire invalide", 400),
+    'conflit': ("Le planning est modifié en ce moment par plusieurs personnes, réessayez", 409),
+}
+
+
+@bp.route('/api/planning-editor/move', methods=['POST'])
+def api_planning_move():
+    """Déplace un cours (salle + horaire) dans le planning enregistré, en l'appliquant à la version la plus
+    récente : deux techniciens qui déplacent deux cours en même temps ne s'écrasent pas."""
+    data = request.get_json(silent=True) or {}
+    date, course_id, room, creneau = data.get('date'), data.get('course_id'), data.get('room'), data.get('time')
+    if not _date_valide(date) or course_id in (None, '') or not isinstance(room, str) or not room:
+        return jsonify({'error': 'Requête invalide'}), 400
+    try:
+        statut, version = move_course(date, course_id, room, creneau,
+                                      extra_rooms=[r['name'] for r in get_all_rooms()])
+    except Exception as e:
+        return api_error('Erreur lors du déplacement du cours', e)
+    if statut == 'ok':
+        return jsonify({'version': version})
+    message, code = _ERREURS_DEPLACEMENT[statut]
+    return jsonify({'error': message, 'statut': statut, 'version': version}), code
+
+
 @bp.route('/api/save-planning', methods=['POST'])
 def save_planning():
     """API endpoint to save planning data into the database"""
@@ -226,32 +277,24 @@ def save_planning():
         date = data['date']
         planning_data = data.get('data') if data.get('data') is not None else {}
 
-        # Connexion à la base de données
-        conn, db_type = get_db_connection()  # Extraire uniquement la connexion SQLite ou PostgreSQL
-        cursor = conn.cursor()
+        # Édition à plusieurs : `base_version` est la version du planning que l'éditeur affichait. Si un
+        # collègue l'a modifié depuis, on refuse (409) plutôt que d'écraser son travail. `force` (génération
+        # d'un nouveau planning, confirmée par l'utilisateur) écrase sans condition, comme le font les anciens
+        # navigateurs qui n'envoient pas de version.
+        base_version = data.get('base_version')
+        if data.get('force') or base_version is None:
+            base_version = None
+        elif isinstance(base_version, bool) or not isinstance(base_version, int):
+            return jsonify({'error': 'base_version invalide'}), 400
 
-        # Insertion ou mise à jour des données
-        import json  # Importer le module JSON pour la conversion
-        planning_data_json = json.dumps(planning_data)  # Convertir le dictionnaire en JSON
+        ok, version = enregistrer_planning(date, planning_data, base_version)
+        if not ok:
+            current_app.logger.info(f"Enregistrement refusé pour {date} : le planning a changé (version {version})")
+            return jsonify({'error': 'Le planning a été modifié par quelqu\'un d\'autre entre-temps',
+                            'conflit': True, 'version': version}), 409
 
-        # Insertion ou mise à jour des données
-        placeholder = '%s' if db_type == 'postgresql' else '?'
-        if db_type == 'postgresql':
-            cursor.execute(f'''
-                INSERT INTO plannings (date, data)
-                VALUES ({placeholder}, {placeholder})
-                ON CONFLICT(date) DO UPDATE SET data=EXCLUDED.data
-            ''', (date, planning_data_json))
-        else:
-            cursor.execute(f'''
-                INSERT OR REPLACE INTO plannings (date, data)
-                VALUES ({placeholder}, {placeholder})
-            ''', (date, planning_data_json))
-        conn.commit()
-        conn.close()
-
-        current_app.logger.info(f"Planning enregistré avec succès pour la date: {date}")
-        return jsonify({'message': 'Planning enregistré avec succès'}), 200
+        current_app.logger.info(f"Planning enregistré avec succès pour la date: {date} (version {version})")
+        return jsonify({'message': 'Planning enregistré avec succès', 'version': version}), 200
 
     except Exception as e:
         current_app.logger.error(f"Erreur lors de l'enregistrement du planning: {e}")
@@ -275,10 +318,7 @@ def get_planning():
 
         # Récupérer les données du planning
         placeholder = '%s' if db_type == 'postgresql' else '?'
-        try:
-            cursor.execute(f"SELECT data, observations FROM plannings WHERE date = {placeholder}", (date,))
-        except Exception:
-            cursor.execute(f"SELECT data FROM plannings WHERE date = {placeholder}", (date,))
+        cursor.execute(f"SELECT data, observations, version FROM plannings WHERE date = {placeholder}", (date,))
         row = cursor.fetchone()
         conn.close()
 
@@ -286,10 +326,11 @@ def get_planning():
             if isinstance(row, dict):
                 raw = row['data']
                 obs = row.get('observations') or ''
+                version = row.get('version') or 0
             else:
-                raw = row[0]
-                obs = row[1] if len(row) > 1 else ''
+                raw, obs, version = row[0], row[1], row[2]
             obs = obs or ''
+            version = int(version or 0)
             planning = json.loads(raw) if isinstance(raw, str) else raw
 
             # Enrichir les courses avec les noms courts et labo_observations à jour
@@ -329,7 +370,7 @@ def get_planning():
                 planning['rooms'] = salles_a_jour(planning['rooms'])
 
             current_app.logger.info(f"Planning trouvé pour la date {date}")
-            return jsonify({'planning': planning, 'observations': obs}), 200
+            return jsonify({'planning': planning, 'observations': obs, 'version': version}), 200
         else:
             current_app.logger.warning(f"Aucun planning trouvé pour la date {date}.")
             return jsonify({'error': 'Aucun planning trouvé pour cette date'}), 404
@@ -350,24 +391,8 @@ def save_planning_observations():
         observations = data.get('observations', '')
         if not date:
             return jsonify({'error': 'Date requise'}), 400
-        conn, db_type = get_db_connection()
-        cursor = conn.cursor()
-        placeholder = '%s' if db_type == 'postgresql' else '?'
-        if db_type == 'postgresql':
-            cursor.execute(f'''
-                INSERT INTO plannings (date, data, observations)
-                VALUES ({placeholder}, {placeholder}, {placeholder})
-                ON CONFLICT(date) DO UPDATE SET observations=EXCLUDED.observations
-            ''', (date, '{}', observations))
-        else:
-            cursor.execute(f'SELECT 1 FROM plannings WHERE date={placeholder}', (date,))
-            if cursor.fetchone():
-                cursor.execute(f'UPDATE plannings SET observations={placeholder} WHERE date={placeholder}', (observations, date))
-            else:
-                cursor.execute(f'INSERT INTO plannings (date, data, observations) VALUES ({placeholder},{placeholder},{placeholder})', (date, '{}', observations))
-        conn.commit()
-        conn.close()
-        return jsonify({'message': 'Observations enregistrées'}), 200
+        version = set_planning_observations(date, observations)
+        return jsonify({'message': 'Observations enregistrées', 'version': version}), 200
     except Exception as e:
         return api_error('Erreur lors de la sauvegarde des observations', e)
 

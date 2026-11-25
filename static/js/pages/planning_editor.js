@@ -58,20 +58,38 @@
     let draggedElement = null;
     let originalPosition = null;
 
+    // --- Édition à plusieurs : plusieurs techniciens peuvent travailler sur le même planning ---
+    // Numéro de version du planning enregistré que cet écran affiche (0 = pas encore enregistré ; null =
+    // inconnu). Toutes les INTERVALLE_SYNC_MS, on demande au serveur la version actuelle : si elle diffère,
+    // un collègue a modifié le planning et on le recharge (voir verifierMisesAJour).
+    let planningVersion = null;
+    // Nombre d'enregistrements en cours : tant qu'il y en a, on ne recharge pas le planning, sinon un cours
+    // qu'on vient de déplacer « sauterait » en arrière le temps que le serveur le prenne en compte.
+    let enregistrementsEnCours = 0;
+    let rechargementEnCours = false;
+    // Vrai quand l'écran doit être rechargé même si la version n'a pas changé (déplacement refusé, conflit...)
+    let rechargementDemande = false;
+    // Dernières observations connues du serveur (pour ne pas écraser le texte en cours de frappe)
+    let observationsServeur = '';
+    let derniereVersionTentee = '';
+    const INTERVALLE_SYNC_MS = 3000;
+
     // Identifiant de la colonne "stockage temporaire" (pas une vraie salle) et données
     // de la colonne "Occupation standard" ({slot: valeur}) pour le jour de semaine affiché
     const TEMP_STORAGE_ID = '__TEMP__';
     let standardOccupationData = {};
 
-    async function syncPreparedStates() {
-        if (!planningData?.courses) return;
-        const ids = planningData.courses.map(c => c.request_id).filter(id => id != null && Number.isInteger(Number(id)));
+    // Met à jour l'état « préparé » des cours de `planning` (par défaut le planning affiché ; un planning
+    // qu'on vient de télécharger peut être passé avant d'être affiché).
+    async function syncPreparedStates(planning = planningData) {
+        if (!planning?.courses) return;
+        const ids = planning.courses.map(c => c.request_id).filter(id => id != null && Number.isInteger(Number(id)));
         if (ids.length === 0) return;
         try {
             const resp = await fetch(`/api/requests/prepared-states?ids=${ids.join(',')}`);
             if (!resp.ok) return;
             const states = await resp.json();
-            planningData.courses.forEach(course => {
+            planning.courses.forEach(course => {
                 if (course.request_id != null) {
                     const s = states[String(course.request_id)];
                     if (s !== undefined) course.prepared = s;
@@ -125,13 +143,18 @@
             const d = new Date(`${targetDate}T00:00:00`);
             const dateAffichee = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
             const confirme = confirm(
-                `Un planning existe déjà pour le ${dateAffichee}.\n\n` +
-                `Voulez-vous vraiment en générer un nouveau ?`
+                `⚠ Un planning existe déjà pour le ${dateAffichee}.\n\n` +
+                `En générer un nouveau REMPLACERA entièrement le planning actuel : tous les déplacements de cours ` +
+                `et toutes les observations déjà saisis, par vous OU PAR VOS COLLÈGUES, seront perdus. ` +
+                `Le nouveau planning apparaîtra aussi sur leur écran et sur l'affichage.\n\n` +
+                `Voulez-vous vraiment tout remplacer ?`
             );
             if (!confirme) return;
         }
 
         showLoading('loading-container');
+        // Jusqu'à l'enregistrement du nouveau planning, aucun rechargement automatique ne doit le remplacer
+        enregistrementsEnCours++;
 
         try {
             console.log('🔄 Appel API avec date:', targetDate);
@@ -165,8 +188,9 @@
                 document.getElementById('generate-btn').disabled = false;
                 showAlert('Planning généré et prêt à éditer!', 'success');
 
-                // Enregistrement automatique dès la première génération
-                await savePlanningData();
+                // Enregistrement automatique dès la première génération. `force` : remplacer le planning
+                // existant est exactement ce que l'utilisateur vient de confirmer.
+                await savePlanningData({ force: true });
                 checkNewRequests(true);
             } else {
                 throw new Error(data.error || 'Erreur lors de la génération');
@@ -175,10 +199,11 @@
             console.error('Erreur:', error);
             showAlert(`Erreur lors de la génération: ${error.message}`, 'danger');
         } finally {
+            enregistrementsEnCours--;
             hideLoading('loading-container');
         }
     }
-    
+
     // Affiche "Mercredi 09/09/2026" au-dessus de la grille, à partir de la date sélectionnée
     function updatePlanningDateHeading() {
         const heading = document.getElementById('planning-date-heading');
@@ -869,6 +894,11 @@
                 
                 console.log(`🔄 Déplacement: ${courseId} vers ${newRoom} à ${newSlot}`);
                 
+                // Ancien emplacement, pour ne rien envoyer au serveur si le cours est reposé au même endroit
+                const ancienneSalle = currentRoomAssignments[courseId];
+                const ancienCreneau = planningData?.courses?.find(c => c.id === courseId)?.time;
+                const deplace = !!(newRoom && courseId) && (ancienneSalle !== newRoom || ancienCreneau !== newSlot);
+
                 // Mettre à jour l'assignation de salle
                 if (newRoom && courseId) {
                     currentRoomAssignments[courseId] = newRoom;
@@ -894,7 +924,9 @@
                 // Re-rendre la grille
                 renderPlanningGrid();
                 updateStats();
-                savePlanningData();
+                // Seul ce déplacement est envoyé : le serveur l'applique à la version la plus récente du
+                // planning, sans écraser ce que des collègues ont déplacé entre-temps.
+                if (deplace) envoyerDeplacement(courseId, newRoom, newSlot);
 
                 logInfo(`Cours déplacé vers ${newRoom} à ${newSlot}`);
             }
@@ -1024,8 +1056,12 @@
         }
     }
     
-    // Enregistrer le planning dans la base de données
-    async function savePlanningData() {
+    // Enregistrer le planning COMPLET dans la base de données (génération, ajout de demandes, modification
+    // d'une demande). Les simples déplacements de cours passent par envoyerDeplacement().
+    // Le serveur compare `base_version` à la version actuelle : si un collègue a modifié le planning depuis
+    // le dernier chargement, il refuse (409) plutôt que d'écraser son travail, et l'écran est rechargé.
+    // `force` : remplacer sans condition (nouvelle génération, confirmée par l'utilisateur).
+    async function savePlanningData({ force = false } = {}) {
         if (!planningData) {
             console.log('❌ Aucun planning à enregistrer.');
             showAlert('Aucun planning à enregistrer.', 'warning');
@@ -1040,9 +1076,13 @@
         const targetDate = document.getElementById('target-date').value;
         const payload = {
             date: targetDate,
-            data: planningData
+            data: planningData,
+            base_version: planningVersion,
+            force
         };
 
+        let conflit = false;
+        enregistrementsEnCours++;
         try {
             console.log('🔄 Envoi des données à /api/save-planning:', payload);
             const response = await fetch('/api/save-planning', {
@@ -1055,7 +1095,13 @@
 
             console.log('📡 Réponse API status:', response.status);
             if (response.ok) {
+                // L'enregistrement n'est accepté que si personne n'a modifié le planning depuis `base_version` :
+                // la version renvoyée est donc bien celle de notre copie.
+                const resultat = await response.json().catch(() => ({}));
+                if (resultat.version !== undefined) planningVersion = resultat.version;
                 logInfo('Planning enregistré avec succès');
+            } else if (response.status === 409) {
+                conflit = true;
             } else {
                 const errorData = await response.json();
                 showAlert(`Erreur: ${errorData.error}`, 'danger');
@@ -1063,6 +1109,137 @@
         } catch (error) {
             console.error('Erreur lors de l\'enregistrement du planning:', error);
             showAlert('Erreur lors de l\'enregistrement du planning.', 'danger');
+        } finally {
+            enregistrementsEnCours--;
+        }
+
+        if (conflit) {
+            showAlert('Un collègue vient de modifier ce planning en même temps que vous : votre dernière action ' +
+                      'n\'a pas été enregistrée et le planning a été rechargé avec ses modifications. ' +
+                      'Refaites votre action si elle n\'apparaît pas.', 'warning');
+            rechargementDemande = true;
+            await rafraichirDepuisServeur();
+        }
+    }
+
+    // Enregistre le déplacement d'un cours : un seul ordre « ce cours va dans cette salle à cette heure », que
+    // le serveur applique à la version la plus récente du planning. (Renvoyer le planning entier écraserait
+    // les déplacements faits entre-temps par un collègue.)
+    async function envoyerDeplacement(courseId, room, slot) {
+        const date = document.getElementById('target-date').value;
+        enregistrementsEnCours++;
+        try {
+            const response = await fetch('/api/planning-editor/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, course_id: courseId, room, time: slot })
+            });
+            if (response.ok) {
+                const resultat = await response.json();
+                // Version + 1 : personne d'autre n'a rien modifié, notre copie est à jour. Sinon, un collègue a
+                // aussi modifié le planning : on laisse le prochain contrôle recharger les deux changements.
+                if (planningVersion !== null && resultat.version === planningVersion + 1) {
+                    planningVersion = resultat.version;
+                }
+                return;
+            }
+            const erreur = await response.json().catch(() => ({}));
+            showAlert(`${erreur.error || 'Le déplacement n\'a pas pu être enregistré'}. Le planning est rechargé.`, 'warning');
+        } catch (error) {
+            console.error('Erreur lors du déplacement du cours:', error);
+            showAlert('Déplacement non enregistré (problème de connexion). Le planning est rechargé.', 'danger');
+        } finally {
+            enregistrementsEnCours--;
+        }
+        // Échec : l'écran montre un déplacement que le serveur n'a pas pris, on revient à l'état enregistré
+        rechargementDemande = true;
+        await rafraichirDepuisServeur();
+    }
+
+    function modaleOuverte() {
+        return document.querySelector('.modal.show') !== null;
+    }
+
+    // Affiche les observations d'un collègue, sans jamais écraser un texte en cours de saisie
+    function appliquerObservations(texte) {
+        observationsServeur = texte || '';
+        const zone = document.getElementById('planningObservations');
+        if (!zone || document.activeElement === zone || _obsDebounce !== null) return;
+        if (zone.value !== observationsServeur) zone.value = observationsServeur;
+    }
+
+    // Recharge le planning enregistré (modifié par un collègue) et le redessine à la même place de défilement.
+    async function rafraichirDepuisServeur() {
+        if (rechargementEnCours) { rechargementDemande = true; return; }
+        const date = document.getElementById('target-date').value;
+        if (!date) return;
+        rechargementEnCours = true;
+        try {
+            const response = await fetch(`/api/get-planning?date=${encodeURIComponent(date)}`, { cache: 'no-store' });
+            if (!response.ok) return;
+            const data = await response.json();
+            const planning = typeof data.planning === 'string' ? JSON.parse(data.planning) : (data.planning || data);
+            if (!planning || !Array.isArray(planning.courses)) {
+                planningVersion = data.version ?? planningVersion;
+                rechargementDemande = false;
+                return;
+            }
+            await syncPreparedStates(planning);
+
+            // Pendant le chargement, l'utilisateur a pu changer de date, saisir un déplacement ou ouvrir une
+            // fenêtre : on n'y touche pas et on réessaiera au prochain contrôle.
+            if (date !== document.getElementById('target-date').value || draggedElement
+                    || enregistrementsEnCours > 0 || modaleOuverte()) {
+                rechargementDemande = true;
+                return;
+            }
+
+            const conteneur = document.getElementById('rooms-container');
+            const defilement = { x: window.scrollX, y: window.scrollY, gauche: conteneur.scrollLeft, haut: conteneur.scrollTop };
+            planningData = planning;
+            currentRoomAssignments = { ...(planning.room_assignments || {}) };
+            planningVersion = data.version ?? planningVersion;
+            rechargementDemande = false;
+            appliquerObservations(data.observations);
+            renderPlanningGrid();
+            updateStats();
+            window.scrollTo(defilement.x, defilement.y);
+            conteneur.scrollLeft = defilement.gauche;
+            conteneur.scrollTop = defilement.haut;
+            checkNewRequests(true);   // un collègue a pu intégrer des demandes : le compteur doit suivre
+        } catch (error) {
+            console.warn('rafraichirDepuisServeur:', error);
+        } finally {
+            rechargementEnCours = false;
+        }
+    }
+
+    // Appelé toutes les INTERVALLE_SYNC_MS : un collègue a-t-il modifié le planning ? (une requête minuscule)
+    async function verifierMisesAJour() {
+        if (document.hidden || rechargementEnCours || enregistrementsEnCours > 0 || draggedElement || modaleOuverte()) return;
+        const date = document.getElementById('target-date').value;
+        if (!date) return;
+        let etat;
+        try {
+            const response = await fetch(`/api/planning-editor/version?date=${encodeURIComponent(date)}`, { cache: 'no-store' });
+            if (!response.ok) return;
+            etat = await response.json();
+        } catch (error) {
+            return;   // réseau coupé : on réessaiera au prochain passage
+        }
+        if (date !== document.getElementById('target-date').value) return;
+
+        if (!planningData) {
+            // Écran sans planning : un collègue vient peut-être d'en générer un pour cette date
+            const cle = `${date}:${etat.version}`;
+            if (etat.existe && cle !== derniereVersionTentee) {
+                derniereVersionTentee = cle;
+                await reloadPlanningIfExists(date);
+            }
+            return;
+        }
+        if (rechargementDemande || etat.version !== planningVersion) {
+            await rafraichirDepuisServeur();
         }
     }
 
@@ -1219,6 +1396,9 @@ async function reloadPlanning() {
 
             // Update currentRoomAssignments with loaded data
             currentRoomAssignments = { ...planningData.room_assignments || {} };
+            planningVersion = data.version ?? null;
+            rechargementDemande = false;
+            appliquerObservations(data.observations);
 
             console.log('🔍 Assigned planningData:', planningData);
             console.log('🔍 planningData.rooms:', planningData.rooms);
@@ -1252,9 +1432,13 @@ async function printPlanning() {
         return;
     }
     // L'onglet est ouvert tout de suite (dans le geste de l'utilisateur) pour ne pas être bloqué par le
-    // navigateur, puis dirigé vers la page imprimable une fois le planning enregistré.
+    // navigateur. Il n'y a plus rien à enregistrer avant : chaque modification est enregistrée sur le champ,
+    // et renvoyer ici le planning entier pourrait écraser le travail d'un collègue.
     const onglet = window.open('', '_blank');
-    await savePlanningData();
+    // Si un déplacement vient d'être fait, on laisse son enregistrement se terminer (3 s au plus)
+    for (let i = 0; i < 60 && enregistrementsEnCours > 0; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
     const url = `/admin/planning-print?date=${encodeURIComponent(date)}&print=1`;
     if (onglet) {
         onglet.location.href = url;
@@ -1273,6 +1457,8 @@ async function reloadPlanningIfExists(targetDate) {
         if (response.status === 404) {
             // Aucun planning sauvegardé pour cette date : état vide sans erreur
             planningData = null;
+            planningVersion = 0;          // jamais enregistré : la première génération créera la version 1
+            observationsServeur = '';
             currentAssignments = {};
             currentRoomAssignments = {};
             document.getElementById('rooms-container').innerHTML = '';
@@ -1297,7 +1483,10 @@ async function reloadPlanningIfExists(targetDate) {
             planningData = data.planning || data;
         }
         currentRoomAssignments = { ...planningData.room_assignments || {} };
-        document.getElementById('planningObservations').value = data.observations || '';
+        planningVersion = data.version ?? null;
+        rechargementDemande = false;
+        observationsServeur = data.observations || '';
+        document.getElementById('planningObservations').value = observationsServeur;
         document.getElementById('observations-section').style.display = '';
         await Promise.all([syncPreparedStates(), standardOccupationPromise, labTestPromise]);
         renderPlanningGrid();
@@ -1312,20 +1501,28 @@ async function reloadPlanningIfExists(targetDate) {
 }
 
 
+// Minuteur de l'enregistrement des observations ; null = aucune saisie en attente d'enregistrement
 let _obsDebounce = null;
 async function saveObservations() {
+    _obsDebounce = null;     // la saisie en attente part maintenant
     const date = document.getElementById('target-date').value;
     const statusEl = document.getElementById('obs-save-status');
     if (!date) return;
+    const texte = document.getElementById('planningObservations').value;
     statusEl.textContent = 'Sauvegarde…';
     statusEl.className = 'text-muted';
+    enregistrementsEnCours++;
     try {
         const resp = await fetch('/api/planning-observations', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date, observations: document.getElementById('planningObservations').value })
+            body: JSON.stringify({ date, observations: texte })
         });
         if (resp.ok) {
+            const resultat = await resp.json().catch(() => ({}));
+            observationsServeur = texte;
+            // Version + 1 : personne d'autre n'a rien modifié, notre copie du planning reste à jour
+            if (planningVersion !== null && resultat.version === planningVersion + 1) planningVersion = resultat.version;
             statusEl.textContent = '✓ Sauvegardé';
             statusEl.className = 'text-success';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
@@ -1338,6 +1535,8 @@ async function saveObservations() {
         statusEl.textContent = '✗ Erreur réseau';
         statusEl.className = 'text-danger';
         console.error('saveObservations:', e);
+    } finally {
+        enregistrementsEnCours--;
     }
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -1357,4 +1556,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     window.savePlanningData = savePlanningData;
     window.reloadPlanningIfExists = reloadPlanningIfExists;
+
+    // Édition à plusieurs : on vérifie régulièrement si un collègue a modifié le planning, et dès qu'on
+    // revient sur l'onglet (les navigateurs ralentissent les onglets en arrière-plan).
+    setInterval(verifierMisesAJour, INTERVALLE_SYNC_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) verifierMisesAJour(); });
+    // Les observations d'un collègue n'écrasent jamais un texte en cours de saisie : on les affiche en quittant la zone
+    document.getElementById('planningObservations').addEventListener('blur', () => appliquerObservations(observationsServeur));
 });

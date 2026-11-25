@@ -138,14 +138,14 @@
         {% endif %}
     </main>
 
-    {% if p.mode == 'affichage' and not auto_print %}
+    {% if not auto_print %}
     <div id="etat-maj" class="etat-maj" hidden></div>
     {% endif %}
 
     {% if auto_print %}
     <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 400); });</script>
-    {% elif p.mode == 'affichage' %}
-    {# Page projetée : elle se met à jour quand le planning est modifié dans l'éditeur #}
+    {% else %}
+    {# Page affichée à l'écran (projection ou version techniciens) : elle se met à jour quand le planning est modifié dans l'éditeur #}
     <script src="{{ asset('js/pages/planning_print.js') }}"></script>
     {% endif %}
 </body>
