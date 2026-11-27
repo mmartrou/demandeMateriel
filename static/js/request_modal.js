@@ -945,7 +945,14 @@ function togglePreparedFromModal() {
             }
             if (typeof window.onPreparedToggled === 'function') window.onPreparedToggled(requestId, willBePrepared);
             if (typeof loadRequests === 'function') loadRequests();
-            showSuccessToast(idsToToggle.length > 1 ? `${idsToToggle.length} demandes marquées comme préparées` : 'Statut mis à jour avec succès');
+            // Marquée préparée = le travail sur ce TP est fini : on ferme la modale.
+            // (Démarquer la laisse ouverte : on va sans doute y retravailler.)
+            if (willBePrepared) {
+                const modalEl = document.getElementById('editRequestModal');
+                (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).hide();
+            }
+            showSuccessToast(idsToToggle.length > 1 ? `${idsToToggle.length} demandes marquées comme préparées`
+                : willBePrepared ? 'Demande marquée comme préparée' : 'Statut mis à jour avec succès');
         })
         .catch(err => showErrorToast(saveFailed
             ? 'Erreur lors de la sauvegarde des modifications : ' + err.message
