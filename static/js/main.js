@@ -332,6 +332,88 @@ function appendTpOptions(select, chapters, templates, makeOption) {
 }
 
 
+// --- Plusieurs TPs dans un même cours ---
+// Équipements de salle (cases « Matériel peu mobile à avoir dans la salle »), dans l'ordre des formulaires.
+const EQUIPEMENTS_SALLE = ['Éviers', 'Hotte', 'Bancs optiques', 'Obscurité totale', 'Becs électriques',
+    'Support de filtration', 'Imprimante'];
+const AUCUN_EQUIPEMENT = 'Pas de matériel spécifique à la salle';
+const SEPARATEUR_COMBINAISON = ' + ';   // même valeur dans routes/mes_tps.py (repérage côté serveur)
+
+// selected_materials ("- Éviers" puis "- 2 béchers..." sur la ligne suivante)
+//   -> { equipements: ['Éviers'], libre: '2 béchers...' }
+const SAUT = '\n';
+function splitTpMaterials(selectedMaterials) {
+    const special = ['Absent', 'Pas besoin de matériel', 'Examen'];
+    const equipements = [];
+    const libre = [];
+    if (selectedMaterials && !special.includes(selectedMaterials)) {
+        selectedMaterials.split(SAUT).map(l => l.replace(/^-\s*/, '').trim()).filter(Boolean).forEach(ligne => {
+            const nom = [...EQUIPEMENTS_SALLE, AUCUN_EQUIPEMENT].find(e => ligne.toLowerCase().includes(e.toLowerCase()));
+            if (nom) { if (!equipements.includes(nom)) equipements.push(nom); }
+            else libre.push(ligne);
+        });
+    }
+    return { equipements, libre: libre.join(SAUT) };
+}
+
+// Regroupe plusieurs TPs enregistrés en un seul (deux TPs faits dans le même cours, donc dans la même
+// salle) sans créer de nouveau TP. Renvoie un objet de la même forme qu'un TP enregistré, plus
+// `libre` (le matériel libre seul, pour la zone de texte) et `equipements` (les cases à cocher).
+function combineTpTemplates(tps) {
+    tps = tps.filter(Boolean);
+    const parts = tps.map(t => ({ t, ...splitTpMaterials(t.selected_materials) }));
+    // Texte de chaque TP sous un titre à son nom ; un seul TP : le texte tel quel.
+    const sections = getText => {
+        const remplis = parts.map(p => ({ nom: p.t.request_name, texte: (getText(p) || '').trim() })).filter(x => x.texte);
+        if (tps.length < 2) return remplis.map(x => x.texte).join(SAUT);
+        return remplis.map(x => `— ${x.nom} —${SAUT}${x.texte}`).join(SAUT + SAUT);
+    };
+
+    let equipements = EQUIPEMENTS_SALLE.filter(e => parts.some(p => p.equipements.includes(e)));
+    if (!equipements.length && parts.some(p => p.equipements.includes(AUCUN_EQUIPEMENT))) equipements = [AUCUN_EQUIPEMENT];
+    const libre = sections(p => p.libre);
+    const lignes = [...equipements, ...(libre ? [libre] : [])];
+    const roomTypes = [...new Set(tps.map(t => t.room_type || 'Mixte'))];
+
+    return {
+        request_name: tps.map(t => t.request_name).join(SEPARATEUR_COMBINAISON),
+        selected_materials: lignes.length ? '- ' + lignes.join(SAUT + '- ') : '',
+        material_description: libre ? `Matériel requis: ${libre}` : 'Cours sans matériel spécifique',
+        material_prof: sections(p => p.t.material_prof),
+        notes: sections(p => p.t.notes),
+        computers_needed: Math.max(0, ...tps.map(t => parseInt(t.computers_needed, 10) || 0)),
+        group_count: tps.length ? (tps[0].group_count ?? 1) : 1,
+        image_url: (tps.find(t => t.image_url) || {}).image_url || '',   // une seule image par demande
+        room_type: roomTypes.length === 1 ? roomTypes[0] : 'Mixte',
+        equipements,
+        libre,
+    };
+}
+
+// Liste de TPs « + Ajouter un autre TP » : chaque ligne est une copie du premier <select>.
+// Ajoute une ligne (avec un bouton ✕ pour la retirer) sous `container` et renvoie le nouveau <select>.
+function addTpPickerRow(container, firstSelect, onChange) {
+    const row = document.createElement('div');
+    row.className = 'd-flex gap-2 mt-2 tp-picker-extra';
+    const select = firstSelect.cloneNode(true);
+    select.removeAttribute('id');
+    select.value = '';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn-outline-secondary btn-sm';
+    remove.title = 'Retirer ce TP';
+    remove.textContent = '✕';
+    remove.addEventListener('click', () => { row.remove(); onChange(); });
+    select.addEventListener('change', onChange);
+    row.append(select, remove);
+    container.appendChild(row);
+    return select;
+}
+
+window.combineTpTemplates = combineTpTemplates;
+window.splitTpMaterials = splitTpMaterials;
+window.addTpPickerRow = addTpPickerRow;
+
 // Export functions for global use
 window.showSuccessToast = showSuccessToast;
 window.showErrorToast = showErrorToast;

@@ -169,7 +169,13 @@
                             <select class="form-select" id="tp_template_select">
                                 <option value="">— Nouveau TP —</option>
                             </select>
-                            <small class="text-muted">Sélectionnez pour pré-remplir le formulaire</small>
+                            <div id="tp_template_extra"></div>
+                            <button type="button" class="btn btn-link btn-sm px-0" id="tp_template_add">+ Ajouter un autre TP dans ce cours</button>
+                            <div class="form-check" id="save_combined_template_wrap" style="display:none;">
+                                <input class="form-check-input" type="checkbox" id="save_combined_template">
+                                <label class="form-check-label small" for="save_combined_template">Enregistrer aussi cette combinaison dans Mes TPs</label>
+                            </div>
+                            <small class="text-muted d-block">Sélectionnez pour pré-remplir le formulaire</small>
                         </div>
 
                         <div class="col-md-4 mb-3">

@@ -70,6 +70,27 @@ def _dossier_valide(chapter_id, teacher_id, level):
     return bool(ch) and ch['teacher_id'] == teacher_id and ch['level'] == level
 
 
+SEPARATEUR_COMBINAISON = ' + '
+
+
+def _est_combinaison_de_tps(teacher_id, level, request_name):
+    """Demande qui regroupe plusieurs TPs existants dans un même cours (« Titrage + Chromatographie »,
+    voir combineTpTemplates dans main.js) : elle ne doit pas créer un nouveau TP dans Mes TPs.
+
+    C'est le cas si chaque partie du nom est un TP existant de l'enseignant pour ce niveau, et qu'aucun
+    TP ne porte déjà ce nom complet (s'il existe, la combinaison a été enregistrée exprès : on le met à
+    jour comme n'importe quel TP). Repérée par son nom, la combinaison le reste quand on modifie la
+    demande plus tard."""
+    parties = [p.strip() for p in request_name.split(SEPARATEUR_COMBINAISON)]
+    if len(parties) < 2 or not all(parties):
+        return False
+    try:
+        noms = {t['request_name'] for t in get_tp_templates(teacher_id, level)}
+    except Exception:
+        return False
+    return request_name not in noms and all(p in noms for p in parties)
+
+
 def _enregistrer_template_tp(data, group_count):
     """Enregistre la demande dans la base de TP de l'enseignant, si c'en est bien un.
 
@@ -85,6 +106,8 @@ def _enregistrer_template_tp(data, group_count):
     if not request_name or not class_name:
         return
     if _est_nom_brouillon_auto(request_name, class_name):
+        return
+    if not data.get('save_combined_template') and _est_combinaison_de_tps(data['teacher_id'], class_name, request_name):
         return
     try:
         upsert_tp_template(

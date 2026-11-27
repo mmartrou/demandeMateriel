@@ -435,6 +435,8 @@ function handleEditImageUpload() {
 function loadDraftTpOptions(teacherId, level) {
     const select = document.getElementById('draftTpSelect');
     if (!select) return;
+    const extra = document.getElementById('draftTpExtra');
+    if (extra) extra.innerHTML = '';   // la liste change avec l'enseignant / le niveau
     select.innerHTML = '<option value="">Chargement...</option>';
     const params = `teacher_id=${teacherId}&level=${encodeURIComponent(level || '')}`;
     Promise.all([
@@ -455,14 +457,28 @@ function loadDraftTpOptions(teacherId, level) {
         });
 }
 
-function applyTpTemplateToDraft(tpId) {
-    if (!tpId) {
+// « + Ajouter un autre TP dans ce cours » : plusieurs TPs faits dans le même cours (même salle) sont
+// regroupés en une seule demande, sans créer de nouveau TP (voir combineTpTemplates dans main.js).
+function addDraftTpPicker() {
+    const first = document.getElementById('draftTpSelect');
+    const extra = document.getElementById('draftTpExtra');
+    if (first && extra) addTpPickerRow(extra, first, () => {}).focus();
+}
+
+function applyTpTemplateToDraft() {
+    const ids = [document.getElementById('draftTpSelect'), ...document.querySelectorAll('#draftTpExtra select')]
+        .map(sel => sel && sel.value)
+        .filter(Boolean);
+    if (!ids.length) {
         showErrorToast('Choisissez un TP dans la liste.');
         return;
     }
-    fetch(`/api/tp-templates/${tpId}`)
-        .then(r => r.json())
-        .then(tp => {
+    Promise.all(ids.map(id => fetch(`/api/tp-templates/${id}`).then(r => {
+        if (!r.ok) throw new Error('TP introuvable');
+        return r.json();
+    })))
+        .then(tps => {
+            const tp = combineTpTemplates(tps);
             // Champs qui appartiennent au créneau et non au TP : on les conserve tels quels,
             // sinon appliquer un TP sur une demande existante effacerait le travail du labo.
             const prepBtnActuel = document.getElementById('modalPreparedBtn');

@@ -100,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const level = document.getElementById('class_name').value;
         const section = document.getElementById('tp-template-section');
         const select = document.getElementById('tp_template_select');
+        clearExtraTpPickers();   // la liste change avec l'enseignant / le niveau
 
         if (!teacherId || !level) {
             section.style.display = 'none';
@@ -133,28 +134,46 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    document.getElementById('tp_template_select').addEventListener('change', function() {
-        const selected = this.options[this.selectedIndex];
-        if (!selected.dataset.template) return;
-        const t = JSON.parse(selected.dataset.template);
+    // Un ou plusieurs TPs (« + Ajouter un autre TP dans ce cours ») : plusieurs TPs faits dans le même
+    // cours, donc dans la même salle, sont regroupés en une seule demande (combineTpTemplates, main.js)
+    // sans créer de nouveau TP dans Mes TPs, sauf si la case « Enregistrer aussi cette combinaison » est cochée.
+    const tpExtra = document.getElementById('tp_template_extra');
+    const firstTpSelect = document.getElementById('tp_template_select');
+
+    function clearExtraTpPickers() {
+        tpExtra.innerHTML = '';
+        document.getElementById('save_combined_template_wrap').style.display = 'none';
+        document.getElementById('save_combined_template').checked = false;
+    }
+
+    document.getElementById('tp_template_add').addEventListener('click', () => {
+        addTpPickerRow(tpExtra, firstTpSelect, applySelectedTps).focus();
+    });
+    document.getElementById('materialRequestForm').addEventListener('reset', clearExtraTpPickers);
+
+    firstTpSelect.addEventListener('change', applySelectedTps);
+
+    function applySelectedTps() {
+        const selects = [firstTpSelect, ...tpExtra.querySelectorAll('select')];
+        const tps = selects
+            .map(sel => sel.options[sel.selectedIndex])
+            .filter(opt => opt && opt.dataset.template)
+            .map(opt => JSON.parse(opt.dataset.template));
+        document.getElementById('save_combined_template_wrap').style.display = tps.length > 1 ? '' : 'none';
+        if (!tps.length) return;
+        const t = combineTpTemplates(tps);
 
         document.getElementById('request_name').value = t.request_name || '';
-        document.getElementById('selected_materials').value = t.selected_materials || '';
+        document.getElementById('selected_materials').value = t.libre || '';
         document.getElementById('material_prof').value = t.material_prof || '';
         document.getElementById('computers_needed').value = t.computers_needed || 0;
         document.getElementById('quantity').value = t.group_count ?? 1;
         document.getElementById('notes').value = t.notes || '';
 
-        // Remettre les cases matériaux
-        const materials = (t.selected_materials || '').toLowerCase();
-        document.getElementById('eviers').checked = materials.includes('évier') || materials.includes('evier');
-        document.getElementById('hotte').checked = materials.includes('hotte');
-        document.getElementById('bancs_optiques').checked = materials.includes('bancs optiques');
-        document.getElementById('obscurite_totale').checked = materials.includes('obscurité totale') || materials.includes('obscurite totale');
-        document.getElementById('becs_electriques').checked = materials.includes('becs électriques') || materials.includes('becs electriques');
-        document.getElementById('support_filtration').checked = materials.includes('support de filtration');
-        document.getElementById('imprimante').checked = materials.includes('imprimante');
-        document.getElementById('aucun_materiel_salle').checked = materials.includes('pas de matériel spécifique') || materials.includes('pas de materiel specifique');
+        // Remettre les cases matériaux (équipements de la salle : réunion de ceux des TPs choisis)
+        document.querySelectorAll('input[name="materials"]').forEach(cb => {
+            cb.checked = t.equipements.includes(cb.value);
+        });
 
         // Pré-charger l'image si disponible
         const imageUrlInput = document.getElementById('image_url');
@@ -168,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
             imageUrlInput.value = '';
             if (imagePreview) imagePreview.style.display = 'none';
         }
-    });
+    }
 
     const replacementCheckbox = document.getElementById('replacement_mode');
     const replacementTeacherContainer = document.getElementById('replacement_teacher_container');
@@ -423,6 +442,8 @@ document.addEventListener('DOMContentLoaded', function() {
     data.group_count = document.getElementById('quantity').value;
     data.material_prof = document.getElementById('material_prof').value;
     data.request_name = document.getElementById('request_name').value;
+    // Plusieurs TPs regroupés : le serveur ne crée pas de TP pour la combinaison, sauf demande explicite.
+    data.save_combined_template = document.getElementById('save_combined_template').checked;
     data.custom_duration = getCustomDurationValue('custom_duration');
         
         // Validation du nom de demande (obligatoire)

@@ -18,8 +18,10 @@
                                 </label>
                                 <div class="d-flex gap-2">
                                     <select id="draftTpSelect" class="form-select"></select>
-                                    <button type="button" class="btn btn-outline-info text-nowrap" onclick="applyTpTemplateToDraft(document.getElementById('draftTpSelect').value)">Appliquer</button>
+                                    <button type="button" class="btn btn-outline-info text-nowrap" onclick="applyTpTemplateToDraft()">Appliquer</button>
                                 </div>
+                                <div id="draftTpExtra"></div>
+                                <button type="button" class="btn btn-link btn-sm px-0" onclick="addDraftTpPicker()">+ Ajouter un autre TP dans ce cours</button>
                                 <small class="text-muted">Ou modifiez directement les champs ci-dessous si aucun TP ne correspond.</small>
                             </div>
                         </div>
