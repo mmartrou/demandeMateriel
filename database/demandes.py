@@ -205,8 +205,8 @@ def update_material_request(request_id, teacher_id, request_date, class_name, ma
     return cursor.rowcount > 0
 
 
-def toggle_prepared_status(request_id):
-    """Toggle the prepared status of a request"""
+def toggle_prepared_status(request_id, value=None):
+    """Bascule le statut "préparée" d'une demande ; value=True/False le fixe à cette valeur."""
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     
@@ -224,7 +224,7 @@ def toggle_prepared_status(request_id):
     else:
         current_prepared = current[0]
     
-    new_prepared = not current_prepared
+    new_prepared = (not current_prepared) if value is None else bool(value)
     
     # Utiliser TRUE/FALSE pour PostgreSQL, 1/0 pour SQLite
     true_val = 'TRUE' if db_type == 'postgresql' else '1'

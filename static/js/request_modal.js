@@ -686,7 +686,11 @@ function calculateRequestChanges(requestId, newData) {
     return changes;
 }
 
-function saveRequestChanges() {
+// options.silent : enregistrement fait juste avant de marquer la demande préparée (togglePreparedFromModal) ;
+// la modale reste ouverte et aucun message n'est affiché en cas de succès. Renvoie une promesse
+// (résolue une fois l'enregistrement terminé), ou null si le formulaire est invalide.
+function saveRequestChanges(options = {}) {
+    const silent = !!options.silent;
     const requestId  = document.getElementById('editRequestId').value;
     const isAbsent   = document.getElementById('editAbsent').checked;
     const isNoMat    = document.getElementById('editNoMaterial').checked;
@@ -739,7 +743,7 @@ function saveRequestChanges() {
         const checkedMaterials = document.querySelectorAll('input[name="editMaterials"]:checked');
         if (checkedMaterials.length === 0) {
             showErrorToast('Veuillez cocher au moins une option dans "Matériel peu mobile à avoir dans la salle" (ou "Pas de matériel spécifique à la salle").');
-            return;
+            return null;
         }
         const specific = Array.from(checkedMaterials).map(cb => cb.value);
         const freeText = document.getElementById('editMaterialDescription').value;
@@ -757,10 +761,11 @@ function saveRequestChanges() {
     const isCreating = !requestId;
     const changes = calculateRequestChanges(requestId, currentData);
     if (!isCreating && Object.keys(changes).length === 0) {
+        if (silent) return Promise.resolve();
         showSuccessToast('Aucune modification détectée');
         const modalEl = document.getElementById('editRequestModal');
         (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).hide();
-        return;
+        return Promise.resolve();
     }
 
     // Si seule la note interne du labo a changé, on le signale au serveur pour qu'il
@@ -815,7 +820,15 @@ function saveRequestChanges() {
         }
     }
 
-    savePromise.then(() => {
+    if (silent) {
+        // Les modifications sont enregistrées : elles deviennent la nouvelle référence de la modale.
+        return savePromise.then(() => {
+            Object.assign(originalRequestData, currentData);
+            window.modifiedRequests.delete(requestId);
+        });
+    }
+
+    return savePromise.then(() => {
         const modalEl = document.getElementById('editRequestModal');
         let modal = bootstrap.Modal.getInstance(modalEl);
         if (modal) modal.hide(); else { modal = new bootstrap.Modal(modalEl); modal.hide(); }
@@ -892,7 +905,12 @@ function togglePreparedWithRelated(requestId) {
 
     const idsToToggle = [requestId, ...(applyToRelated ? relatedIds : [])];
 
-    return Promise.all(idsToToggle.map(id => fetch(`/api/requests/${id}/toggle-prepared`, { method: 'POST' }).then(r => r.json())))
+    // Valeur explicite (et non simple bascule) : un enregistrement juste avant peut déjà avoir changé le statut.
+    return Promise.all(idsToToggle.map(id => fetch(`/api/requests/${id}/toggle-prepared`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prepared: willBePrepared })
+    }).then(r => r.json())))
         .then(results => {
             const err = results.find(r => r.error);
             if (err) throw new Error(err.error);
@@ -908,7 +926,18 @@ function togglePreparedFromModal() {
     const requestId = parseInt(document.getElementById('editRequestId').value);
     if (!requestId) return;
     const btn = document.getElementById('modalPreparedBtn');
-    togglePreparedWithRelated(requestId)
+
+    // Les modifications faites dans la modale (remarques, observations...) sont enregistrées d'abord,
+    // sinon elles seraient perdues. Rien à enregistrer si la modale est en lecture seule.
+    const saveBtn = document.querySelector('#editRequestModal .modal-footer .btn-primary');
+    const editable = saveBtn && saveBtn.style.display !== 'none';
+    const saving = editable ? saveRequestChanges({ silent: true }) : Promise.resolve();
+    if (!saving) return;   // formulaire invalide : le message d'erreur est déjà affiché
+
+    let saveFailed = false;
+    saving
+        .catch(err => { saveFailed = true; throw err; })
+        .then(() => togglePreparedWithRelated(requestId))
         .then(({ willBePrepared, idsToToggle }) => {
             if (btn) {
                 btn.textContent = willBePrepared ? '↩ Non préparée' : '✅ Marquer préparée';
@@ -918,7 +947,9 @@ function togglePreparedFromModal() {
             if (typeof loadRequests === 'function') loadRequests();
             showSuccessToast(idsToToggle.length > 1 ? `${idsToToggle.length} demandes marquées comme préparées` : 'Statut mis à jour avec succès');
         })
-        .catch(() => showErrorToast('Erreur lors de la mise à jour du statut'));
+        .catch(err => showErrorToast(saveFailed
+            ? 'Erreur lors de la sauvegarde des modifications : ' + err.message
+            : 'Erreur lors de la mise à jour du statut'));
 }
 
 // --- Special modes toggle ---

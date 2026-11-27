@@ -680,9 +680,10 @@ def api_update_request(request_id):
 
 @bp.route('/api/requests/<int:request_id>/toggle-prepared', methods=['POST'])
 def api_toggle_prepared(request_id):
-    """API endpoint to toggle prepared status of a request"""
+    """Bascule le statut "préparée", ou le fixe si le corps contient {"prepared": true|false}."""
     try:
-        success = toggle_prepared_status(request_id)
+        value = (request.get_json(silent=True) or {}).get('prepared')
+        success = toggle_prepared_status(request_id, value if isinstance(value, bool) else None)
         if success:
             return jsonify({'message': 'Statut mis à jour avec succès'})
         else:
