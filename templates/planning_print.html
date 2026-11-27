@@ -78,7 +78,8 @@
                  style="grid-row: {{ r }} / span {{ cellule.lignes }}; grid-column: {{ loop.index + 1 }}">
                 <div class="corps">
                     <div class="haut">
-                        <span class="prof">{{ c.enseignant }}</span>
+                        {# nom plus petit quand il est long, pour qu'il tienne dans la colonne (version techniciens) #}
+                        <span class="prof{{ ' tres-long' if c.details and c.enseignant|length >= 13 else (' long' if c.details and c.enseignant|length >= 10 else '') }}">{{ c.enseignant }}</span>
                         <span class="niveau">{{ c.niveau }}</span>
                     </div>
                     {% if c.details %}
