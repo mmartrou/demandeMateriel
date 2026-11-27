@@ -7,7 +7,7 @@
     <title>Planning {{ p.date_label }}</title>
     <link rel="stylesheet" href="{{ asset('css/planning_print.css') }}">
 </head>
-<body>
+<body class="{{ 'mode-affichage' if p.mode == 'affichage' }}">
     {# Version affichage (projetée) : rien d'autre que le planning, donc pas de barre d'outils #}
     {% if p.mode != 'affichage' %}
     <div class="barre">

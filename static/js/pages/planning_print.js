@@ -64,6 +64,22 @@
     // Signature de départ : celle de la page telle que chargée (un éventuel écart de sérialisation
     // avec la première réponse provoquerait au pire un remplacement inutile, sans conséquence).
     signatureAffichee = signature(document.querySelector('main.feuille'));
+    // Version affichage : la feuille remplit l'écran et tout (texte compris) grandit avec lui.
+    // Échelle = combien de fois l'écran est plus grand qu'une feuille A4 ; la feuille prend ensuite
+    // les proportions de l'écran (largeur et hauteur divisées par l'échelle, puis zoomées).
+    // Réglé sur <html> et non sur la feuille, que actualiser() remplace toutes les 5 s.
+    function ajusterEchelle() {
+        if (!document.body.classList.contains('mode-affichage')) return;
+        const largeurA4 = 297 * 96 / 25.4, hauteurA4 = 209 * 96 / 25.4;   // mm -> pixels CSS
+        const echelle = Math.min(window.innerWidth / largeurA4, window.innerHeight / hauteurA4);
+        const racine = document.documentElement.style;
+        racine.setProperty('--echelle', echelle);
+        racine.setProperty('--largeur-feuille', (window.innerWidth / echelle) + 'px');
+        racine.setProperty('--hauteur-feuille', (window.innerHeight / echelle) + 'px');
+    }
+    ajusterEchelle();
+    window.addEventListener('resize', ajusterEchelle);   // F11, changement d'écran...
+
     setInterval(actualiser, INTERVALLE_MS);
     // Un onglet caché ne se met pas à jour : on rattrape dès qu'il redevient visible.
     document.addEventListener('visibilitychange', () => { if (!document.hidden) actualiser(); });

@@ -209,3 +209,17 @@ html, body {
 .grille .case.occ.sim { border-left: 0.5pt solid #9aa1a9; }
 .grille .case.occ.sim.ok { background: #d1e7dd; color: #0f5132; }
 .grille .case.occ.sim.ecart { background: #f8d7da; color: #842029; }
+
+/* ---------- version affichage sur écran : remplit l'écran, texte proportionnel à sa taille ---------- */
+@media screen {
+    body.mode-affichage { background: #fff; overflow: hidden; }
+    body.mode-affichage .feuille {
+        margin: 0;
+        box-shadow: none;
+        /* Taille de l'écran exprimée « avant zoom » : une fois agrandie par le zoom, la feuille fait
+           exactement la taille de l'écran. Variables calculées par planning_print.js. */
+        width: var(--largeur-feuille, 297mm);
+        height: var(--hauteur-feuille, 209mm);
+        zoom: var(--echelle, 1);
+    }
+}
