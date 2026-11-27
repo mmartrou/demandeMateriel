@@ -39,6 +39,9 @@
             const reponse = await fetch(window.location.href, { cache: 'no-store', credentials: 'same-origin' });
             // Session expirée : le serveur renvoie vers la page de connexion. On garde le planning affiché.
             if (reponse.redirected) throw new Error('Session expirée : reconnectez-vous');
+            // Pas (ou plus) de planning : en mode affichage sans date, c'est le changement de jour ; la page
+            // "aucun planning" se réactualise ensuite seule toutes les minutes.
+            if (reponse.status === 404) { window.location.reload(); return; }
             if (!reponse.ok) throw new Error(`Planning indisponible (erreur ${reponse.status})`);
 
             const doc = new DOMParser().parseFromString(await reponse.text(), 'text/html');

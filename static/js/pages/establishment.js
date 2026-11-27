@@ -1,5 +1,5 @@
 // Script de la page establishment (extrait de templates/establishment.html).
-const FIELDS = ['site_name', 'timezone', 'deadline_hour', 'time_slots', 'afternoon_start', 'separators', 'labo_email', 'allowed_domain'];
+const FIELDS = ['site_name', 'timezone', 'deadline_hour', 'time_slots', 'afternoon_start', 'separators', 'labo_email', 'allowed_domain', 'admin_emails', 'display_emails'];
 
 document.getElementById('establishmentForm').addEventListener('submit', async (event) => {
     event.preventDefault();

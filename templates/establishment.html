@@ -83,7 +83,7 @@
             <div class="card-header"><h5 class="mb-0">Comptes</h5></div>
             <div class="card-body">
                 {% if not is_admin %}
-                <div class="alert alert-warning py-2">Seul l'administrateur peut modifier ces deux champs.</div>
+                <div class="alert alert-warning py-2">Seul l'administrateur peut modifier ces champs.</div>
                 {% endif %}
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -96,9 +96,19 @@
                         <input type="text" class="form-control" id="allowed_domain" placeholder="monlycee.fr" value="{{ settings.allowed_domain }}" {% if not is_admin %}disabled{% endif %}>
                         <div class="form-text">Si renseigné, seuls les comptes de ce domaine peuvent se connecter. Attention : une erreur ici vous empêcherait de vous connecter.</div>
                     </div>
+                    <div class="col-md-6">
+                        <label for="admin_emails" class="form-label">Autres administrateurs</label>
+                        <textarea class="form-control" id="admin_emails" rows="2" placeholder="collegue@monlycee.fr" {% if not is_admin %}disabled{% endif %}>{{ settings.admin_emails }}</textarea>
+                        <div class="form-text">Comptes Google qui reçoivent le rôle administrateur, en plus de <code>ADMIN_EMAIL</code> (séparés par des virgules). Un changement déconnecte le compte concerné, qui reçoit son nouveau rôle en se reconnectant.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="display_emails" class="form-label">Comptes « affichage »</label>
+                        <textarea class="form-control" id="display_emails" rows="2" placeholder="ecran-labo@monlycee.fr" {% if not is_admin %}disabled{% endif %}>{{ settings.display_emails }}</textarea>
+                        <div class="form-text">Ces comptes ne voient que le planning du jour en mode affichage (<code>/admin/planning-print?mode=affichage</code>), par exemple pour un écran dans une salle.</div>
+                    </div>
                 </div>
                 <p class="text-muted mt-3 mb-0 small">
-                    L'adresse de l'administrateur (<code>ADMIN_EMAIL</code>) et l'identifiant Google (<code>GOOGLE_CLIENT_ID</code>)
+                    L'adresse de l'administrateur principal (<code>ADMIN_EMAIL</code>, toujours administrateur) et l'identifiant Google (<code>GOOGLE_CLIENT_ID</code>)
                     ne se règlent pas ici : ce sont des paramètres du serveur, volontairement hors de portée de l'interface.
                 </p>
             </div>

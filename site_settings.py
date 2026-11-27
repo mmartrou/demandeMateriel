@@ -20,10 +20,12 @@ DEFAULTS = {
     'separators': '12h15,15h15',
     'labo_email': '',
     'allowed_domain': '',
+    'admin_emails': '',
+    'display_emails': '',
 }
 
 # Réglages qui décident qui peut se connecter ou obtenir un rôle : réservés à l'administrateur.
-SENSITIVE_KEYS = ('labo_email', 'allowed_domain')
+SENSITIVE_KEYS = ('labo_email', 'allowed_domain', 'admin_emails', 'display_emails')
 
 _TIME_RE = re.compile(r'^(\d{1,2})h(\d{2})$')
 _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -67,6 +69,35 @@ def get_site_settings():
             env_name = 'LABO_EMAIL' if key == 'labo_email' else 'GOOGLE_WORKSPACE_DOMAIN'
             values[key] = os.getenv(env_name, '').strip().lower()
     return values
+
+
+def parse_email_list(text):
+    """'a@x.fr, B@x.fr' -> ['a@x.fr', 'b@x.fr'] (minuscules, sans doublon, ordre conservé)."""
+    emails = []
+    for part in re.split(r'[,;\s]+', str(text or '').lower()):
+        if part and part not in emails:
+            emails.append(part)
+    return emails
+
+
+def role_for_email(email, settings=None):
+    """Rôle attribué à un compte Google : admin, labo, affichage ou teacher.
+
+    Administrateurs : ADMIN_EMAIL (paramètre du serveur, toujours admin : impossible de s'enfermer
+    dehors depuis l'interface) + la liste admin_emails. Affichage : la liste display_emails, comptes
+    qui ne voient que le planning en mode affichage (écran dans une salle)."""
+    email = (email or '').strip().lower()
+    if not email:
+        return 'teacher'
+    settings = settings or get_site_settings()
+    admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
+    if email == admin_email or email in parse_email_list(settings['admin_emails']):
+        return 'admin'
+    if settings['labo_email'] and email == settings['labo_email']:
+        return 'labo'
+    if email in parse_email_list(settings['display_emails']):
+        return 'affichage'
+    return 'teacher'
 
 
 def get_timezone():
@@ -197,6 +228,13 @@ def validate_settings(values):
             raise ValueError("domaine invalide (exemple : monlycee.fr)")
         return v
 
+    def email_list(v):
+        emails = parse_email_list(v)
+        invalid = [e for e in emails if not _EMAIL_RE.match(e)]
+        if invalid:
+            raise ValueError(f"adresse e-mail invalide : « {invalid[0]} »")
+        return ', '.join(emails)
+
     check('site_name', "Nom affiché", site_name)
     check('timezone', "Fuseau horaire", timezone)
     check('deadline_hour', "Heure limite", deadline_hour)
@@ -205,6 +243,12 @@ def validate_settings(values):
     check('separators', "Pauses", separators)
     check('labo_email', "E-mail du compte labo", labo_email)
     check('allowed_domain', "Domaine autorisé", allowed_domain)
+    check('admin_emails', "Autres administrateurs", email_list)
+    check('display_emails', "Comptes affichage", email_list)
+    if not errors and clean.get('display_emails') and clean.get('admin_emails'):
+        both = set(parse_email_list(clean['admin_emails'])) & set(parse_email_list(clean['display_emails']))
+        if both:
+            errors['display_emails'] = f"Comptes affichage : « {sorted(both)[0]} » est déjà administrateur"
     return clean, errors
 
 

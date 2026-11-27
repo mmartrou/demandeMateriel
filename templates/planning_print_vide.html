@@ -2,6 +2,10 @@
 
 {% block title %}Planning introuvable{% endblock %}
 
+{% block extra_css %}
+{% if auto_refresh %}<meta http-equiv="refresh" content="60">{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="container mt-5 text-center">
     {% if invalide %}
@@ -11,6 +15,8 @@
     <h2>Aucun planning enregistré pour le {{ date }}</h2>
     <p class="text-muted">Générez ou ouvrez le planning dans l'éditeur : il est enregistré automatiquement, puis imprimable ici.</p>
     {% endif %}
+    {% if effective_user_mode in ('admin', 'labo') %}
     <a class="btn btn-primary" href="{{ url_for('edition_planning.planning_editor') }}">Retour à l'éditeur de planning</a>
+    {% endif %}
 </div>
 {% endblock %}

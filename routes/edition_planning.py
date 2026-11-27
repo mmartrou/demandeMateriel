@@ -401,13 +401,15 @@ def save_planning_observations():
 def planning_print():
     """Page imprimable (A4 paysage) du planning enregistré pour une date.
 
-    ?date=AAAA-MM-JJ  ?mode=technicien|affichage  ?print=1 (ouvre directement la fenêtre d'impression)"""
-    date = request.args.get('date', '')
+    ?date=AAAA-MM-JJ (aujourd'hui si absente : un écran ouvert en permanence passe seul au jour suivant)
+    ?mode=technicien|affichage  ?print=1 (ouvre directement la fenêtre d'impression)"""
+    date = request.args.get('date') or datetime.now(site_settings.get_timezone()).strftime('%Y-%m-%d')
     try:
         datetime.strptime(date, '%Y-%m-%d')
     except ValueError:
         return render_template('planning_print_vide.html', date=date, invalide=True), 400
     modele = build_print_model(date, request.args.get('mode', 'technicien'))
     if modele is None:
-        return render_template('planning_print_vide.html', date=date, invalide=False), 404
+        return render_template('planning_print_vide.html', date=date, invalide=False,
+                               auto_refresh=request.args.get('mode') == 'affichage'), 404
     return render_template('planning_print.html', p=modele, auto_print=request.args.get('print') == '1')

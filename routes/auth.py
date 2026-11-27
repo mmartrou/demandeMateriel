@@ -54,15 +54,7 @@ def auth_google():
         if allowed_domain and not email.endswith(f'@{allowed_domain}'):
             return jsonify({'error': 'Compte hors domaine autorisé'}), 403
 
-        admin_email = os.getenv('ADMIN_EMAIL', '').strip().lower()
-        labo_email = settings['labo_email']
-
-        if admin_email and email == admin_email:
-            role = 'admin'
-        elif labo_email and email == labo_email:
-            role = 'labo'
-        else:
-            role = 'teacher'
+        role = site_settings.role_for_email(email, settings)
 
         existing_user = get_user_by_email(email)
         teacher_id = existing_user.get('teacher_id') if existing_user else None
@@ -75,7 +67,9 @@ def auth_google():
             except Exception:
                 teacher_id = find_teacher_id_by_name(str(mapped_value).strip())
 
-        if role == 'teacher' and teacher_id is None:
+        if role == 'affichage':
+            teacher_id = None
+        elif role == 'teacher' and teacher_id is None:
             return jsonify({
                 'error': "Compte enseignant non associé. Configure TEACHER_EMAIL_MAP ou associe ce compte en base."
             }), 403

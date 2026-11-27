@@ -38,8 +38,8 @@ def _get_effective_user_mode(user=None):
         user = _get_current_user()
     if not user:
         return 'anonymous'
-    if user.get('role') == 'labo':
-        return 'labo'
+    if user.get('role') in ('labo', 'affichage'):
+        return user.get('role')
     if user.get('role') != 'admin':
         return 'teacher'
 
@@ -73,6 +73,16 @@ def _is_admin_user(user=None):
 def _is_privileged_user(user=None):
     """Retourne True pour admin (en mode admin) et labo."""
     return _is_admin_user(user) or _is_labo_user(user)
+
+
+def _is_display_user(user=None):
+    """Compte « affichage » : ne voit que le planning en mode affichage (écran dans une salle)."""
+    if user is None:
+        user = _get_current_user()
+    return bool(user and user.get('role') == 'affichage')
+
+
+DISPLAY_PATH = '/admin/planning-print'
 
 
 def _is_authenticated():
@@ -187,6 +197,39 @@ def enforce_authentication():
     return redirect(url_for('auth.login'))
 
 
+@bp.before_app_request
+def revalidate_role():
+    """Un compte retiré (ou ajouté) des administrateurs / comptes affichage est déconnecté : sa session
+    garde l'ancien rôle jusqu'à 8 jours, il doit se reconnecter pour recevoir le nouveau."""
+    user = _get_current_user()
+    if not user or os.environ.get('DEV_LOGIN') == '1':
+        return None
+    expected = site_settings.role_for_email(user.get('email'))
+    current = user.get('role')
+    if expected == current or not {expected, current} & {'admin', 'affichage'}:
+        return None
+    logger.info(f"Rôle de {user.get('email')} modifié ({current} -> {expected}) : session fermée")
+    session.clear()
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Authentification requise'}), 401
+    return redirect(url_for('auth.login'))
+
+
+@bp.before_app_request
+def restrict_display_account():
+    """Le compte affichage n'a accès qu'à /admin/planning-print?mode=affichage (et à la déconnexion)."""
+    if not _is_display_user() or _is_public_route(request.path):
+        return None
+    if request.path == DISPLAY_PATH and request.args.get('mode') == 'affichage' and not request.args.get('print'):
+        return None
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Non autorisé'}), 403
+    args = {'mode': 'affichage'}
+    if request.path == DISPLAY_PATH and request.args.get('date'):
+        args['date'] = request.args.get('date')
+    return redirect(url_for('edition_planning.planning_print', **args))
+
+
 @bp.after_app_request
 def add_no_cache_to_api(response):
     """Les réponses des API ne doivent jamais être mises en cache (données dynamiques)."""
@@ -198,6 +241,8 @@ def add_no_cache_to_api(response):
 @bp.before_app_request
 def protect_sensitive_routes():
     """Protège les routes sensibles."""
+    if _is_display_user() and request.path == DISPLAY_PATH:
+        return None  # déjà limité au mode affichage par restrict_display_account
     if _is_admin_only_route(request.path, request.method):
         if _is_privileged_user():
             return None

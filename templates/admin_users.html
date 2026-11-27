@@ -75,7 +75,7 @@
                     <tr>
                         <td>{{ u.email }}</td>
                         <td>{{ u.full_name or '—' }}</td>
-                        <td><span class="badge bg-{{ 'danger' if u.role == 'admin' else ('warning text-dark' if u.role == 'labo' else 'primary') }}">{{ u.role }}</span></td>
+                        <td><span class="badge bg-{{ 'danger' if u.role == 'admin' else ('warning text-dark' if u.role == 'labo' else ('secondary' if u.role == 'affichage' else 'primary')) }}">{{ u.role }}</span></td>
                         <td>
                             {% if u.teacher_name %}
                                 {{ u.teacher_name }} <small class="text-muted">(id {{ u.teacher_id }})</small>
